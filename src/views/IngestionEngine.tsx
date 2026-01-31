@@ -44,7 +44,7 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
   const [jobStatus, setJobStatus] = useState<'pending' | 'running' | 'completed' | 'failed' | null>(null);
   
   // Polling ref
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isConnected = !!userProfile || isMockConnected;
 

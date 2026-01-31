@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <Icons.RefreshCw className="w-4 h-4" />
             Try Again
           </button>
-          {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
+          {import.meta.env.DEV && this.state.errorInfo && (
             <details className="mt-4 p-4 bg-arda-900 rounded text-xs text-arda-500 max-w-full overflow-auto">
               <summary className="cursor-pointer text-arda-400 mb-2">Stack Trace</summary>
               <pre className="whitespace-pre-wrap break-words">
