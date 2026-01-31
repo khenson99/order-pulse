@@ -1,6 +1,7 @@
 {
   "name": "orderpulse-server",
   "version": "1.0.0",
+  "type": "module",
   "description": "OrderPulse Backend API - Production-ready Gmail OAuth and Gemini AI proxy",
   "main": "dist/index.js",
   "scripts": {
