@@ -1,5 +1,6 @@
 // Jobs API - Background email processing
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import { google } from 'googleapis';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getValidAccessToken } from './auth.js';
@@ -14,6 +15,35 @@ import {
 } from '../services/amazon.js';
 
 const router = Router();
+
+const jobsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many job requests. Slow down and retry in a minute.' },
+});
+
+const amazonLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many Amazon processing requests. Try again later.' },
+});
+
+const MAX_SUPPLIERS = 25;
+
+function sanitizeSupplierDomains(domains: unknown): string[] {
+  if (!Array.isArray(domains)) return [];
+
+  return domains
+    .map((domain) =>
+      typeof domain === 'string' ? domain.trim().toLowerCase() : '',
+    )
+    .filter((domain) => domain.length > 2 && domain.includes('.') && !domain.includes(' '))
+    .slice(0, MAX_SUPPLIERS);
+}
 
 // Extract text from PDF attachments
 async function extractPdfText(gmail: any, messageId: string, attachmentId: string): Promise<string> {

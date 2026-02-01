@@ -40,10 +40,26 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; icon: string }
   unknown: { bg: 'bg-gray-50', text: 'text-gray-600', icon: '📦' },
 };
 
+// Milestone thresholds for celebrations
+const MILESTONES = {
+  firstItem: 1,
+  tenItems: 10,
+  fiftyItems: 50,
+  hundredItems: 100,
+  firstOrder: 1,
+  tenOrders: 10,
+};
+
 export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onScanComplete,
   onSkip,
 }) => {
+  // Onboarding phase states
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [celebratingMilestone, setCelebratingMilestone] = useState<string | null>(null);
+  const [achievedMilestones, setAchievedMilestones] = useState<Set<string>>(new Set());
+  const [showInsights, setShowInsights] = useState(false);
+
   // Amazon processing state (starts immediately)
   const [amazonJobId, setAmazonJobId] = useState<string | null>(null);
   const [amazonStatus, setAmazonStatus] = useState<JobStatus | null>(null);
@@ -77,8 +93,95 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [otherOrders, setOtherOrders] = useState<ExtractedOrder[]>([]);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Computed values for the experience
+  const allItems = useMemo(() => {
+    const items: Array<{ name: string; price: number; supplier: string; image?: string; date: string }> = [];
+    
+    amazonOrders.forEach(order => {
+      order.items.forEach(item => {
+        items.push({
+          name: item.amazonEnriched?.itemName || item.name,
+          price: item.unitPrice || 0,
+          supplier: 'Amazon',
+          image: item.amazonEnriched?.imageUrl,
+          date: order.orderDate,
+        });
+      });
+    });
+    
+    priorityOrders.forEach(order => {
+      order.items.forEach(item => {
+        items.push({
+          name: item.name,
+          price: item.unitPrice || 0,
+          supplier: order.supplier,
+          date: order.orderDate,
+        });
+      });
+    });
+    
+    otherOrders.forEach(order => {
+      order.items.forEach(item => {
+        items.push({
+          name: item.name,
+          price: item.unitPrice || 0,
+          supplier: order.supplier,
+          date: order.orderDate,
+        });
+      });
+    });
+    
+    return items;
+  }, [amazonOrders, priorityOrders, otherOrders]);
+
+  const totalSpend = useMemo(() => {
+    return allItems.reduce((sum, item) => sum + (item.price || 0), 0);
+  }, [allItems]);
+
+  const totalOrders = amazonOrders.length + priorityOrders.length + otherOrders.length;
+  const uniqueSuppliers = useMemo(() => {
+    const suppliers = new Set<string>();
+    allItems.forEach(item => suppliers.add(item.supplier));
+    return suppliers.size;
+  }, [allItems]);
+
   // Merge priority suppliers with discovered ones (excluding Amazon)
-const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, discoveredSuppliers), [discoveredSuppliers]);
+  const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, discoveredSuppliers), [discoveredSuppliers]);
+
+  // Check for milestone achievements
+  useEffect(() => {
+    const newMilestones = new Set(achievedMilestones);
+    
+    if (allItems.length >= MILESTONES.firstItem && !achievedMilestones.has('firstItem')) {
+      newMilestones.add('firstItem');
+      setCelebratingMilestone('firstItem');
+      setTimeout(() => setCelebratingMilestone(null), 2000);
+    }
+    
+    if (allItems.length >= MILESTONES.tenItems && !achievedMilestones.has('tenItems')) {
+      newMilestones.add('tenItems');
+      setCelebratingMilestone('tenItems');
+      setTimeout(() => setCelebratingMilestone(null), 2000);
+    }
+    
+    if (allItems.length >= MILESTONES.fiftyItems && !achievedMilestones.has('fiftyItems')) {
+      newMilestones.add('fiftyItems');
+      setCelebratingMilestone('fiftyItems');
+      setTimeout(() => setCelebratingMilestone(null), 2500);
+    }
+    
+    if (newMilestones.size !== achievedMilestones.size) {
+      setAchievedMilestones(newMilestones);
+    }
+  }, [allItems.length, achievedMilestones]);
+
+  // Hide welcome after processing starts
+  useEffect(() => {
+    if (amazonJobId || priorityJobId) {
+      const timer = setTimeout(() => setShowWelcome(false), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [amazonJobId, priorityJobId]);
 
   // 1. START ALL PRIORITY SUPPLIERS IMMEDIATELY ON MOUNT
   useEffect(() => {
@@ -210,6 +313,28 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
     }
   }, [priorityJobId, isPriorityComplete, pollPriorityStatus]);
 
+  // Discover suppliers
+  const handleDiscoverSuppliers = async () => {
+    setIsDiscovering(true);
+    setDiscoverError(null);
+    setDiscoveryProgress('Scanning your inbox for suppliers...');
+    
+    try {
+      const result = await discoverApi.discoverSuppliers();
+      // Filter out Amazon since we handle it separately
+      const nonAmazonSuppliers = result.suppliers.filter((s: DiscoveredSupplier) => !s.domain.includes('amazon'));
+      setDiscoveredSuppliers(nonAmazonSuppliers);
+      setHasDiscovered(true);
+      setDiscoveryProgress('');
+    } catch (err: any) {
+      console.error('Discovery error:', err);
+      setDiscoverError(err.message || 'Failed to discover suppliers');
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  // Poll job status
   const pollJobStatus = useCallback(async () => {
     if (!currentJobId) return;
     
@@ -238,12 +363,12 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
         }
       }
     } catch (error) {
-      console.error('Polling error:', error);
+      console.error('Job polling error:', error);
     }
   }, [currentJobId]);
 
   useEffect(() => {
-    if (isScanning && currentJobId) {
+    if (currentJobId && isScanning) {
       pollJobStatus();
       pollingRef.current = setInterval(pollJobStatus, 1000);
       return () => {
@@ -253,68 +378,40 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
         }
       };
     }
-  }, [isScanning, currentJobId, pollJobStatus]);
+  }, [currentJobId, isScanning, pollJobStatus]);
 
-  const handleDiscoverSuppliers = async () => {
-    setIsDiscovering(true);
-    setDiscoverError(null);
-    setDiscoveryProgress('Connecting to Gmail...');
+  // Scan selected suppliers
+  const handleScanSuppliers = async () => {
+    // Filter to only non-Amazon, non-priority enabled suppliers
+    const priorityDomains = new Set(['mcmaster.com', 'uline.com']);
+    const domainsToScan = Array.from(enabledSuppliers).filter(
+      d => !d.includes('amazon') && !priorityDomains.has(d)
+    );
+    
+    if (domainsToScan.length === 0) {
+      return; // Nothing additional to scan
+    }
+    
+    setIsScanning(true);
+    setJobStatus(null);
     
     try {
-      setDiscoveryProgress('Scanning email headers...');
-      const response = await discoverApi.discoverSuppliers();
-      
-      setDiscoveryProgress(`Found ${response.suppliers.length} potential suppliers`);
-      setDiscoveredSuppliers(response.suppliers);
-      
-      const newEnabled = new Set(enabledSuppliers);
-      response.suppliers
-        .filter(s => s.isRecommended && !s.domain.includes('amazon'))
-        .forEach(s => newEnabled.add(s.domain));
-      setEnabledSuppliers(newEnabled);
-      
-      setHasDiscovered(true);
+      const response = await jobsApi.startJob(domainsToScan);
+      setCurrentJobId(response.jobId);
     } catch (error: any) {
-      console.error('Failed to discover suppliers:', error);
-      setDiscoverError(error.message || 'Failed to discover suppliers');
-    } finally {
-      setIsDiscovering(false);
-      setDiscoveryProgress('');
+      console.error('Scan error:', error);
+      setIsScanning(false);
     }
   };
 
   const handleToggleSupplier = (domain: string) => {
-    setEnabledSuppliers(prev => {
-      const next = new Set(prev);
-      if (next.has(domain)) {
-        next.delete(domain);
-      } else {
-        next.add(domain);
-      }
-      return next;
-    });
-  };
-
-  const handleStartScan = async () => {
-    const suppliersToScan = Array.from(enabledSuppliers);
-    if (suppliersToScan.length === 0) {
-      alert('Please select at least one supplier to scan.');
-      return;
+    const newEnabled = new Set(enabledSuppliers);
+    if (newEnabled.has(domain)) {
+      newEnabled.delete(domain);
+    } else {
+      newEnabled.add(domain);
     }
-
-    setIsScanning(true);
-    setOtherOrders([]);
-    setJobStatus(null);
-    
-    try {
-      console.log('Starting scan for suppliers:', suppliersToScan);
-      const response = await jobsApi.startJob(suppliersToScan);
-      setCurrentJobId(response.jobId);
-    } catch (error: any) {
-      console.error('Failed to start scan:', error);
-      setDiscoverError(error.message || 'Failed to start scan. Please try again.');
-      setIsScanning(false);
-    }
+    setEnabledSuppliers(newEnabled);
   };
 
   const handleComplete = () => {
@@ -324,7 +421,6 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
 
   const suppliers = allSuppliers;
   const enabledCount = enabledSuppliers.size;
-  const totalOrders = amazonOrders.length + priorityOrders.length + otherOrders.length;
   const isPriorityProcessing = (!isPriorityComplete && priorityJobId);
   const isAnyProcessing = (!isAmazonComplete && amazonJobId) || isPriorityProcessing || isScanning;
   
@@ -334,468 +430,397 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
     ? (priorityProgress.processed / Math.max(priorityProgress.total, 1)) * 100 
     : 0;
 
+  // Amazon progress
   const amazonProgress = amazonStatus?.progress;
   const amazonProgressPercent = amazonProgress 
-    ? (amazonProgress.processed / amazonProgress.total) * 100 
+    ? (amazonProgress.processed / Math.max(amazonProgress.total, 1)) * 100 
     : 0;
 
+  // Milestone celebration messages
+  const getMilestoneMessage = (milestone: string): { title: string; subtitle: string; emoji: string } => {
+    switch (milestone) {
+      case 'firstItem':
+        return { title: 'First Item Found!', subtitle: 'Your inventory is coming to life', emoji: '🎉' };
+      case 'tenItems':
+        return { title: '10 Items Discovered!', subtitle: 'Arda is learning your supply chain', emoji: '🚀' };
+      case 'fiftyItems':
+        return { title: '50 Items!', subtitle: 'Your replenishment patterns are emerging', emoji: '⚡' };
+      case 'hundredItems':
+        return { title: '100 Items!', subtitle: 'You\'re building a powerful inventory system', emoji: '💪' };
+      default:
+        return { title: 'Milestone!', subtitle: '', emoji: '🎯' };
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-arda-text-primary">Import Orders</h1>
-          <p className="text-arda-text-secondary mt-1">
-            {isAnyProcessing 
-              ? 'Processing Amazon, McMaster-Carr, and Uline automatically...'
-              : 'Priority suppliers processed. Select additional suppliers below.'}
+    <div className="max-w-5xl mx-auto p-6 pb-32 space-y-6 relative">
+      
+      {/* Milestone Celebration Overlay */}
+      {celebratingMilestone && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 text-center animate-bounce-in border-4 border-arda-accent">
+            <div className="text-6xl mb-4">{getMilestoneMessage(celebratingMilestone).emoji}</div>
+            <h2 className="text-2xl font-bold text-arda-text-primary mb-2">
+              {getMilestoneMessage(celebratingMilestone).title}
+            </h2>
+            <p className="text-arda-text-secondary">
+              {getMilestoneMessage(celebratingMilestone).subtitle}
+            </p>
+          </div>
+          {/* Confetti effect */}
+          <div className="absolute inset-0 overflow-hidden">
+            {[...Array(20)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute animate-confetti"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 0.5}s`,
+                  backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'][i % 5],
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '2px',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Welcome Header - Animated intro */}
+      {showWelcome && (
+        <div className="text-center py-8 animate-fade-in">
+          <div className="inline-flex items-center gap-2 bg-arda-accent/10 text-arda-accent px-4 py-2 rounded-full text-sm font-medium mb-4">
+            <Icons.Sparkles className="w-4 h-4" />
+            Welcome to Arda
+          </div>
+          <h1 className="text-3xl font-bold text-arda-text-primary mb-3">
+            Let's discover your supply chain
+          </h1>
+          <p className="text-arda-text-secondary max-w-lg mx-auto">
+            We're scanning your emails to find orders, track spending, and identify 
+            replenishment patterns. This usually takes about 30 seconds.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {!isAnyProcessing && totalOrders > 0 && (
+      )}
+
+      {/* Live Stats Bar - The "wow" moment */}
+      {(allItems.length > 0 || totalOrders > 0) && (
+        <div className="bg-gradient-to-r from-arda-accent to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="grid grid-cols-4 gap-6 text-center">
+            <div>
+              <div className="text-4xl font-bold">{allItems.length}</div>
+              <div className="text-white/80 text-sm">Items Found</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">{totalOrders}</div>
+              <div className="text-white/80 text-sm">Orders</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">{uniqueSuppliers}</div>
+              <div className="text-white/80 text-sm">Suppliers</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">
+                ${totalSpend >= 1000 ? `${(totalSpend / 1000).toFixed(1)}k` : totalSpend.toFixed(0)}
+              </div>
+              <div className="text-white/80 text-sm">Tracked</div>
+            </div>
+          </div>
+          
+          {/* Value teaser */}
+          {allItems.length >= 5 && (
+            <div className="mt-4 pt-4 border-t border-white/20 text-center">
+              <p className="text-white/90 text-sm">
+                💡 <span className="font-medium">Insight preview:</span> We're already seeing patterns in your ordering. 
+                Set up Kanban cards to automate replenishment.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Header when not showing welcome */}
+      {!showWelcome && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-arda-text-primary">Importing Your Orders</h1>
+            <p className="text-arda-text-secondary mt-1">
+              {isAnyProcessing 
+                ? 'Discovering items from your suppliers...'
+                : 'Ready to set up your inventory'}
+            </p>
+          </div>
+          {!isAnyProcessing && allItems.length > 0 && (
             <button
               onClick={handleComplete}
-              className="bg-arda-success hover:bg-green-600 text-white px-5 py-2 rounded-lg font-medium transition-colors"
+              className="bg-arda-accent hover:bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
             >
-              Continue with {totalOrders} orders →
-            </button>
-          )}
-          {!isAnyProcessing && (
-            <button
-              onClick={onSkip}
-              className="text-sm text-arda-text-muted hover:text-arda-text-primary transition-colors"
-            >
-              Skip
+              Continue to Dashboard
+              <Icons.ArrowRight className="w-5 h-5" />
             </button>
           )}
         </div>
-      </div>
+      )}
 
-      {/* Amazon Processing Card */}
-      <div className={`border rounded-xl p-5 ${
+      {/* Amazon Processing Card - Premium look */}
+      <div className={`border-2 rounded-2xl p-6 transition-all ${
         amazonError
           ? 'bg-red-50 border-red-200'
           : isAmazonComplete 
-            ? amazonOrders.length > 0 
-              ? 'bg-green-50 border-green-200' 
+            ? amazonOrders.length > 0
+              ? 'bg-green-50 border-green-300 shadow-md' 
               : 'bg-gray-50 border-gray-200'
-            : 'bg-orange-50 border-orange-200'
+            : 'bg-orange-50 border-orange-200 shadow-sm'
       }`}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            {amazonError ? (
-              <Icons.AlertCircle className="w-5 h-5 text-red-500" />
-            ) : !isAmazonComplete ? (
-              <Icons.Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
-            ) : amazonOrders.length > 0 ? (
-              <Icons.CheckCircle2 className="w-5 h-5 text-green-500" />
-            ) : (
-              <Icons.AlertCircle className="w-5 h-5 text-gray-400" />
-            )}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              isAmazonComplete ? 'bg-green-500' : 'bg-orange-500'
+            }`}>
+              {amazonError ? (
+                <Icons.AlertCircle className="w-6 h-6 text-white" />
+              ) : !isAmazonComplete ? (
+                <Icons.Loader2 className="w-6 h-6 text-white animate-spin" />
+              ) : (
+                <Icons.CheckCircle2 className="w-6 h-6 text-white" />
+              )}
+            </div>
             <div>
-              <span className="text-lg font-semibold text-arda-text-primary">🛒 Amazon</span>
-              <span className={`ml-2 text-sm ${
-                amazonError ? 'text-red-600' : 'text-arda-text-secondary'
-              }`}>
+              <h3 className="text-xl font-bold text-arda-text-primary">Amazon</h3>
+              <p className={`text-sm ${amazonError ? 'text-red-600' : 'text-arda-text-secondary'}`}>
                 {amazonError 
                   ? amazonError
                   : !isAmazonComplete 
-                    ? 'Processing with ASIN enrichment...'
+                    ? 'Extracting products from your orders...'
                     : amazonOrders.length > 0 
-                      ? `${amazonOrders.length} orders imported`
+                      ? `${amazonOrders.reduce((sum, o) => sum + o.items.length, 0)} items from ${amazonOrders.length} orders`
                       : 'No Amazon orders found'
                 }
-              </span>
+              </p>
             </div>
           </div>
           
           {amazonProgress && !isAmazonComplete && !amazonError && (
-            <span className="text-arda-text-muted text-sm font-mono">
-              {amazonProgress.processed} / {amazonProgress.total}
-            </span>
-          )}
-          
-          {amazonError && (
-            <button
-              onClick={() => {
-                setAmazonError(null);
-                setIsAmazonComplete(false);
-                jobsApi.startAmazon()
-                  .then(response => setAmazonJobId(response.jobId))
-                  .catch(err => setAmazonError(err.message));
-              }}
-              className="text-sm bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded transition-colors"
-            >
-              Retry
-            </button>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-orange-600">
+                {Math.round(amazonProgressPercent)}%
+              </div>
+              <div className="text-xs text-arda-text-muted">
+                {amazonProgress.processed} / {amazonProgress.total} emails
+              </div>
+            </div>
           )}
         </div>
 
         {/* Amazon Progress Bar */}
         {!isAmazonComplete && amazonProgress && !amazonError && (
-          <div className="mb-3">
-            <div className="h-2 bg-orange-100 rounded-full overflow-hidden">
+          <div className="mb-4">
+            <div className="h-3 bg-orange-100 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 transition-all duration-300"
+                className="h-full bg-gradient-to-r from-orange-500 to-orange-400 transition-all duration-300 rounded-full"
                 style={{ width: `${amazonProgressPercent}%` }}
               />
             </div>
-            <div className="text-xs text-arda-text-muted mt-1">
-              {amazonProgress.currentTask}
-            </div>
           </div>
         )}
 
-        {/* Amazon Activity Logs */}
-        {amazonStatus?.logs && amazonStatus.logs.length > 0 && !isAmazonComplete && (
-          <div className="max-h-32 overflow-y-auto mb-3">
-            <div className="space-y-0.5 font-mono text-xs">
-              {amazonStatus.logs.slice(-8).reverse().map((log, i) => (
-                <div 
-                  key={i} 
-                  className={`py-0.5 ${
-                    log.includes('🛍️') ? 'text-green-600' : 
-                    log.includes('📦') ? 'text-orange-600' :
-                    log.includes('✅') ? 'text-green-600' :
-                    log.includes('⚠️') ? 'text-yellow-600' :
-                    'text-arda-text-muted'
-                  }`}
-                >
-                  {log}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Amazon Items List - All items from all orders */}
+        {/* Amazon Items Grid - Show all items beautifully */}
         {amazonOrders.length > 0 && (
-          <div className="border-t border-orange-200 pt-3 mt-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-arda-text-muted">
-                {amazonOrders.reduce((sum, o) => sum + o.items.length, 0)} items from {amazonOrders.length} orders
-              </div>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {amazonOrders.flatMap((order, orderIdx) => 
-                  order.items.map((item, itemIdx) => (
-                    <div 
-                      key={`${orderIdx}-${itemIdx}`} 
-                      className="bg-white border border-green-200 rounded-lg p-2 flex items-center gap-3"
-                    >
-                      {item.amazonEnriched?.imageUrl ? (
-                        <img 
-                          src={item.amazonEnriched.imageUrl} 
-                          alt="" 
-                          className="w-12 h-12 object-contain flex-shrink-0 rounded"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center flex-shrink-0">
-                          <Icons.Package className="w-6 h-6 text-gray-400" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm text-arda-text-primary line-clamp-2">
-                          {item.amazonEnriched?.itemName || item.name}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          {(item.unitPrice ?? 0) > 0 && (
-                            <span className="text-sm text-green-600 font-semibold">
-                              ${(item.unitPrice ?? 0).toFixed(2)}
-                            </span>
-                          )}
-                          <span className="text-xs text-arda-text-muted">
-                            {order.orderDate}
+          <div className="max-h-64 overflow-y-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {amazonOrders.flatMap((order, orderIdx) => 
+                order.items.map((item, itemIdx) => (
+                  <div 
+                    key={`${orderIdx}-${itemIdx}`} 
+                    className="bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3 hover:shadow-md transition-shadow"
+                  >
+                    {item.amazonEnriched?.imageUrl ? (
+                      <img 
+                        src={item.amazonEnriched.imageUrl} 
+                        alt="" 
+                        className="w-14 h-14 object-contain flex-shrink-0 rounded-lg bg-gray-50"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 bg-orange-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Icons.Package className="w-7 h-7 text-orange-400" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-arda-text-primary line-clamp-2">
+                        {item.amazonEnriched?.itemName || item.name}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {(item.unitPrice ?? 0) > 0 && (
+                          <span className="text-sm text-green-600 font-bold">
+                            ${(item.unitPrice ?? 0).toFixed(2)}
                           </span>
-                        </div>
+                        )}
+                        <span className="text-xs text-arda-text-muted">
+                          {order.orderDate}
+                        </span>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* McMaster-Carr & Uline Processing Card */}
-      <div className={`border rounded-xl p-5 ${
+      {/* McMaster-Carr & Uline Card */}
+      <div className={`border-2 rounded-2xl p-6 transition-all ${
         priorityError
           ? 'bg-red-50 border-red-200'
           : isPriorityComplete 
             ? priorityOrders.length > 0 
-              ? 'bg-green-50 border-green-200' 
+              ? 'bg-green-50 border-green-300 shadow-md' 
               : 'bg-gray-50 border-gray-200'
-            : 'bg-blue-50 border-blue-200'
+            : 'bg-blue-50 border-blue-200 shadow-sm'
       }`}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            {priorityError ? (
-              <Icons.AlertCircle className="w-5 h-5 text-red-500" />
-            ) : !isPriorityComplete ? (
-              <Icons.Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-            ) : priorityOrders.length > 0 ? (
-              <Icons.CheckCircle2 className="w-5 h-5 text-green-500" />
-            ) : (
-              <Icons.AlertCircle className="w-5 h-5 text-gray-400" />
-            )}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              isPriorityComplete ? 'bg-green-500' : 'bg-blue-500'
+            }`}>
+              {priorityError ? (
+                <Icons.AlertCircle className="w-6 h-6 text-white" />
+              ) : !isPriorityComplete ? (
+                <Icons.Loader2 className="w-6 h-6 text-white animate-spin" />
+              ) : (
+                <Icons.CheckCircle2 className="w-6 h-6 text-white" />
+              )}
+            </div>
             <div>
-              <span className="text-lg font-semibold text-arda-text-primary">🏭 McMaster-Carr & Uline</span>
-              <span className={`ml-2 text-sm ${
-                priorityError ? 'text-red-600' : 'text-arda-text-secondary'
-              }`}>
-                {priorityError 
-                  ? priorityError
-                  : !isPriorityComplete 
-                    ? 'Analyzing order emails...'
-                    : priorityOrders.length > 0 
-                      ? `${priorityOrders.reduce((sum, o) => sum + o.items.length, 0)} items from ${priorityOrders.length} orders`
-                      : 'No orders found'
-                }
-              </span>
+              <h3 className="text-xl font-bold text-arda-text-primary">Industrial Suppliers</h3>
+              <p className="text-sm text-arda-text-secondary">
+                McMaster-Carr, Uline, and more
+              </p>
             </div>
           </div>
           
           {priorityProgress && !isPriorityComplete && !priorityError && (
-            <span className="text-arda-text-muted text-sm font-mono">
-              {priorityProgress.processed} / {priorityProgress.total}
-            </span>
-          )}
-          
-          {priorityError && (
-            <button
-              onClick={() => {
-                setPriorityError(null);
-                setIsPriorityComplete(false);
-                jobsApi.startJob(['mcmaster.com', 'uline.com'])
-                  .then(response => setPriorityJobId(response.jobId))
-                  .catch(err => setPriorityError(err.message));
-              }}
-              className="text-sm bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded transition-colors"
-            >
-              Retry
-            </button>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-blue-600">
+                {Math.round(priorityProgressPercent)}%
+              </div>
+              <div className="text-xs text-arda-text-muted">
+                {priorityProgress.processed} / {priorityProgress.total} emails
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Priority Progress Bar */}
+        {/* Progress Bar */}
         {!isPriorityComplete && priorityProgress && !priorityError && (
-          <div className="mb-3">
-            <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+          <div className="mb-4">
+            <div className="h-3 bg-blue-100 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-300"
+                className="h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-300 rounded-full"
                 style={{ width: `${priorityProgressPercent}%` }}
               />
             </div>
-            <div className="text-xs text-arda-text-muted mt-1">
-              {priorityProgress.currentTask}
-            </div>
           </div>
         )}
 
-        {/* Priority Activity Logs */}
-        {priorityStatus?.logs && priorityStatus.logs.length > 0 && !isPriorityComplete && (
-          <div className="max-h-32 overflow-y-auto mb-3">
-            <div className="space-y-0.5 font-mono text-xs">
-              {priorityStatus.logs.slice(-8).reverse().map((log, i) => (
-                <div 
-                  key={i} 
-                  className={`py-0.5 ${
-                    log.includes('📦') ? 'text-green-600 pl-4' : 
-                    log.includes('🏢') ? 'text-blue-600 font-medium' :
-                    log.includes('✓') ? 'text-green-600' :
-                    log.includes('⚠️') ? 'text-yellow-600' :
-                    'text-arda-text-muted'
-                  }`}
-                >
-                  {log}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Priority Items List - All items from all orders */}
+        {/* Priority Items List */}
         {priorityOrders.length > 0 && (
-          <div className="border-t border-blue-200 pt-3 mt-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-arda-text-muted">
-                {priorityOrders.reduce((sum, o) => sum + o.items.length, 0)} items from {priorityOrders.length} orders
-              </div>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {priorityOrders.flatMap((order, orderIdx) => 
-                  order.items.map((item, itemIdx) => (
-                    <div 
-                      key={`${orderIdx}-${itemIdx}`} 
-                      className="bg-white border border-blue-200 rounded-lg p-2 flex items-center gap-3"
-                    >
-                      <div className="w-10 h-10 bg-blue-50 rounded flex items-center justify-center flex-shrink-0">
-                        <Icons.Package className="w-5 h-5 text-blue-500" />
+          <div className="max-h-48 overflow-y-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {priorityOrders.flatMap((order, orderIdx) => 
+                order.items.map((item, itemIdx) => (
+                  <div 
+                    key={`${orderIdx}-${itemIdx}`} 
+                    className="bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3"
+                  >
+                    <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Icons.Package className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-arda-text-primary line-clamp-1">
+                        {item.name}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm text-arda-text-primary line-clamp-2">
-                          {item.name}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          {(item.unitPrice ?? 0) > 0 && (
-                            <span className="text-sm text-blue-600 font-semibold">
-                              ${(item.unitPrice ?? 0).toFixed(2)}
-                            </span>
-                          )}
-                          {item.quantity > 1 && (
-                            <span className="text-xs text-arda-text-muted">
-                              x{item.quantity}
-                            </span>
-                          )}
-                          <span className="text-xs text-arda-text-muted">
-                            {order.supplier}
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {(item.unitPrice ?? 0) > 0 && (
+                          <span className="text-sm text-blue-600 font-bold">
+                            ${(item.unitPrice ?? 0).toFixed(2)}
                           </span>
-                        </div>
+                        )}
+                        {item.quantity > 1 && (
+                          <span className="text-xs text-arda-text-muted bg-gray-100 px-1.5 py-0.5 rounded">
+                            x{item.quantity}
+                          </span>
+                        )}
+                        <span className="text-xs text-arda-text-muted">
+                          {order.supplier}
+                        </span>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* Discovery Error */}
-      {discoverError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <Icons.AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <div className="text-red-700 font-medium">Supplier Discovery Error</div>
-              <div className="text-red-600 text-sm mt-1">{discoverError}</div>
-              <button
-                onClick={() => {
-                  setDiscoverError(null);
-                  handleDiscoverSuppliers();
-                }}
-                className="mt-3 text-sm bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded transition-colors"
-              >
-                Try Again
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Additional Suppliers Section */}
-      <div className="border-t border-arda-border pt-6">
+      <div className="border-2 border-gray-200 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-arda-text-primary">Additional Suppliers</h2>
-          {isDiscovering && (
-            <div className="flex items-center gap-2 text-sm text-arda-text-muted">
-              <Icons.Loader2 className="w-4 h-4 animate-spin" />
-              {discoveryProgress}
-            </div>
+          <div>
+            <h3 className="text-xl font-bold text-arda-text-primary">Other Suppliers</h3>
+            <p className="text-sm text-arda-text-secondary">
+              {isDiscovering 
+                ? 'Discovering...' 
+                : `${suppliers.length} additional suppliers found`}
+            </p>
+          </div>
+          
+          {hasDiscovered && !isScanning && enabledCount > 0 && (
+            <button
+              onClick={handleScanSuppliers}
+              className="bg-arda-accent hover:bg-blue-600 text-white px-5 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2"
+            >
+              <Icons.Download className="w-4 h-4" />
+              Import {enabledCount} Suppliers
+            </button>
           )}
         </div>
 
-        {/* Scanning Progress for Other Suppliers */}
-        {isScanning && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-4">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <Icons.Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-                <span className="text-arda-text-primary font-medium">Importing from {enabledCount} suppliers</span>
-              </div>
-              {jobStatus?.progress && (
-                <span className="text-arda-text-muted text-sm font-mono">
-                  {jobStatus.progress.processed} / {jobStatus.progress.total}
-                </span>
-              )}
+        {/* Scanning Progress */}
+        {isScanning && jobStatus && (
+          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <Icons.Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+              <span className="font-medium text-blue-700">
+                {jobStatus.progress?.currentTask || 'Processing...'}
+              </span>
             </div>
-
-            {jobStatus?.progress && (
-              <>
-                <div className="h-2 bg-blue-100 rounded-full overflow-hidden mb-3">
-                  <div 
-                    className="h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-300"
-                    style={{ 
-                      width: `${(jobStatus.progress.processed / jobStatus.progress.total) * 100}%` 
-                    }}
-                  />
-                </div>
-                
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-600">
-                    ✓ {jobStatus.progress.success} orders found
-                  </span>
-                  <span className="text-arda-text-muted text-xs">
-                    {jobStatus.progress.currentTask}
-                  </span>
-                </div>
-              </>
-            )}
-
-            {/* Show live logs with items being found */}
-            {jobStatus?.logs && jobStatus.logs.length > 0 && (
-              <div className="border-t border-blue-200 mt-4 pt-4 max-h-48 overflow-y-auto">
-                <div className="text-xs text-arda-text-muted mb-2">Activity:</div>
-                <div className="space-y-1 font-mono text-xs">
-                  {jobStatus.logs.slice(-15).reverse().map((log, i) => (
-                    <div 
-                      key={i} 
-                      className={`py-0.5 ${
-                        log.includes('📦') ? 'text-green-600 pl-4' : 
-                        log.includes('🏢') ? 'text-blue-600 font-medium' :
-                        log.includes('✓') ? 'text-green-600' :
-                        log.includes('⚠️') ? 'text-yellow-600' :
-                        log.includes('❌') ? 'text-red-600' :
-                        'text-arda-text-muted'
-                      }`}
-                    >
-                      {log}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ 
+                  width: `${(jobStatus.progress?.processed || 0) / Math.max(jobStatus.progress?.total || 1, 1) * 100}%` 
+                }}
+              />
+            </div>
             
+            {/* Other Orders Items */}
             {otherOrders.length > 0 && (
-              <div className="border-t border-blue-200 mt-4 pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-arda-text-muted">
-                    {otherOrders.reduce((sum, o) => sum + o.items.length, 0)} items from {otherOrders.length} orders
-                  </div>
-                </div>
-                <div className="max-h-48 overflow-y-auto">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {otherOrders.flatMap((order, orderIdx) => 
-                      order.items.map((item, itemIdx) => (
-                        <div 
-                          key={`${orderIdx}-${itemIdx}`} 
-                          className="bg-white border border-green-200 rounded-lg p-2 flex items-center gap-3"
-                        >
-                          <div className="w-8 h-8 bg-green-50 rounded flex items-center justify-center flex-shrink-0">
-                            <Icons.Package className="w-4 h-4 text-green-500" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm text-arda-text-primary truncate">
-                              {item.name}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {(item.unitPrice ?? 0) > 0 && (
-                                <span className="text-xs text-green-600 font-semibold">
-                                  ${(item.unitPrice ?? 0).toFixed(2)}
-                                </span>
-                              )}
-                              <span className="text-xs text-arda-text-muted">
-                                {order.supplier}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+              <div className="mt-4 max-h-32 overflow-y-auto">
+                <div className="grid grid-cols-2 gap-2">
+                  {otherOrders.flatMap((order, orderIdx) => 
+                    order.items.slice(0, 4).map((item, itemIdx) => (
+                      <div 
+                        key={`${orderIdx}-${itemIdx}`} 
+                        className="bg-white rounded-lg px-3 py-2 text-sm flex items-center gap-2"
+                      >
+                        <Icons.Package className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        <span className="truncate text-arda-text-primary">{item.name}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -803,132 +828,132 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
         )}
 
         {/* Supplier Grid */}
-        {!isScanning && (
-          <>
-            {isDiscovering && !hasDiscovered ? (
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-                <Icons.Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
-                <div className="text-arda-text-primary font-medium">{discoveryProgress}</div>
-                <div className="text-arda-text-muted text-sm mt-1">Discovering other suppliers...</div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                {suppliers.map((supplier) => {
-                  const isEnabled = enabledSuppliers.has(supplier.domain);
-                  const isPriority = OTHER_PRIORITY_SUPPLIERS.some(p => p.domain === supplier.domain);
-                  const colors = CATEGORY_COLORS[supplier.category] || CATEGORY_COLORS.unknown;
-                  
-                  return (
-                    <div
-                      key={supplier.domain}
-                      onClick={() => handleToggleSupplier(supplier.domain)}
-                      className={`
-                        relative aspect-square p-3 rounded-xl border-2 cursor-pointer transition-all
-                        flex flex-col items-center justify-center text-center
-                        ${isEnabled 
-                          ? 'bg-white border-arda-accent shadow-md' 
-                          : 'bg-gray-50 border-gray-200 hover:border-gray-300 opacity-60 hover:opacity-100'
-                        }
-                      `}
-                    >
-                      {isPriority && (
-                        <div className="absolute top-1 right-1 w-2 h-2 bg-arda-accent rounded-full" />
-                      )}
-
-                      {isEnabled && (
-                        <div className="absolute top-1.5 left-1.5">
-                          <Icons.CheckCircle2 className="w-4 h-4 text-arda-accent" />
-                        </div>
-                      )}
-
-                      <div className={`text-2xl mb-1 ${isEnabled ? '' : 'grayscale'}`}>
-                        {colors.icon}
-                      </div>
-
-                      <div className={`text-xs font-medium truncate w-full ${
-                        isEnabled ? 'text-arda-text-primary' : 'text-arda-text-muted'
-                      }`}>
-                        {supplier.displayName}
-                      </div>
-
-                      {supplier.emailCount > 0 && (
-                        <div className="text-[10px] text-arda-text-muted mt-0.5">
-                          {supplier.emailCount} emails
-                        </div>
-                      )}
+        {!isScanning && hasDiscovered && suppliers.length > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+            {suppliers.map((supplier) => {
+              const isEnabled = enabledSuppliers.has(supplier.domain);
+              const colors = CATEGORY_COLORS[supplier.category] || CATEGORY_COLORS.unknown;
+              
+              return (
+                <div
+                  key={supplier.domain}
+                  onClick={() => handleToggleSupplier(supplier.domain)}
+                  className={`
+                    relative aspect-square p-3 rounded-xl border-2 cursor-pointer transition-all
+                    flex flex-col items-center justify-center text-center
+                    ${isEnabled 
+                      ? 'bg-white border-arda-accent shadow-md scale-105' 
+                      : 'bg-gray-50 border-gray-200 hover:border-gray-300 opacity-60 hover:opacity-100'
+                    }
+                  `}
+                >
+                  {isEnabled && (
+                    <div className="absolute top-2 right-2">
+                      <Icons.CheckCircle2 className="w-5 h-5 text-arda-accent" />
                     </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Action Bar */}
-            {!isDiscovering && (
-              <div className="flex items-center justify-between pt-4 mt-4 border-t border-arda-border">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-arda-text-muted">
-                    {enabledCount} selected
-                  </span>
-                  {hasDiscovered && (
-                    <button
-                      onClick={handleDiscoverSuppliers}
-                      className="text-sm text-arda-text-muted hover:text-arda-text-primary transition-colors flex items-center gap-1"
-                    >
-                      <Icons.RefreshCw className="w-3 h-3" />
-                      Refresh
-                    </button>
+                  )}
+                  <div className="text-2xl mb-1">{colors.icon}</div>
+                  <div className="text-sm font-medium text-arda-text-primary truncate w-full">
+                    {supplier.displayName}
+                  </div>
+                  {supplier.emailCount > 0 && (
+                    <div className="text-xs text-arda-text-muted">
+                      {supplier.emailCount} emails
+                    </div>
                   )}
                 </div>
-                <button
-                  onClick={handleStartScan}
-                  disabled={enabledCount === 0 || isScanning}
-                  className="px-6 py-2.5 bg-arda-accent hover:bg-arda-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-                >
-                  <Icons.Download className="w-4 h-4" />
-                  Import from {enabledCount} Suppliers
-                </button>
-              </div>
-            )}
-          </>
+              );
+            })}
+          </div>
         )}
 
-        {/* Other Suppliers Complete */}
-        {!isScanning && jobStatus?.status === 'completed' && otherOrders.length > 0 && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-5 mt-4">
-            <div className="flex items-center gap-3">
-              <Icons.CheckCircle2 className="w-6 h-6 text-green-500" />
-              <div>
-                <div className="text-green-700 font-medium">Import Complete</div>
-                <div className="text-green-600 text-sm">
-                  {otherOrders.length} additional orders imported
-                </div>
-              </div>
-            </div>
+        {/* Discovering state */}
+        {isDiscovering && (
+          <div className="flex items-center justify-center py-8">
+            <Icons.Loader2 className="w-6 h-6 text-blue-500 animate-spin mr-3" />
+            <span className="text-arda-text-secondary">{discoveryProgress}</span>
           </div>
         )}
       </div>
 
-      {/* Summary Bar at Bottom */}
-      {(amazonOrders.length > 0 || priorityOrders.length > 0 || otherOrders.length > 0) && !isAnyProcessing && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-arda-border shadow-lg p-4">
+      {/* Insights Preview Card - Tease value */}
+      {allItems.length >= 10 && (
+        <div className="bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-200 rounded-2xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Icons.BarChart3 className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-xl font-bold text-arda-text-primary mb-2">
+                Insights Coming Soon...
+              </h3>
+              <p className="text-arda-text-secondary mb-4">
+                Based on your {allItems.length} items, Arda will help you:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-white/70 rounded-lg p-3">
+                  <div className="text-lg font-bold text-purple-600">🔄</div>
+                  <div className="text-sm font-medium text-arda-text-primary">Auto-Reorder</div>
+                  <div className="text-xs text-arda-text-muted">Set up Kanban cards</div>
+                </div>
+                <div className="bg-white/70 rounded-lg p-3">
+                  <div className="text-lg font-bold text-blue-600">📈</div>
+                  <div className="text-sm font-medium text-arda-text-primary">Track Velocity</div>
+                  <div className="text-xs text-arda-text-muted">See consumption patterns</div>
+                </div>
+                <div className="bg-white/70 rounded-lg p-3">
+                  <div className="text-lg font-bold text-green-600">💰</div>
+                  <div className="text-sm font-medium text-arda-text-primary">Optimize Spend</div>
+                  <div className="text-xs text-arda-text-muted">Find savings opportunities</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Bar */}
+      {(allItems.length > 0 || totalOrders > 0) && !isAnyProcessing && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-2xl p-4 z-40">
           <div className="max-w-5xl mx-auto flex items-center justify-between">
-            <div className="text-arda-text-primary">
-              <span className="font-semibold">{totalOrders} orders</span>
-              <span className="text-arda-text-muted ml-2">
-                ({amazonOrders.length} Amazon, {priorityOrders.length} McMaster/Uline, {otherOrders.length} other)
-              </span>
+            <div className="flex items-center gap-6">
+              <div>
+                <div className="text-2xl font-bold text-arda-text-primary">{allItems.length} items</div>
+                <div className="text-sm text-arda-text-muted">
+                  from {totalOrders} orders across {uniqueSuppliers} suppliers
+                </div>
+              </div>
+              {totalSpend > 0 && (
+                <div className="hidden sm:block pl-6 border-l border-gray-200">
+                  <div className="text-2xl font-bold text-green-600">
+                    ${totalSpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-sm text-arda-text-muted">total tracked</div>
+                </div>
+              )}
             </div>
             <button
               onClick={handleComplete}
-              className="bg-arda-success hover:bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
+              className="bg-gradient-to-r from-arda-accent to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all shadow-lg hover:shadow-xl flex items-center gap-3"
             >
-              Continue to Dashboard →
+              Set Up My Inventory
+              <Icons.ArrowRight className="w-6 h-6" />
             </button>
           </div>
+        </div>
+      )}
+      
+      {/* Skip option for users who want to explore first */}
+      {showWelcome && !isAnyProcessing && allItems.length === 0 && (
+        <div className="text-center">
+          <button
+            onClick={onSkip}
+            className="text-arda-text-muted hover:text-arda-text-secondary transition-colors text-sm"
+          >
+            Skip for now and explore the app →
+          </button>
         </div>
       )}
     </div>
   );
 };
-
-export default SupplierSetup;
