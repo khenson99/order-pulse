@@ -546,13 +546,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                   {/* Actions */}
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
-                      <button
-                        onClick={() => setHistoryItem(item)}
-                        className="p-1.5 text-arda-text-muted hover:text-arda-accent transition-colors rounded hover:bg-arda-accent/10"
-                        title="View history"
-                      >
-                        <Icons.Clock className="w-4 h-4" />
-                      </button>
+                      {showHistoryAction && (
+                        <button
+                          onClick={() => setHistoryItem(item)}
+                          className="p-1.5 text-arda-text-muted hover:text-arda-accent transition-colors rounded hover:bg-arda-accent/10"
+                          title="View history"
+                        >
+                          <Icons.Clock className="w-4 h-4" />
+                        </button>
+                      )}
                       {showAmazonLookupAction && onAmazonLookup && (
                         <button
                           onClick={() => onAmazonLookup(item)}

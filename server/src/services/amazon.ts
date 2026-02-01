@@ -32,30 +32,63 @@ const ASIN_PATTERN = /\b(B0[A-Z0-9]{8}|[0-9]{10})\b/gi;
 export function extractAsinsFromEmail(emailBody: string, emailSubject: string): string[] {
   const text = `${emailSubject} ${emailBody}`;
   
-  // First, extract ASINs from Amazon product URLs (most reliable)
-  const urlPattern = /amazon\.com(?:\/[^\/]*)?\/(?:dp|gp\/product)\/([A-Z0-9]{10})/gi;
-  const urlMatches = [...text.matchAll(urlPattern)].map(m => m[1]);
+  // Decode HTML entities and URL encoding that might hide ASINs
+  const decodedText = text
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#47;/g, '/')
+    .replace(/%2F/gi, '/')
+    .replace(/&amp;/g, '&')
+    .replace(/&#x3D;/g, '=')
+    .replace(/%3D/gi, '=');
   
-  // Then look for B0-prefixed ASINs (very reliable pattern)
+  const allMatches: string[] = [];
+  
+  // Pattern 1: Extract from Amazon product URLs (most reliable)
+  // Handles various URL formats including encoded ones
+  const urlPatterns = [
+    /amazon\.com[^"'\s]*?\/dp\/([A-Z0-9]{10})/gi,
+    /amazon\.com[^"'\s]*?\/gp\/product\/([A-Z0-9]{10})/gi,
+    /amazon\.com[^"'\s]*?\/gp\/aw\/d\/([A-Z0-9]{10})/gi,  // Mobile URLs
+    /amazon\.com[^"'\s]*?ASIN[=\/]([A-Z0-9]{10})/gi,
+    /a\.co\/d\/([A-Za-z0-9]+)/gi,  // Short URLs (may need expansion)
+  ];
+  
+  for (const pattern of urlPatterns) {
+    const matches = [...decodedText.matchAll(pattern)].map(m => m[1].toUpperCase());
+    allMatches.push(...matches);
+  }
+  
+  // Pattern 2: Extract B0-prefixed ASINs from anywhere in text
+  // These are very reliable as they have a distinctive pattern
   const b0Pattern = /\b(B0[A-Z0-9]{8})\b/gi;
-  const b0Matches = [...text.matchAll(b0Pattern)].map(m => m[1]);
+  const b0Matches = [...decodedText.matchAll(b0Pattern)].map(m => m[1].toUpperCase());
+  allMatches.push(...b0Matches);
   
-  // Combine and deduplicate
-  const allMatches = [...new Set([...urlMatches, ...b0Matches])];
+  // Pattern 3: Look for ASINs in href attributes specifically
+  const hrefPattern = /href\s*=\s*["'][^"']*?\/([A-Z0-9]{10})[^"']*?["']/gi;
+  const hrefMatches = [...decodedText.matchAll(hrefPattern)]
+    .map(m => m[1].toUpperCase())
+    .filter(asin => asin.startsWith('B0') || /^[0-9]{10}$/.test(asin) === false);
+  allMatches.push(...hrefMatches);
   
-  // Filter out any remaining false positives
-  const asins = allMatches.filter(asin => {
+  // Deduplicate
+  const uniqueMatches = [...new Set(allMatches)];
+  
+  // Filter out false positives
+  const asins = uniqueMatches.filter(asin => {
     // Must be exactly 10 characters
     if (asin.length !== 10) return false;
     
-    // If all digits, reject - these are likely timestamps, phone numbers, etc.
-    // Real ASINs with all digits are rare and we'd rather miss them than include false positives
+    // If all digits, it's likely a timestamp or phone number - reject
     if (/^[0-9]{10}$/.test(asin)) return false;
+    
+    // Must contain at least one letter (real ASINs almost always do)
+    if (!/[A-Z]/.test(asin)) return false;
     
     return true;
   });
   
-  console.log(`📦 Extracted ${asins.length} ASINs from email (${urlMatches.length} from URLs, ${b0Matches.length} from B0 pattern)`);
+  console.log(`📦 Extracted ${asins.length} ASINs from email:`, asins.slice(0, 5), asins.length > 5 ? `... (${asins.length} total)` : '');
   
   return asins;
 }

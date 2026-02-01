@@ -1069,21 +1069,46 @@ async function processAmazonEmailsInBackground(
         const subject = getHeader('subject');
         const date = getHeader('date');
         
-        // Get email body
+        // Get email body - prefer HTML as Amazon ASINs are typically in href links
         let body = '';
         const payload = fullMsg.data.payload;
+        
+        // Recursive function to extract body from nested parts
+        function extractBody(parts: any[] | undefined): { html: string; plain: string } {
+          let html = '';
+          let plain = '';
+          
+          if (!parts) return { html, plain };
+          
+          for (const part of parts) {
+            if (part.mimeType === 'text/html' && part.body?.data) {
+              html += Buffer.from(part.body.data, 'base64').toString('utf-8');
+            } else if (part.mimeType === 'text/plain' && part.body?.data) {
+              plain += Buffer.from(part.body.data, 'base64').toString('utf-8');
+            } else if (part.parts) {
+              // Recursively extract from nested parts
+              const nested = extractBody(part.parts);
+              html += nested.html;
+              plain += nested.plain;
+            }
+          }
+          
+          return { html, plain };
+        }
         
         if (payload?.body?.data) {
           body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
         } else if (payload?.parts) {
-          for (const part of payload.parts) {
-            if (part.mimeType === 'text/plain' && part.body?.data) {
-              body = Buffer.from(part.body.data, 'base64').toString('utf-8');
-              break;
-            } else if (part.mimeType === 'text/html' && part.body?.data) {
-              body = Buffer.from(part.body.data, 'base64').toString('utf-8');
-            }
-          }
+          const extracted = extractBody(payload.parts);
+          // Prefer HTML as it contains the actual product links with ASINs
+          body = extracted.html || extracted.plain;
+        }
+        
+        // Log sample of email for debugging
+        if (body.length > 0) {
+          const hasAsinInUrl = body.includes('/dp/') || body.includes('/gp/product/');
+          const hasB0 = /B0[A-Z0-9]{8}/i.test(body);
+          console.log(`📧 Email "${subject.substring(0, 40)}...": ${body.length} chars, hasAsinUrl=${hasAsinInUrl}, hasB0=${hasB0}`);
         }
 
         // Extract ASINs from this email
