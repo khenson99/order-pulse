@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
 import { discoverApi, jobsApi, JobStatus, DiscoveredSupplier } from '../services/api';

@@ -802,9 +802,16 @@ async function processAmazonEmailsInBackground(
       currentTask: 'Extracting ASINs from Amazon emails...' 
     });
 
-    // Collect all ASINs from emails with their email context
+    // Each email with ASINs becomes an order
+    // Structure: { emailId, subject, date, asins[] }
+    interface EmailOrder {
+      emailId: string;
+      subject: string;
+      date: string;
+      asins: string[];
+    }
+    const emailOrders: EmailOrder[] = [];
     const allAsins: Set<string> = new Set();
-    const asinEmailContext: Map<string, { subject: string; date: string; emailId: string }> = new Map();
 
     for (let i = 0; i < messageIds.length; i++) {
       const msg = messageIds[i];
@@ -844,20 +851,21 @@ async function processAmazonEmailsInBackground(
         const asins = extractAsinsFromEmail(body, subject);
         
         if (asins.length > 0) {
-          asins.forEach(asin => {
-            allAsins.add(asin);
-            // Keep track of which email each ASIN came from
-            if (!asinEmailContext.has(asin)) {
-              asinEmailContext.set(asin, { subject, date, emailId: msg.id! });
-            }
+          // Each email with ASINs = one order
+          emailOrders.push({
+            emailId: msg.id!,
+            subject,
+            date,
+            asins,
           });
-          jobManager.addJobLog(jobId, `📦 Found ${asins.length} ASINs in: ${subject.substring(0, 50)}...`);
+          asins.forEach(asin => allAsins.add(asin));
+          jobManager.addJobLog(jobId, `📦 Found ${asins.length} items in: ${subject.substring(0, 50)}...`);
         }
 
         // Update progress
         jobManager.updateJobProgress(jobId, {
           processed: i + 1,
-          currentTask: `Scanning email ${i + 1}/${messageIds.length}... Found ${allAsins.size} ASINs`
+          currentTask: `Scanning email ${i + 1}/${messageIds.length}... Found ${emailOrders.length} orders`
         });
 
       } catch (error) {
@@ -865,9 +873,9 @@ async function processAmazonEmailsInBackground(
       }
     }
 
-    jobManager.addJobLog(jobId, `🎯 Total unique ASINs found: ${allAsins.size}`);
+    jobManager.addJobLog(jobId, `🎯 Found ${emailOrders.length} orders with ${allAsins.size} unique items`);
 
-    // Now enrich with Amazon Product Advertising API - NO AI NEEDED
+    // Now enrich all unique ASINs with Amazon Product Advertising API
     if (allAsins.size > 0) {
       jobManager.updateJobProgress(jobId, {
         currentTask: `Calling Amazon Product Advertising API for ${allAsins.size} items...`
@@ -875,26 +883,26 @@ async function processAmazonEmailsInBackground(
       jobManager.addJobLog(jobId, '🛒 Calling Amazon Product Advertising API...');
 
       const asinArray = Array.from(allAsins);
-      const enrichedData = await getAmazonItemDetails(asinArray.slice(0, 50)); // Limit to 50
+      const enrichedData = await getAmazonItemDetails(asinArray.slice(0, 100)); // Limit to 100
 
       jobManager.addJobLog(jobId, `✅ Got ${enrichedData.size} products from Amazon API`);
 
-      // Create orders directly from the enriched data - NO AI
-      // Group items into a single "Amazon Products" order
-      if (enrichedData.size > 0) {
+      // Create one order per email
+      let totalItems = 0;
+      for (const emailOrder of emailOrders) {
         const items: ProcessedOrder['items'] = [];
         
-        for (const [asin, data] of enrichedData) {
-          const emailContext = asinEmailContext.get(asin);
+        for (const asin of emailOrder.asins) {
+          const data = enrichedData.get(asin);
           
           items.push({
-            id: `amazon-item-${asin}`,
-            name: data.ItemName || `Amazon Product ${asin}`,
+            id: `amazon-item-${asin}-${emailOrder.emailId}`,
+            name: data?.ItemName || `Amazon Product ${asin}`,
             quantity: 1,
             unit: 'each',
-            unitPrice: parseFloat(data.Price?.replace(/[^0-9.]/g, '') || '0'),
+            unitPrice: parseFloat(data?.Price?.replace(/[^0-9.]/g, '') || '0'),
             asin: asin,
-            amazonEnriched: {
+            amazonEnriched: data ? {
               ASIN: data.ASIN,
               ItemName: data.ItemName,
               Price: data.Price,
@@ -902,29 +910,38 @@ async function processAmazonEmailsInBackground(
               AmazonURL: data.AmazonURL,
               UnitCount: data.UnitCount,
               UPC: data.UPC,
-            },
+            } : undefined,
           });
-          
-          // Log each item found
-          jobManager.addJobLog(jobId, `  🛍️ ${data.ItemName?.substring(0, 60) || asin}... $${data.Price || 'N/A'}`);
         }
 
-        // Create a single order with all Amazon items
+        // Parse email date
+        let orderDate = new Date().toISOString().split('T')[0];
+        try {
+          const parsed = new Date(emailOrder.date);
+          if (!isNaN(parsed.getTime())) {
+            orderDate = parsed.toISOString().split('T')[0];
+          }
+        } catch {}
+
+        // Create order for this email
         const order: ProcessedOrder = {
-          id: `amazon-${Date.now()}`,
+          id: `amazon-${emailOrder.emailId}`,
           supplier: 'Amazon',
-          orderDate: new Date().toISOString().split('T')[0],
+          orderDate,
           totalAmount: items.reduce((sum, item) => sum + (item.unitPrice || 0), 0),
-          items: items,
-          confidence: 1.0, // Direct from API, no AI guessing
+          items,
+          confidence: 1.0, // Direct from API
         };
 
         jobManager.addJobOrder(jobId, order);
-        jobManager.updateJobProgress(jobId, { success: items.length });
-        jobManager.addJobLog(jobId, `🎉 Amazon complete: ${items.length} products enriched from Product Advertising API`);
-      } else {
-        jobManager.addJobLog(jobId, '⚠️ No products returned from Amazon API (check API credentials)');
+        totalItems += items.length;
+        
+        // Log order summary
+        jobManager.addJobLog(jobId, `📋 Order ${orderDate}: ${items.length} item${items.length > 1 ? 's' : ''} - $${order.totalAmount.toFixed(2)}`);
       }
+
+      jobManager.updateJobProgress(jobId, { success: totalItems });
+      jobManager.addJobLog(jobId, `🎉 Amazon complete: ${emailOrders.length} orders, ${totalItems} items`);
     } else {
       jobManager.addJobLog(jobId, '⚠️ No ASINs found in Amazon emails');
     }
