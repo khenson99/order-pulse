@@ -163,9 +163,92 @@ If you cannot find an order date in the email body, use the email Date header (p
 EMAIL:
 `;
 
+// Prompt for humanizing Amazon product names into shop-floor friendly names
+const NAME_HUMANIZATION_PROMPT = `You are a product naming assistant for a manufacturing shop floor. 
+Convert verbose Amazon product names into short, practical names that workers would use.
+
+RULES:
+1. Keep the brand name if it's a recognized brand (DeWalt, Anker, 3M, etc.)
+2. Keep the most important product descriptor (cable, drill, tape, etc.)
+3. Keep critical specs like size/length if relevant (10ft, 1/4", 20V, etc.)
+4. Remove marketing language, model numbers, compatibility lists, and color unless essential
+5. Maximum 40 characters
+6. Use Title Case
+
+Examples:
+- "Anker USB C Cable, PowerLine III USB A to USB C Charger Cable (10 ft), Premium Nylon USB A to USB Type C Cable for Samsung Galaxy S21, S10, Note 10, LG V20 G7 G6 and More" → "Anker USB-C Cable 10ft"
+- "DEWALT 20V MAX XR Impact Driver Kit, Brushless, 1/4-Inch, 3-Speed (DCF887D2)" → "DeWalt 20V Impact Driver"
+- "3M 2090 ScotchBlue Original Multi-Surface Painter's Tape, 1.88 inches x 60 yards, 2090, 1 Roll" → "3M Blue Painter's Tape 2in"
+- "Amazon Basics AA 1.5 Volt Performance Alkaline Batteries - Pack of 48" → "Amazon Basics AA Batteries 48pk"
+
+Return ONLY the shortened name, nothing else.
+
+Product name to simplify:
+`;
+
 // Helper function to delay execution
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Humanize a batch of product names using Gemini
+async function humanizeProductNames(
+  names: string[]
+): Promise<Map<string, string>> {
+  const results = new Map<string, string>();
+  
+  if (names.length === 0) {
+    return results;
+  }
+  
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  
+  // Process in batches of 10 to avoid rate limits
+  const batchSize = 10;
+  
+  for (let i = 0; i < names.length; i += batchSize) {
+    const batch = names.slice(i, i + batchSize);
+    
+    // Process each name in the batch
+    for (const name of batch) {
+      // Skip if already short enough or empty
+      if (!name || name.length <= 40) {
+        results.set(name, name);
+        continue;
+      }
+      
+      try {
+        const result = await model.generateContent(NAME_HUMANIZATION_PROMPT + name);
+        const response = result.response;
+        const humanized = response.text().trim();
+        
+        // Validate the response - should be short and not contain weird characters
+        if (humanized && humanized.length <= 50 && !humanized.includes('\n')) {
+          results.set(name, humanized);
+          console.log(`  📝 "${name.substring(0, 40)}..." → "${humanized}"`);
+        } else {
+          // Fallback: truncate and clean up
+          const fallback = name.split(',')[0].substring(0, 40).trim();
+          results.set(name, fallback);
+        }
+      } catch (error) {
+        console.error(`Failed to humanize "${name.substring(0, 30)}...":`, error);
+        // Fallback: use first part before comma
+        const fallback = name.split(',')[0].substring(0, 40).trim();
+        results.set(name, fallback);
+      }
+      
+      // Small delay between requests
+      await delay(100);
+    }
+    
+    // Longer delay between batches
+    if (i + batchSize < names.length) {
+      await delay(500);
+    }
+  }
+  
+  return results;
 }
 
 // Recursively extract text from email parts
@@ -1055,6 +1138,19 @@ async function processAmazonEmailsInBackground(
 
       jobManager.addJobLog(jobId, `✅ Got ${enrichedData.size} products from Amazon API`);
 
+      // Step 2: Humanize product names
+      jobManager.updateJobProgress(jobId, {
+        currentTask: `Humanizing ${enrichedData.size} product names for shop floor...`
+      });
+      jobManager.addJobLog(jobId, '📝 Creating shop-floor friendly names...');
+      
+      const productNamesToHumanize = Array.from(enrichedData.values())
+        .map(data => data.ItemName)
+        .filter((name): name is string => !!name && name.length > 40);
+      
+      const humanizedNames = await humanizeProductNames(productNamesToHumanize);
+      jobManager.addJobLog(jobId, `✅ Humanized ${humanizedNames.size} verbose product names`);
+
       // Create one order per email
       let totalItems = 0;
       for (const emailOrder of emailOrders) {
@@ -1062,10 +1158,12 @@ async function processAmazonEmailsInBackground(
         
         for (const orderItem of emailOrder.items) {
           const data = enrichedData.get(orderItem.asin);
+          const originalName = data?.ItemName;
+          const humanizedName = originalName ? humanizedNames.get(originalName) : undefined;
           
           items.push({
             id: `amazon-item-${orderItem.asin}-${emailOrder.emailId}`,
-            name: data?.ItemName || `Amazon Product ${orderItem.asin}`,
+            name: humanizedName || originalName || `Amazon Product ${orderItem.asin}`,
             quantity: orderItem.quantity || 1,
             unit: 'each',
             unitPrice: parseFloat(data?.Price?.replace(/[^0-9.]/g, '') || '0'),
@@ -1073,6 +1171,7 @@ async function processAmazonEmailsInBackground(
             amazonEnriched: data ? {
               asin: data.ASIN,
               itemName: data.ItemName,
+              humanizedName: humanizedName || (originalName && originalName.length <= 40 ? originalName : undefined),
               price: data.Price,
               imageUrl: data.ImageURL,
               amazonUrl: data.AmazonURL,

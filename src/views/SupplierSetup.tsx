@@ -3,54 +3,19 @@ import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
 import { discoverApi, jobsApi, JobStatus, DiscoveredSupplier } from '../services/api';
 import { mergeSuppliers } from '../utils/supplierUtils';
+import {
+  buildSupplierGridItems,
+  calculateProgressPercent,
+  getMilestoneMessage,
+  MILESTONES,
+  OTHER_PRIORITY_SUPPLIERS,
+  PRIORITY_SUPPLIER_DOMAINS,
+} from './supplierSetupUtils';
 
 interface SupplierSetupProps {
   onScanComplete: (orders: ExtractedOrder[]) => void;
   onSkip: () => void;
 }
-
-// Non-Amazon priority suppliers
-const OTHER_PRIORITY_SUPPLIERS: DiscoveredSupplier[] = [
-  {
-    domain: 'mcmaster.com',
-    displayName: 'McMaster-Carr',
-    emailCount: 0,
-    score: 100,
-    category: 'industrial',
-    sampleSubjects: [],
-    isRecommended: true,
-  },
-  {
-    domain: 'uline.com',
-    displayName: 'Uline',
-    emailCount: 0,
-    score: 100,
-    category: 'industrial',
-    sampleSubjects: [],
-    isRecommended: true,
-  },
-];
-
-const PRIORITY_SUPPLIER_DOMAINS = new Set(['mcmaster.com', 'uline.com']);
-
-const CATEGORY_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
-  industrial: { bg: 'bg-blue-50', text: 'text-blue-600', icon: '🏭' },
-  retail: { bg: 'bg-green-50', text: 'text-green-600', icon: '🛒' },
-  electronics: { bg: 'bg-cyan-50', text: 'text-cyan-600', icon: '⚡' },
-  office: { bg: 'bg-purple-50', text: 'text-purple-600', icon: '📎' },
-  food: { bg: 'bg-orange-50', text: 'text-orange-600', icon: '🍽️' },
-  unknown: { bg: 'bg-gray-50', text: 'text-gray-600', icon: '📦' },
-};
-
-// Milestone thresholds for celebrations
-const MILESTONES = {
-  firstItem: 1,
-  tenItems: 10,
-  fiftyItems: 50,
-  hundredItems: 100,
-  firstOrder: 1,
-  tenOrders: 10,
-};
 
 export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onScanComplete,
@@ -427,61 +392,51 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
 
   const supplierCount = allSuppliers.length;
   const enabledCount = enabledSuppliers.size;
-  const isPriorityProcessing = (!isPriorityComplete && priorityJobId);
-  const isAnyProcessing = (!isAmazonComplete && amazonJobId) || isPriorityProcessing || isScanning;
+  const isPriorityProcessing = useMemo(
+    () => Boolean(!isPriorityComplete && priorityJobId),
+    [isPriorityComplete, priorityJobId],
+  );
+  const isAnyProcessing = useMemo(
+    () => Boolean((!isAmazonComplete && amazonJobId) || isPriorityProcessing || isScanning),
+    [isAmazonComplete, amazonJobId, isPriorityProcessing, isScanning],
+  );
+  const milestoneMessage = useMemo(
+    () => (celebratingMilestone ? getMilestoneMessage(celebratingMilestone) : null),
+    [celebratingMilestone],
+  );
   
   // Priority suppliers progress
   const priorityProgress = priorityStatus?.progress;
-  const priorityProgressPercent = priorityProgress 
-    ? (priorityProgress.processed / Math.max(priorityProgress.total, 1)) * 100 
-    : 0;
+  const priorityProgressPercent = useMemo(
+    () => calculateProgressPercent(priorityProgress),
+    [priorityProgress],
+  );
 
   // Amazon progress
   const amazonProgress = amazonStatus?.progress;
-  const amazonProgressPercent = amazonProgress 
-    ? (amazonProgress.processed / Math.max(amazonProgress.total, 1)) * 100 
-    : 0;
+  const amazonProgressPercent = useMemo(
+    () => calculateProgressPercent(amazonProgress),
+    [amazonProgress],
+  );
 
-  const supplierGridItems = useMemo(() => {
-    return allSuppliers.map(supplier => {
-      const colors = CATEGORY_COLORS[supplier.category] || CATEGORY_COLORS.unknown;
-      return {
-        supplier,
-        colors,
-        isEnabled: enabledSuppliers.has(supplier.domain),
-      };
-    });
-  }, [allSuppliers, enabledSuppliers]);
-
-  // Milestone celebration messages
-  const getMilestoneMessage = (milestone: string): { title: string; subtitle: string; emoji: string } => {
-    switch (milestone) {
-      case 'firstItem':
-        return { title: 'First Item Found!', subtitle: 'Your inventory is coming to life', emoji: '🎉' };
-      case 'tenItems':
-        return { title: '10 Items Discovered!', subtitle: 'Arda is learning your supply chain', emoji: '🚀' };
-      case 'fiftyItems':
-        return { title: '50 Items!', subtitle: 'Your replenishment patterns are emerging', emoji: '⚡' };
-      case 'hundredItems':
-        return { title: '100 Items!', subtitle: 'You\'re building a powerful inventory system', emoji: '💪' };
-      default:
-        return { title: 'Milestone!', subtitle: '', emoji: '🎯' };
-    }
-  };
+  const supplierGridItems = useMemo(
+    () => buildSupplierGridItems(allSuppliers, enabledSuppliers),
+    [allSuppliers, enabledSuppliers],
+  );
 
   return (
     <div className="max-w-5xl mx-auto p-6 pb-32 space-y-6 relative">
       
       {/* Milestone Celebration Overlay */}
-      {celebratingMilestone && (
+      {milestoneMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="bg-white rounded-2xl shadow-2xl p-8 text-center animate-bounce-in border-4 border-arda-accent">
-            <div className="text-6xl mb-4">{getMilestoneMessage(celebratingMilestone).emoji}</div>
+            <div className="text-6xl mb-4">{milestoneMessage.emoji}</div>
             <h2 className="text-2xl font-bold text-arda-text-primary mb-2">
-              {getMilestoneMessage(celebratingMilestone).title}
+              {milestoneMessage.title}
             </h2>
             <p className="text-arda-text-secondary">
-              {getMilestoneMessage(celebratingMilestone).subtitle}
+              {milestoneMessage.subtitle}
             </p>
           </div>
           {/* Confetti effect */}

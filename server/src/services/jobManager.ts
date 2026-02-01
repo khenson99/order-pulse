@@ -20,6 +20,7 @@ export interface EmailPreview {
 export interface AmazonEnrichedData {
   asin: string;
   itemName?: string;
+  humanizedName?: string;  // Shop-floor friendly name from LLM
   price?: string;
   imageUrl?: string;
   amazonUrl?: string;

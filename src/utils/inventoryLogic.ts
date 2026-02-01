@@ -200,17 +200,21 @@ export const buildVelocityProfiles = (
   enrichedOrders.forEach(order => {
     order.items.forEach(item => {
       const normalizedName = item.normalizedName || normalizeItemName(item.name);
+      const amazonData = item.amazonEnriched;
+      
+      // Use humanized name > enriched name > original name
+      const displayName = amazonData?.humanizedName || amazonData?.itemName || item.name;
       
       if (!profileMap.has(normalizedName)) {
         profileMap.set(normalizedName, {
           normalizedName,
-          displayName: item.amazonEnriched?.itemName || item.name,
+          displayName,
           supplier: order.supplier,
           sku: item.sku,
           // Amazon enrichment
           asin: item.asin,
-          imageUrl: item.amazonEnriched?.imageUrl,
-          amazonUrl: item.amazonEnriched?.amazonUrl,
+          imageUrl: amazonData?.imageUrl,
+          amazonUrl: amazonData?.amazonUrl,
           // Initialize other fields
           orders: [],
           totalQuantityOrdered: 0,
@@ -225,17 +229,20 @@ export const buildVelocityProfiles = (
       } else {
         // Update Amazon data if we have it now but didn't before
         const profile = profileMap.get(normalizedName)!;
-        if (!profile.imageUrl && item.amazonEnriched?.imageUrl) {
-          profile.imageUrl = item.amazonEnriched.imageUrl;
+        if (!profile.imageUrl && amazonData?.imageUrl) {
+          profile.imageUrl = amazonData.imageUrl;
         }
-        if (!profile.amazonUrl && item.amazonEnriched?.amazonUrl) {
-          profile.amazonUrl = item.amazonEnriched.amazonUrl;
+        if (!profile.amazonUrl && amazonData?.amazonUrl) {
+          profile.amazonUrl = amazonData.amazonUrl;
         }
         if (!profile.asin && item.asin) {
           profile.asin = item.asin;
         }
-        if (!profile.displayName.includes(item.amazonEnriched?.itemName || '') && item.amazonEnriched?.itemName) {
-          profile.displayName = item.amazonEnriched.itemName;
+        // Update displayName - prefer humanized > enriched
+        if (amazonData?.humanizedName && profile.displayName !== amazonData.humanizedName) {
+          profile.displayName = amazonData.humanizedName;
+        } else if (amazonData?.itemName && !amazonData.humanizedName && profile.displayName !== amazonData.itemName) {
+          profile.displayName = amazonData.itemName;
         }
       }
       
@@ -448,13 +455,16 @@ export const processOrdersToInventory = (orders: ExtractedOrder[]): InventoryIte
       // Normalize name (simple lowercasing and trimming for this demo)
       const key = lineItem.normalizedName || lineItem.name.trim().toLowerCase();
       
-      // Use Amazon-enriched name if available, otherwise use original name
-      const displayName = lineItem.amazonEnriched?.itemName || lineItem.name;
+      // Use humanized name > Amazon enriched name > original name
+      const amazonData = lineItem.amazonEnriched;
+      const displayName = amazonData?.humanizedName || amazonData?.itemName || lineItem.name;
+      const originalName = amazonData?.itemName || lineItem.name;
       
       if (!itemMap.has(key)) {
         itemMap.set(key, {
           id: key,
           name: displayName,
+          originalName: originalName !== displayName ? originalName : undefined,
           supplier: order.supplier,
           totalQuantityOrdered: 0,
           orderCount: 0, // This will count unique ORDERS containing this item
@@ -468,8 +478,8 @@ export const processOrdersToInventory = (orders: ExtractedOrder[]): InventoryIte
           history: [],
           orderIds: new Set<string>(), // Track unique order IDs
           // Amazon enrichment fields
-          imageUrl: lineItem.amazonEnriched?.imageUrl,
-          productUrl: lineItem.amazonEnriched?.amazonUrl,
+          imageUrl: amazonData?.imageUrl,
+          productUrl: amazonData?.amazonUrl,
         });
       }
 
@@ -489,15 +499,18 @@ export const processOrdersToInventory = (orders: ExtractedOrder[]): InventoryIte
       if (lineItem.unitPrice) entry.lastPrice = lineItem.unitPrice;
       
       // Update Amazon enrichment if we have it now but didn't before
-      if (!entry.imageUrl && lineItem.amazonEnriched?.imageUrl) {
-        entry.imageUrl = lineItem.amazonEnriched.imageUrl;
+      if (!entry.imageUrl && amazonData?.imageUrl) {
+        entry.imageUrl = amazonData.imageUrl;
       }
-      if (!entry.productUrl && lineItem.amazonEnriched?.amazonUrl) {
-        entry.productUrl = lineItem.amazonEnriched.amazonUrl;
+      if (!entry.productUrl && amazonData?.amazonUrl) {
+        entry.productUrl = amazonData.amazonUrl;
       }
-      // Prefer Amazon-enriched name over original
-      if (lineItem.amazonEnriched?.itemName && entry.name !== lineItem.amazonEnriched.itemName) {
-        entry.name = lineItem.amazonEnriched.itemName;
+      // Update names - prefer humanized > enriched > original
+      if (amazonData?.humanizedName && entry.name !== amazonData.humanizedName) {
+        entry.originalName = entry.name;
+        entry.name = amazonData.humanizedName;
+      } else if (amazonData?.itemName && entry.name !== amazonData.itemName && !amazonData.humanizedName) {
+        entry.name = amazonData.itemName;
       }
 
       // Add to history (one entry per line item occurrence)

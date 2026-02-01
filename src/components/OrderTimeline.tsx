@@ -131,9 +131,9 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
 
   if (orders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 bg-slate-900/50 rounded-lg border border-slate-800">
-        <p className="text-slate-400 text-lg">No order data to display</p>
-        <p className="text-slate-500 text-sm mt-1">
+      <div className="flex flex-col items-center justify-center py-12 bg-white rounded-lg border border-arda-border">
+        <p className="text-arda-text-secondary text-lg">No order data to display</p>
+        <p className="text-arda-text-muted text-sm mt-1">
           Process orders to see timeline visualization
         </p>
       </div>
@@ -142,9 +142,9 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
 
   if (chartData.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 bg-slate-900/50 rounded-lg border border-slate-800">
-        <p className="text-slate-400 text-lg">No orders with amounts to display</p>
-        <p className="text-slate-500 text-sm mt-1">
+      <div className="flex flex-col items-center justify-center py-12 bg-white rounded-lg border border-arda-border">
+        <p className="text-arda-text-secondary text-lg">No orders with amounts to display</p>
+        <p className="text-arda-text-muted text-sm mt-1">
           Orders need total amounts to appear on the timeline
         </p>
       </div>
@@ -152,10 +152,10 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
   }
 
   return (
-    <div className="w-full h-full bg-slate-900/50 rounded-lg border border-slate-800 p-4">
+    <div className="w-full h-full bg-white rounded-lg border border-arda-border p-4">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-white mb-1">Order Timeline</h3>
-        <p className="text-sm text-slate-400">
+        <h3 className="text-lg font-semibold text-arda-text-primary mb-1">Order Timeline</h3>
+        <p className="text-sm text-arda-text-muted">
           Visualizing {orders.length} order{orders.length !== 1 ? 's' : ''} over time
         </p>
       </div>
@@ -164,32 +164,32 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
         <ScatterChart
           margin={{ top: 20, right: 30, bottom: 60, left: 60 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#475569" opacity={0.3} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.5} />
           <XAxis
             type="number"
             dataKey="x"
             domain={['dataMin', 'dataMax']}
             tickFormatter={formatXAxis}
-            stroke="#94a3b8"
+            stroke="#4B5563"
             style={{ fontSize: '12px' }}
             label={{
               value: 'Date',
               position: 'insideBottom',
               offset: -10,
-              style: { textAnchor: 'middle', fill: '#94a3b8', fontSize: '14px' },
+              style: { textAnchor: 'middle', fill: '#4B5563', fontSize: '14px' },
             }}
           />
           <YAxis
             type="number"
             dataKey="y"
             tickFormatter={formatYAxis}
-            stroke="#94a3b8"
+            stroke="#4B5563"
             style={{ fontSize: '12px' }}
             label={{
               value: 'Order Value',
               angle: -90,
               position: 'insideLeft',
-              style: { textAnchor: 'middle', fill: '#94a3b8', fontSize: '14px' },
+              style: { textAnchor: 'middle', fill: '#4B5563', fontSize: '14px' },
             }}
           />
           <Tooltip content={<CustomTooltip />} />
@@ -197,7 +197,7 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
             wrapperStyle={{ paddingTop: '20px' }}
             iconType="circle"
             formatter={(value) => (
-              <span style={{ color: '#e2e8f0', fontSize: '12px' }}>{value}</span>
+              <span style={{ color: '#4B5563', fontSize: '12px' }}>{value}</span>
             )}
           />
           {supplierData.map((supplier) => {

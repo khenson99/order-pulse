@@ -43,28 +43,28 @@ export const ItemDetailPanel: React.FC<ItemDetailPanelProps> = ({
 
       {/* Slide-out Panel */}
       <div
-        className={`fixed right-0 top-0 h-full w-96 bg-slate-900 border-l border-slate-800 z-50 flex flex-col shadow-2xl transform transition-transform duration-300 ease-out ${
+        className={`fixed right-0 top-0 h-full w-96 bg-white border-l border-arda-border z-50 flex flex-col shadow-2xl transform transition-transform duration-300 ease-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-start justify-between flex-shrink-0">
+        <div className="p-4 border-b border-arda-border flex items-start justify-between flex-shrink-0">
           <div className="flex-1 min-w-0 pr-2">
-            <h3 className="text-lg font-semibold text-white truncate">
+            <h3 className="text-lg font-semibold text-arda-text-primary truncate">
               {itemProfile.displayName}
             </h3>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-sm text-arda-text-muted mt-1">
               {itemProfile.supplier}
             </p>
             {itemProfile.sku && (
-              <span className="inline-block mt-2 px-2 py-0.5 bg-slate-800 text-slate-300 text-xs rounded">
+              <span className="inline-block mt-2 px-2 py-0.5 bg-arda-bg-tertiary text-arda-text-secondary text-xs rounded">
                 SKU: {itemProfile.sku}
               </span>
             )}
           </div>
           <button
             onClick={handleClose}
-            className="p-1 text-slate-500 hover:text-white transition-colors flex-shrink-0"
+            className="p-1 text-arda-text-muted hover:text-arda-text-primary transition-colors flex-shrink-0"
             aria-label="Close panel"
           >
             <Icons.X className="w-5 h-5" />
@@ -74,52 +74,52 @@ export const ItemDetailPanel: React.FC<ItemDetailPanelProps> = ({
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
           {/* Velocity Stats Grid */}
-          <div className="grid grid-cols-2 gap-3 p-4 border-b border-slate-800">
-            <div className="bg-slate-800/50 rounded-lg p-3">
+          <div className="grid grid-cols-2 gap-3 p-4 border-b border-arda-border">
+            <div className="bg-arda-bg-secondary rounded-lg p-3">
               <div className="text-2xl font-bold text-orange-400">
                 {itemProfile.dailyBurnRate.toFixed(1)}
               </div>
-              <div className="text-xs text-slate-500 mt-1">Daily Burn Rate</div>
+              <div className="text-xs text-arda-text-muted mt-1">Daily Burn Rate</div>
             </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
+            <div className="bg-arda-bg-secondary rounded-lg p-3">
               <div className="text-2xl font-bold text-blue-400">
                 {Math.round(itemProfile.averageCadenceDays)}
               </div>
-              <div className="text-xs text-slate-500 mt-1">Cadence (Days)</div>
+              <div className="text-xs text-arda-text-muted mt-1">Cadence (Days)</div>
             </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
+            <div className="bg-arda-bg-secondary rounded-lg p-3">
               <div className="text-2xl font-bold text-green-400">
                 {itemProfile.totalQuantityOrdered}
               </div>
-              <div className="text-xs text-slate-500 mt-1">Total Ordered</div>
+              <div className="text-xs text-arda-text-muted mt-1">Total Ordered</div>
             </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
+            <div className="bg-arda-bg-secondary rounded-lg p-3">
               <div className="text-2xl font-bold text-purple-400">
                 {itemProfile.orderCount}
               </div>
-              <div className="text-xs text-slate-500 mt-1">Order Count</div>
+              <div className="text-xs text-arda-text-muted mt-1">Order Count</div>
             </div>
           </div>
 
           {/* Kanban Recommendations */}
-          <div className="p-4 border-b border-slate-800">
-            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+          <div className="p-4 border-b border-arda-border">
+            <h4 className="text-sm font-medium text-arda-text-secondary mb-3 flex items-center gap-2">
               <Icons.Box className="w-4 h-4" />
               Kanban Recommendations
             </h4>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">Min Qty (Reorder Point)</span>
-                <span className="font-medium text-white">{itemProfile.recommendedMin}</span>
+                <span className="text-arda-text-muted">Min Qty (Reorder Point)</span>
+                <span className="font-medium text-arda-text-primary">{itemProfile.recommendedMin}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">Order Qty (EOQ)</span>
-                <span className="font-medium text-white">{itemProfile.recommendedOrderQty}</span>
+                <span className="text-arda-text-muted">Order Qty (EOQ)</span>
+                <span className="font-medium text-arda-text-primary">{itemProfile.recommendedOrderQty}</span>
               </div>
               {itemProfile.nextPredictedOrder && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Next Predicted Order</span>
-                  <span className="font-medium text-yellow-400">
+                  <span className="text-arda-text-muted">Next Predicted Order</span>
+                  <span className="font-medium text-yellow-600">
                     {new Date(itemProfile.nextPredictedOrder).toLocaleDateString()}
                   </span>
                 </div>
@@ -129,13 +129,13 @@ export const ItemDetailPanel: React.FC<ItemDetailPanelProps> = ({
 
           {/* Order History */}
           <div className="p-4">
-            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+            <h4 className="text-sm font-medium text-arda-text-secondary mb-3 flex items-center gap-2">
               <Icons.FileText className="w-4 h-4" />
               Order History
             </h4>
             <div className="space-y-2">
               {itemProfile.orders.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-sm">
+                <div className="text-center py-8 text-arda-text-muted text-sm">
                   <Icons.Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p>No order history available</p>
                 </div>
@@ -145,26 +145,26 @@ export const ItemDetailPanel: React.FC<ItemDetailPanelProps> = ({
                   .map((order, idx) => (
                     <div
                       key={`${order.orderId}-${idx}`}
-                      className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg hover:bg-slate-800/70 transition-colors"
+                      className="flex items-center justify-between p-3 bg-arda-bg-secondary rounded-lg hover:bg-arda-bg-tertiary transition-colors"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white font-medium">
+                        <div className="text-sm text-arda-text-primary font-medium">
                           {new Date(order.date).toLocaleDateString('en-US', {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric',
                           })}
                         </div>
-                        <div className="text-xs text-slate-500 mt-1">
+                        <div className="text-xs text-arda-text-muted mt-1">
                           Order #{order.orderId.substring(0, 8)}...
                         </div>
                       </div>
                       <div className="text-right ml-4">
-                        <div className="text-sm font-medium text-white">
+                        <div className="text-sm font-medium text-arda-text-primary">
                           Qty: {order.quantity}
                         </div>
                         {order.unitPrice !== undefined && (
-                          <div className="text-xs text-slate-500 mt-1">
+                          <div className="text-xs text-arda-text-muted mt-1">
                             @ ${order.unitPrice.toFixed(2)}/ea
                           </div>
                         )}
@@ -177,7 +177,7 @@ export const ItemDetailPanel: React.FC<ItemDetailPanelProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="p-4 border-t border-slate-800 space-y-2 flex-shrink-0">
+        <div className="p-4 border-t border-arda-border space-y-2 flex-shrink-0">
           {inventoryItem && onReorder && (
             <button
               onClick={() => onReorder(inventoryItem)}
@@ -190,7 +190,7 @@ export const ItemDetailPanel: React.FC<ItemDetailPanelProps> = ({
           {onPushToArda && (
             <button
               onClick={() => onPushToArda(itemProfile)}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-arda-bg-tertiary hover:bg-arda-border text-arda-text-primary py-2.5 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
             >
               <Icons.Upload className="w-4 h-4" />
               Push to Arda

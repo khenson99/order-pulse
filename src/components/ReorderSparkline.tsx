@@ -24,7 +24,7 @@ export const ReorderSparkline: React.FC<ReorderSparklineProps> = ({
   if (!orders || orders.length < 2) {
     return (
       <div 
-        className="flex items-center justify-center text-xs text-slate-500"
+        className="flex items-center justify-center text-xs text-arda-text-muted"
         style={{ width, height }}
       >
         —
@@ -51,13 +51,13 @@ export const ReorderSparkline: React.FC<ReorderSparklineProps> = ({
           {showTooltip && (
             <Tooltip
               contentStyle={{
-                background: '#1e293b',
-                border: '1px solid #475569',
+                background: '#ffffff',
+                border: '1px solid #E5E7EB',
                 borderRadius: '6px',
                 fontSize: '11px',
                 padding: '4px 8px',
               }}
-              labelStyle={{ color: '#94a3b8' }}
+              labelStyle={{ color: '#4B5563' }}
               formatter={(value) => [`Qty: ${value}`, '']}
               labelFormatter={(_label, payload) => {
                 if (payload && payload[0]) {

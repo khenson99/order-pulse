@@ -98,8 +98,8 @@ export const ComposeEmail: React.FC<ComposeEmailProps> = ({
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white">Compose Message</h2>
-          <p className="text-arda-500 text-sm">Send reorder requests or supplier inquiries directly.</p>
+          <h2 className="text-2xl font-bold text-arda-text-primary">Compose Message</h2>
+          <p className="text-arda-text-muted text-sm">Send reorder requests or supplier inquiries directly.</p>
         </div>
         <div className="flex items-center gap-3">
           {prefill && (
@@ -113,7 +113,7 @@ export const ComposeEmail: React.FC<ComposeEmailProps> = ({
               disabled={isImproving || !body}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${
                 isImproving 
-                  ? 'bg-arda-800 border-arda-700 text-arda-500' 
+                  ? 'bg-arda-bg-tertiary border-arda-border text-arda-text-muted' 
                   : 'bg-arda-accent/10 border-arda-accent/30 text-arda-accent hover:bg-arda-accent hover:text-white'
               }`}
             >
@@ -124,19 +124,19 @@ export const ComposeEmail: React.FC<ComposeEmailProps> = ({
         </div>
       </div>
 
-      <div className="bg-arda-800 border border-arda-700 rounded-xl overflow-hidden shadow-2xl transition-all duration-300">
-        <form onSubmit={handleSend} className="divide-y divide-arda-700">
+      <div className="bg-white border border-arda-border rounded-xl overflow-hidden shadow-arda transition-all duration-300">
+        <form onSubmit={handleSend} className="divide-y divide-arda-border">
           {/* Recipient */}
-          <div className="p-4 flex items-center gap-4 bg-arda-900/30">
-            <label className="text-arda-500 font-medium w-16 text-sm">To:</label>
+          <div className="p-4 flex items-center gap-4 bg-arda-bg-secondary">
+            <label className="text-arda-text-muted font-medium w-16 text-sm">To:</label>
             <div className="flex-1 relative flex items-center">
-              <Icons.Mail className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-arda-600" />
+              <Icons.Mail className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-arda-text-muted" />
               <input 
                 type="text" 
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 placeholder="supplier@example.com"
-                className="w-full bg-transparent border-none text-white focus:ring-0 pl-7 py-1 text-sm placeholder:text-arda-700"
+                className="w-full bg-transparent border-none text-arda-text-primary focus:ring-0 pl-7 py-1 text-sm placeholder:text-arda-text-muted"
                 disabled={isSending}
               />
               <button 
@@ -151,29 +151,29 @@ export const ComposeEmail: React.FC<ComposeEmailProps> = ({
 
           {/* CC & BCC (Optional) */}
           {showAdvanced && (
-            <div className="bg-arda-900/10 animate-in slide-in-from-top-2 duration-200">
-              <div className="p-4 flex items-center gap-4 border-b border-arda-700/50">
-                <label className="text-arda-500 font-medium w-16 text-sm">Cc:</label>
+            <div className="bg-arda-bg-tertiary animate-in slide-in-from-top-2 duration-200">
+              <div className="p-4 flex items-center gap-4 border-b border-arda-border/50">
+                <label className="text-arda-text-muted font-medium w-16 text-sm">Cc:</label>
                 <div className="flex-1 relative">
                   <input 
                     type="text" 
                     value={cc}
                     onChange={(e) => setCc(e.target.value)}
                     placeholder="accounts@yourbusiness.com"
-                    className="w-full bg-transparent border-none text-white focus:ring-0 py-1 text-sm placeholder:text-arda-700"
+                    className="w-full bg-transparent border-none text-arda-text-primary focus:ring-0 py-1 text-sm placeholder:text-arda-text-muted"
                     disabled={isSending}
                   />
                 </div>
               </div>
               <div className="p-4 flex items-center gap-4">
-                <label className="text-arda-500 font-medium w-16 text-sm">Bcc:</label>
+                <label className="text-arda-text-muted font-medium w-16 text-sm">Bcc:</label>
                 <div className="flex-1 relative">
                   <input 
                     type="text" 
                     value={bcc}
                     onChange={(e) => setBcc(e.target.value)}
                     placeholder="archive@yourbusiness.com"
-                    className="w-full bg-transparent border-none text-white focus:ring-0 py-1 text-sm placeholder:text-arda-700"
+                    className="w-full bg-transparent border-none text-arda-text-primary focus:ring-0 py-1 text-sm placeholder:text-arda-text-muted"
                     disabled={isSending}
                   />
                 </div>
@@ -183,36 +183,36 @@ export const ComposeEmail: React.FC<ComposeEmailProps> = ({
 
           {/* Subject */}
           <div className="p-4 flex items-center gap-4">
-            <label className="text-arda-500 font-medium w-16 text-sm">Subject:</label>
+            <label className="text-arda-text-muted font-medium w-16 text-sm">Subject:</label>
             <input 
               type="text" 
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Order Inquiry / Restock Request"
-              className="flex-1 bg-transparent border-none text-white focus:ring-0 py-1 text-sm placeholder:text-arda-700 font-medium"
+              className="flex-1 bg-transparent border-none text-arda-text-primary focus:ring-0 py-1 text-sm placeholder:text-arda-text-muted font-medium"
               disabled={isSending}
             />
           </div>
 
           {/* Body */}
-          <div className="p-4 bg-arda-900/10 relative">
+          <div className="p-4 bg-arda-bg-tertiary relative">
             <textarea 
               rows={12}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Write your message here... Or type a quick note and use 'Improve with AI'"
-              className="w-full bg-transparent border-none text-white focus:ring-0 text-sm placeholder:text-arda-700 resize-none leading-relaxed min-h-[300px]"
+              className="w-full bg-transparent border-none text-arda-text-primary focus:ring-0 text-sm placeholder:text-arda-text-muted resize-none leading-relaxed min-h-[300px]"
               disabled={isSending || isImproving}
             />
             {isImproving && (
-              <div className="absolute inset-0 bg-arda-900/40 backdrop-blur-[1px] flex items-center justify-center animate-pulse">
+              <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] flex items-center justify-center animate-pulse">
                 <div className="text-arda-accent text-xs font-mono">Polishing draft...</div>
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="p-4 bg-arda-900/50 flex items-center justify-between">
+          <div className="p-4 bg-arda-bg-secondary flex items-center justify-between">
             <div className="flex items-center gap-2">
               {status.type === 'success' && (
                 <span className="text-arda-success text-xs flex items-center gap-1 animate-in fade-in slide-in-from-left-2">
@@ -230,7 +230,7 @@ export const ComposeEmail: React.FC<ComposeEmailProps> = ({
               <button
                 type="button"
                 onClick={resetForm}
-                className="text-arda-500 hover:text-white text-xs px-4"
+                className="text-arda-text-muted hover:text-arda-text-primary text-xs px-4"
                 disabled={isSending}
               >
                 Clear

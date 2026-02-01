@@ -345,16 +345,23 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
 
                   {/* Item Name */}
                   <td className="px-1 py-2">
-                    <EditableCell
-                      value={item.name}
-                      onSave={(val) => handleUpdate(item.id, { name: String(val) })}
-                      className="font-medium text-arda-text-primary"
-                    />
-                    {item.isDraft && (
-                      <span className="ml-2 text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">
-                        DRAFT
-                      </span>
-                    )}
+                    <div title={item.originalName || item.name}>
+                      <EditableCell
+                        value={item.name}
+                        onSave={(val) => handleUpdate(item.id, { name: String(val) })}
+                        className="font-medium text-arda-text-primary"
+                      />
+                      {item.originalName && (
+                        <span className="ml-1 text-[10px] text-arda-text-muted" title="Name simplified by AI">
+                          ✨
+                        </span>
+                      )}
+                      {item.isDraft && (
+                        <span className="ml-2 text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">
+                          DRAFT
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Supplier */}

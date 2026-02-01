@@ -62,9 +62,9 @@ const getCategoryConfig = (category: DiscoveredSupplier['category']) => {
     default:
       return {
         label: 'Unknown',
-        color: 'text-slate-400',
-        bgColor: 'bg-slate-500/20',
-        borderColor: 'border-slate-500/50',
+        color: 'text-arda-text-muted',
+        bgColor: 'bg-arda-bg-tertiary',
+        borderColor: 'border-arda-border',
       };
   }
 };
@@ -218,7 +218,7 @@ export const SupplierConfig: React.FC<SupplierConfigProps> = ({
                                       ? 'bg-green-500'
                                       : supplier.score >= 40
                                       ? 'bg-yellow-500'
-                                      : 'bg-slate-400'
+                                      : 'bg-arda-text-muted'
                                   }`}
                                   style={{ width: `${Math.min(supplier.score, 100)}%` }}
                                 />

@@ -19,6 +19,7 @@ export interface LineItem {
 export interface AmazonItemData {
   asin: string;
   itemName: string;
+  humanizedName?: string;  // Shop-floor friendly name from LLM
   price?: string;
   imageUrl?: string;
   amazonUrl?: string;
@@ -130,7 +131,9 @@ export type ItemColor = 'Red' | 'Orange' | 'Yellow' | 'Green' | 'Blue' | 'Gray' 
 export interface InventoryItem {
   id: string;
   name: string;
+  originalName?: string;  // Full Amazon name for tooltip
   supplier: string;
+  location?: string;
   totalQuantityOrdered: number;
   orderCount: number;
   firstOrderDate: string;

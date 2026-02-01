@@ -65,19 +65,19 @@ export const AlertCard: React.FC<AlertCardProps> = ({ alert, onReorder, inventor
         <Icon className="w-5 h-5" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-white truncate">
+            <div className="text-sm font-medium text-arda-text-primary truncate">
               {profile.displayName}
             </div>
-            <div className="text-xs text-slate-400 mt-0.5">
+            <div className="text-xs text-arda-text-muted mt-0.5">
               {profile.supplier}
             </div>
             <div className="flex items-center gap-2 mt-2">
               <span className={`text-xs px-2 py-0.5 rounded ${config.bgColor} ${config.iconColor} font-medium`}>
                 {config.label}
               </span>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-arda-text-muted">
                 {config.timeText}
               </span>
             </div>
