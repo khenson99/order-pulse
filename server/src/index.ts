@@ -108,9 +108,6 @@ app.use('/api/discover', discoverRouter);
 app.use('/api/amazon', amazonRouter);
 
 // Error handler
-if (sentryDsn) {
-  app.use(Sentry.Handlers.errorHandler());
-}
 
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Server error:', err);
@@ -120,14 +117,23 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 OrderPulse API running on http://localhost:${PORT}`);
-  console.log(`📧 Frontend URL: ${process.env.FRONTEND_URL}`);
-  
-  startCognitoSyncScheduler();
-  
-  const status = cognitoService.getSyncStatus();
-  console.log(`👥 Cognito users: ${status.userCount} loaded`);
+async function startServer() {
+  await initializeJobManager();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 OrderPulse API running on http://localhost:${PORT}`);
+    console.log(`📧 Frontend URL: ${process.env.FRONTEND_URL}`);
+    
+    startCognitoSyncScheduler();
+    
+    const status = cognitoService.getSyncStatus();
+    console.log(`👥 Cognito users: ${status.userCount} loaded`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error('Failed to start OrderPulse API:', error);
+  process.exit(1);
 });
 
 export default app;
