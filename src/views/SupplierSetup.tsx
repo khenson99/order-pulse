@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { SupplierConfig } from '../components/SupplierConfig';
 import { ExtractedOrder } from '../types';
 import { discoverApi, jobsApi, JobStatus, DiscoveredSupplier } from '../services/api';
 
@@ -9,24 +8,104 @@ interface SupplierSetupProps {
   onSkip: () => void;
 }
 
-type Step = 'discover' | 'configure' | 'scan';
+// Priority suppliers that should always be shown first
+const PRIORITY_SUPPLIERS: DiscoveredSupplier[] = [
+  {
+    domain: 'amazon.com',
+    displayName: 'Amazon',
+    emailCount: 0,
+    score: 100,
+    category: 'retail',
+    sampleSubjects: [],
+    isRecommended: true,
+  },
+  {
+    domain: 'mcmaster.com',
+    displayName: 'McMaster-Carr',
+    emailCount: 0,
+    score: 100,
+    category: 'industrial',
+    sampleSubjects: [],
+    isRecommended: true,
+  },
+  {
+    domain: 'uline.com',
+    displayName: 'Uline',
+    emailCount: 0,
+    score: 100,
+    category: 'industrial',
+    sampleSubjects: [],
+    isRecommended: true,
+  },
+];
+
+const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  industrial: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  retail: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  electronics: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+  office: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  food: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  unknown: { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200' },
+};
 
 export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onScanComplete,
   onSkip,
 }) => {
-  const [currentStep, setCurrentStep] = useState<Step>('discover');
-  const [discoveredSuppliers, setDiscoveredSuppliers] = useState<DiscoveredSupplier[]>([]);
-  const [enabledSuppliers, setEnabledSuppliers] = useState<string[]>([]);
+  // Discovery state
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveryProgress, setDiscoveryProgress] = useState<string>('');
+  const [discoveredSuppliers, setDiscoveredSuppliers] = useState<DiscoveredSupplier[]>([]);
+  const [enabledSuppliers, setEnabledSuppliers] = useState<Set<string>>(
+    new Set(['amazon.com', 'mcmaster.com', 'uline.com'])
+  );
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [hasDiscovered, setHasDiscovered] = useState(false);
+
+  // Scanning state
   const [isScanning, setIsScanning] = useState(false);
-  const [currentlyScanning, setCurrentlyScanning] = useState<string | null>(null);
-  const [scanResults, setScanResults] = useState<{ domain: string; orderCount: number }[]>([]);
-  
-  // Job polling state
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [extractedOrders, setExtractedOrders] = useState<ExtractedOrder[]>([]);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Merge priority suppliers with discovered ones
+  const allSuppliers = useCallback(() => {
+    const merged = new Map<string, DiscoveredSupplier>();
+    
+    // Add priority suppliers first
+    PRIORITY_SUPPLIERS.forEach(s => merged.set(s.domain, { ...s }));
+    
+    // Merge discovered suppliers (update counts if priority, add if new)
+    discoveredSuppliers.forEach(s => {
+      if (merged.has(s.domain)) {
+        const existing = merged.get(s.domain)!;
+        merged.set(s.domain, {
+          ...existing,
+          emailCount: s.emailCount,
+          sampleSubjects: s.sampleSubjects,
+        });
+      } else {
+        merged.set(s.domain, s);
+      }
+    });
+    
+    // Sort: priority first, then by score
+    return Array.from(merged.values()).sort((a, b) => {
+      const aPriority = PRIORITY_SUPPLIERS.some(p => p.domain === a.domain);
+      const bPriority = PRIORITY_SUPPLIERS.some(p => p.domain === b.domain);
+      if (aPriority && !bPriority) return -1;
+      if (!aPriority && bPriority) return 1;
+      return b.score - a.score;
+    });
+  }, [discoveredSuppliers]);
+
+  // Auto-start discovery on mount
+  useEffect(() => {
+    if (!hasDiscovered && !isDiscovering) {
+      handleDiscoverSuppliers();
+    }
+  }, []);
 
   // Poll for job status during scanning
   const pollJobStatus = useCallback(async () => {
@@ -36,7 +115,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       const status = await jobsApi.getStatus(currentJobId);
       setJobStatus(status);
       
-      if (status.orders) {
+      if (status.orders && status.orders.length > 0) {
         const convertedOrders: ExtractedOrder[] = status.orders.map(o => ({
           id: o.id,
           originalEmailId: o.id,
@@ -46,50 +125,25 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           items: o.items,
           confidence: o.confidence,
         }));
-        
-        // Group orders by supplier domain for scan results
-        const resultsByDomain: Record<string, number> = {};
-        convertedOrders.forEach(order => {
-          const domain = order.supplier.toLowerCase().replace(/\s+/g, '');
-          resultsByDomain[domain] = (resultsByDomain[domain] || 0) + 1;
-        });
-        
-        setScanResults(
-          Object.entries(resultsByDomain).map(([domain, count]) => ({
-            domain,
-            orderCount: count,
-          }))
-        );
-        
-        // If job is complete, call onScanComplete
-        if (status.status === 'completed') {
-          setIsScanning(false);
-          setCurrentlyScanning(null);
-          onScanComplete(convertedOrders);
-        }
+        setExtractedOrders(convertedOrders);
       }
       
       if (status.status === 'completed' || status.status === 'failed') {
         setIsScanning(false);
-        setCurrentlyScanning(null);
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
-        }
-        
-        if (status.status === 'failed' && status.error) {
-          console.error('Scan failed:', status.error);
         }
       }
     } catch (error) {
       console.error('Polling error:', error);
     }
-  }, [currentJobId, onScanComplete]);
+  }, [currentJobId]);
 
   // Start polling when scanning
   useEffect(() => {
     if (isScanning && currentJobId) {
-      pollJobStatus(); // Poll immediately
+      pollJobStatus();
       pollingRef.current = setInterval(pollJobStatus, 1000);
       return () => {
         if (pollingRef.current) {
@@ -100,351 +154,334 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [isScanning, currentJobId, pollJobStatus]);
 
-  const [discoverError, setDiscoverError] = useState<string | null>(null);
-
   const handleDiscoverSuppliers = async () => {
     setIsDiscovering(true);
     setDiscoverError(null);
+    setDiscoveryProgress('Connecting to Gmail...');
+    
     try {
+      setDiscoveryProgress('Scanning email headers...');
       const response = await discoverApi.discoverSuppliers();
+      
+      setDiscoveryProgress(`Found ${response.suppliers.length} potential suppliers`);
       setDiscoveredSuppliers(response.suppliers);
-      // Auto-enable recommended suppliers by default
-      setEnabledSuppliers(response.suppliers.filter(s => s.isRecommended).map(s => s.domain));
-      setCurrentStep('configure');
+      
+      // Auto-enable all recommended suppliers
+      const newEnabled = new Set(enabledSuppliers);
+      response.suppliers.filter(s => s.isRecommended).forEach(s => newEnabled.add(s.domain));
+      setEnabledSuppliers(newEnabled);
+      
+      setHasDiscovered(true);
     } catch (error: any) {
       console.error('Failed to discover suppliers:', error);
-      const errorMsg = error.message || 'Failed to discover suppliers';
-      setDiscoverError(errorMsg);
+      setDiscoverError(error.message || 'Failed to discover suppliers');
     } finally {
       setIsDiscovering(false);
+      setDiscoveryProgress('');
     }
   };
 
   const handleToggleSupplier = (domain: string) => {
-    setEnabledSuppliers(prev =>
-      prev.includes(domain)
-        ? prev.filter(d => d !== domain)
-        : [...prev, domain]
-    );
+    setEnabledSuppliers(prev => {
+      const next = new Set(prev);
+      if (next.has(domain)) {
+        next.delete(domain);
+      } else {
+        next.add(domain);
+      }
+      return next;
+    });
   };
 
-  const handleToggleAll = () => {
-    if (enabledSuppliers.length === discoveredSuppliers.length) {
-      setEnabledSuppliers([]);
-    } else {
-      setEnabledSuppliers(discoveredSuppliers.map(s => s.domain));
-    }
-  };
-
-  const handleScanAll = async () => {
-    if (enabledSuppliers.length === 0) {
-      alert('Please enable at least one supplier before scanning.');
+  const handleStartScan = async () => {
+    const suppliersToScan = Array.from(enabledSuppliers);
+    if (suppliersToScan.length === 0) {
+      alert('Please select at least one supplier to scan.');
       return;
     }
 
     setIsScanning(true);
-    setCurrentlyScanning(null); // Scanning all, not a specific one
-    setScanResults([]);
+    setExtractedOrders([]);
+    setJobStatus(null);
     
     try {
-      const response = await discoverApi.startJobWithFilter(enabledSuppliers);
+      const response = await jobsApi.startJob();
       setCurrentJobId(response.jobId);
-      setCurrentStep('scan');
     } catch (error) {
       console.error('Failed to start scan:', error);
       alert('Failed to start scan. Please try again.');
       setIsScanning(false);
-      setCurrentlyScanning(null);
     }
   };
 
-  const handleScanSupplier = async (domain: string) => {
-    setIsScanning(true);
-    setCurrentlyScanning(domain);
-    setScanResults([]);
-    
-    try {
-      const response = await discoverApi.startJobWithFilter([domain]);
-      setCurrentJobId(response.jobId);
-      setCurrentStep('scan');
-    } catch (error) {
-      console.error('Failed to start scan:', error);
-      alert('Failed to start scan. Please try again.');
-      setIsScanning(false);
-      setCurrentlyScanning(null);
-    }
+  const handleComplete = () => {
+    onScanComplete(extractedOrders);
   };
 
-  const getStepNumber = (step: Step): number => {
-    const steps: Step[] = ['discover', 'configure', 'scan'];
-    return steps.indexOf(step) + 1;
-  };
+  // Group extracted orders by supplier
+  const ordersBySupplier = extractedOrders.reduce((acc, order) => {
+    const key = order.supplier;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(order);
+    return acc;
+  }, {} as Record<string, ExtractedOrder[]>);
 
-  const isStepComplete = (step: Step): boolean => {
-    if (step === 'discover') return discoveredSuppliers.length > 0;
-    if (step === 'configure') return enabledSuppliers.length > 0;
-    if (step === 'scan') return jobStatus?.status === 'completed';
-    return false;
-  };
+  const suppliers = allSuppliers();
+  const enabledCount = enabledSuppliers.size;
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-arda-text-primary">Supplier Setup</h2>
-          <p className="text-arda-text-secondary">Configure suppliers to scan for orders</p>
+          <h1 className="text-2xl font-bold text-white">Supplier Discovery</h1>
+          <p className="text-slate-400 mt-1">
+            {isDiscovering 
+              ? discoveryProgress || 'Scanning your inbox...'
+              : hasDiscovered 
+                ? `Found ${suppliers.length} suppliers • ${enabledCount} selected`
+                : 'Select suppliers to scan for orders'
+            }
+          </p>
         </div>
         <button
           onClick={onSkip}
-          className="text-sm text-arda-text-secondary hover:text-arda-text-primary"
+          className="text-sm text-slate-400 hover:text-white transition-colors"
         >
-          Skip Setup
+          Skip for now
         </button>
       </div>
 
-      {/* Step Indicator */}
-      <div className="flex items-center justify-between max-w-2xl">
-        {(['discover', 'configure', 'scan'] as Step[]).map((step, index) => {
-          const stepNum = index + 1;
-          const isActive = currentStep === step;
-          const isComplete = isStepComplete(step);
-          const isPast = getStepNumber(currentStep) > stepNum;
-
-          return (
-            <div key={step} className="flex items-center flex-1">
-              <div className="flex flex-col items-center flex-1">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm border-2 transition-colors ${
-                    isActive
-                      ? 'bg-arda-accent text-white border-arda-accent'
-                      : isComplete || isPast
-                      ? 'bg-arda-success text-white border-arda-success'
-                      : 'bg-white text-arda-text-muted border-arda-border'
-                  }`}
-                >
-                  {isComplete || isPast ? (
-                    <Icons.CheckCircle2 className="w-5 h-5" />
-                  ) : (
-                    stepNum
-                  )}
-                </div>
-                <div className="mt-2 text-xs font-medium text-arda-text-secondary capitalize">
-                  {step === 'discover' ? 'Discover' : step === 'configure' ? 'Configure' : 'Scan'}
-                </div>
-              </div>
-              {index < 2 && (
-                <div
-                  className={`h-0.5 flex-1 mx-2 ${
-                    isPast || isComplete ? 'bg-arda-success' : 'bg-arda-border'
-                  }`}
-                />
-              )}
+      {/* Discovery Progress */}
+      {isDiscovering && (
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center">
+              <Icons.Loader2 className="w-6 h-6 text-orange-400 animate-spin" />
             </div>
-          );
-        })}
-      </div>
-
-      {/* Step Content */}
-      <div className="bg-white border border-arda-border rounded-xl shadow-arda p-6">
-        {currentStep === 'discover' && (
-          <div className="space-y-6">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto border border-orange-100">
-                <Icons.Search className="w-8 h-8 text-arda-accent" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-arda-text-primary mb-2">
-                  Discover Suppliers
-                </h3>
-                <p className="text-arda-text-secondary max-w-md mx-auto">
-                  We'll scan your email to find suppliers you've ordered from. This helps us
-                  identify which suppliers to monitor for future orders.
-                </p>
-              </div>
+            <div className="flex-1">
+              <div className="text-white font-medium">Discovering Suppliers</div>
+              <div className="text-slate-400 text-sm">{discoveryProgress}</div>
             </div>
+          </div>
+          <div className="mt-4 h-1 bg-slate-700 rounded-full overflow-hidden">
+            <div className="h-full bg-orange-500 animate-pulse" style={{ width: '60%' }} />
+          </div>
+        </div>
+      )}
 
-            <div className="flex justify-center">
+      {/* Error State */}
+      {discoverError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <Icons.AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-red-400 font-medium">Discovery Failed</div>
+              <div className="text-red-300 text-sm mt-1">{discoverError}</div>
               <button
                 onClick={handleDiscoverSuppliers}
-                disabled={isDiscovering}
-                className="bg-arda-accent text-white px-8 py-3 rounded-lg font-medium hover:bg-arda-accent-hover flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-orange-500/20 transition-colors"
+                className="mt-3 text-sm bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded transition-colors"
               >
-                {isDiscovering ? (
-                  <>
-                    <Icons.Loader2 className="w-5 h-5 animate-spin" />
-                    Discovering...
-                  </>
-                ) : (
-                  <>
-                    <Icons.Search className="w-5 h-5" />
-                    Discover Suppliers
-                  </>
-                )}
+                Try Again
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
-            {isDiscovering && (
-              <div className="text-center text-sm text-arda-text-secondary">
-                <p>Scanning your email for supplier information...</p>
-              </div>
-            )}
+      {/* Supplier Grid */}
+      {!isDiscovering && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {suppliers.map((supplier) => {
+            const isEnabled = enabledSuppliers.has(supplier.domain);
+            const isPriority = PRIORITY_SUPPLIERS.some(p => p.domain === supplier.domain);
+            const colors = CATEGORY_COLORS[supplier.category] || CATEGORY_COLORS.unknown;
+            const orderCount = ordersBySupplier[supplier.displayName]?.length || 0;
+            
+            return (
+              <div
+                key={supplier.domain}
+                onClick={() => handleToggleSupplier(supplier.domain)}
+                className={`
+                  relative p-4 rounded-xl border-2 cursor-pointer transition-all
+                  ${isEnabled 
+                    ? 'bg-slate-800 border-orange-500' 
+                    : 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                  }
+                  ${isPriority ? 'ring-2 ring-orange-500/20' : ''}
+                `}
+              >
+                {/* Priority Badge */}
+                {isPriority && (
+                  <div className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    Priority
+                  </div>
+                )}
 
-            {discoverError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md mx-auto">
                 <div className="flex items-start gap-3">
-                  <Icons.AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium text-red-800">Discovery Failed</h4>
-                    <p className="text-sm text-red-600 mt-1">{discoverError}</p>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        onClick={() => {
-                          setDiscoverError(null);
-                          handleDiscoverSuppliers();
-                        }}
-                        className="text-sm bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded transition-colors"
-                      >
-                        Try Again
-                      </button>
-                      <button
-                        onClick={() => {
-                          // Force re-login
-                          window.location.href = '/';
-                        }}
-                        className="text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded transition-colors"
-                      >
-                        Re-login
-                      </button>
+                  {/* Checkbox */}
+                  <div className={`
+                    w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5
+                    ${isEnabled ? 'bg-orange-500 border-orange-500' : 'border-slate-600'}
+                  `}>
+                    {isEnabled && <Icons.Check className="w-3 h-3 text-white" />}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-medium">{supplier.displayName}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${colors.bg} ${colors.text}`}>
+                        {supplier.category}
+                      </span>
                     </div>
+                    
+                    <div className="text-slate-500 text-sm mt-0.5">{supplier.domain}</div>
+                    
+                    {supplier.emailCount > 0 && (
+                      <div className="text-slate-400 text-sm mt-1">
+                        {supplier.emailCount} emails found
+                      </div>
+                    )}
+
+                    {/* Show sample subjects */}
+                    {supplier.sampleSubjects.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {supplier.sampleSubjects.slice(0, 2).map((subject, i) => (
+                          <div key={i} className="text-xs text-slate-500 truncate">
+                            "{subject}"
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Show extracted orders count during/after scan */}
+                    {orderCount > 0 && (
+                      <div className="mt-2 flex items-center gap-1.5 text-green-400 text-sm">
+                        <Icons.CheckCircle2 className="w-4 h-4" />
+                        <span>{orderCount} order{orderCount !== 1 ? 's' : ''} found</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Scan Progress / Results */}
+      {isScanning && jobStatus && (
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Icons.Loader2 className="w-5 h-5 text-orange-400 animate-spin" />
+              <span className="text-white font-medium">Scanning Emails</span>
+            </div>
+            {jobStatus.progress && (
+              <span className="text-slate-400 text-sm">
+                {jobStatus.progress.processed} / {jobStatus.progress.total}
+              </span>
             )}
           </div>
-        )}
 
-        {currentStep === 'configure' && (
-          <div className="space-y-6">
-            <SupplierConfig
-              suppliers={discoveredSuppliers}
-              enabledSuppliers={enabledSuppliers}
-              onToggleSupplier={handleToggleSupplier}
-              onScanSupplier={handleScanSupplier}
-              onScanAllEnabled={handleScanAll}
-              isLoading={isScanning}
-              currentlyScanning={currentlyScanning || undefined}
-            />
-
-            <div className="flex items-center justify-between pt-4 border-t border-arda-border">
-              <button
-                onClick={() => setCurrentStep('discover')}
-                className="text-sm text-arda-text-secondary hover:text-arda-text-primary"
-              >
-                ← Back
-              </button>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 'scan' && (
-          <div className="space-y-6">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto border border-blue-100">
-                {isScanning ? (
-                  <Icons.Loader2 className="w-8 h-8 text-arda-info animate-spin" />
-                ) : (
-                  <Icons.ScanLine className="w-8 h-8 text-arda-info" />
-                )}
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-arda-text-primary mb-2">
-                  {isScanning ? 'Scanning for Orders' : 'Scan Complete'}
-                </h3>
-                <p className="text-arda-text-secondary">
-                  {isScanning
-                    ? currentlyScanning
-                      ? `Scanning ${currentlyScanning}...`
-                      : 'Processing emails and extracting orders...'
-                    : 'Orders have been extracted successfully.'}
-                </p>
-              </div>
-            </div>
-
-            {jobStatus?.progress && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs text-arda-text-secondary font-mono">
-                  <span>{jobStatus.progress.currentTask}</span>
-                  <span>
-                    {jobStatus.progress.processed}/{jobStatus.progress.total} (
-                    {Math.round(
-                      (jobStatus.progress.processed / jobStatus.progress.total) * 100
-                    )}
-                    %)
-                  </span>
-                </div>
-                <div className="w-full bg-arda-bg-tertiary rounded-full h-3 overflow-hidden border border-arda-border">
-                  <div
-                    className="bg-gradient-to-r from-arda-accent to-orange-400 h-3 rounded-full transition-all duration-300"
-                    style={{
-                      width: `${
-                        (jobStatus.progress.processed / jobStatus.progress.total) * 100
-                      }%`,
-                    }}
-                  />
-                </div>
-                <div className="flex gap-4 text-xs">
-                  <span className="text-arda-success font-medium">
-                    ✓ {jobStatus.progress.success} orders
-                  </span>
-                  <span className="text-arda-text-muted">
-                    ○ {jobStatus.progress.failed} non-order
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {scanResults.length > 0 && (
-              <div className="pt-4 border-t border-arda-border">
-                <h4 className="text-sm font-semibold text-arda-text-primary mb-3">
-                  Scan Results:
-                </h4>
-                <div className="space-y-2">
-                  {scanResults.map((result) => (
-                    <div
-                      key={result.domain}
-                      className="flex items-center justify-between p-3 bg-arda-bg-secondary rounded-lg border border-arda-border"
-                    >
-                      <span className="text-sm text-arda-text-primary">{result.domain}</span>
-                      <span className="text-sm font-medium text-arda-accent">
-                        {result.orderCount} {result.orderCount === 1 ? 'order' : 'orders'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {jobStatus?.status === 'completed' && (
-              <div className="flex justify-center pt-4">
-                <button
-                  onClick={() => {
-                    setCurrentStep('configure');
-                    setIsScanning(false);
-                    setCurrentJobId(null);
-                    setJobStatus(null);
-                    setScanResults([]);
-                    setCurrentlyScanning(null);
+          {/* Progress Bar */}
+          {jobStatus.progress && (
+            <div className="space-y-2">
+              <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-orange-500 to-orange-400 transition-all duration-300"
+                  style={{ 
+                    width: `${(jobStatus.progress.processed / jobStatus.progress.total) * 100}%` 
                   }}
-                  className="bg-arda-accent text-white px-6 py-2.5 rounded-lg font-medium hover:bg-arda-accent-hover transition-colors"
-                >
-                  Scan More Suppliers
-                </button>
+                />
               </div>
-            )}
+              
+              <div className="flex justify-between text-sm">
+                <span className="text-green-400">
+                  ✓ {jobStatus.progress.success} orders extracted
+                </span>
+                <span className="text-slate-500">
+                  {jobStatus.progress.currentTask}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Live Results */}
+          {extractedOrders.length > 0 && (
+            <div className="border-t border-slate-700 pt-4">
+              <div className="text-sm text-slate-400 mb-2">Latest extractions:</div>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {extractedOrders.slice(-5).reverse().map((order, i) => (
+                  <div key={order.id || i} className="flex items-center justify-between text-sm bg-slate-900/50 rounded-lg p-2">
+                    <div className="flex items-center gap-2">
+                      <Icons.Package className="w-4 h-4 text-green-400" />
+                      <span className="text-white">{order.supplier}</span>
+                    </div>
+                    <div className="text-slate-400">
+                      {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+                      {order.totalAmount && ` • $${order.totalAmount.toFixed(2)}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Scan Complete */}
+      {!isScanning && jobStatus?.status === 'completed' && extractedOrders.length > 0 && (
+        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
+              <Icons.CheckCircle2 className="w-6 h-6 text-green-400" />
+            </div>
+            <div className="flex-1">
+              <div className="text-green-400 font-medium text-lg">Scan Complete!</div>
+              <div className="text-green-300/70">
+                Extracted {extractedOrders.length} orders from {Object.keys(ordersBySupplier).length} suppliers
+              </div>
+            </div>
+            <button
+              onClick={handleComplete}
+              className="bg-green-500 hover:bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
+            >
+              View Results →
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      {!isScanning && !jobStatus?.status && (
+        <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+          <div className="text-sm text-slate-500">
+            {enabledCount} supplier{enabledCount !== 1 ? 's' : ''} selected
+          </div>
+          <div className="flex gap-3">
+            {!hasDiscovered && !isDiscovering && (
+              <button
+                onClick={handleDiscoverSuppliers}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                <Icons.Search className="w-4 h-4" />
+                Discover More
+              </button>
+            )}
+            <button
+              onClick={handleStartScan}
+              disabled={enabledCount === 0}
+              className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+            >
+              <Icons.ScanLine className="w-4 h-4" />
+              Scan {enabledCount} Supplier{enabledCount !== 1 ? 's' : ''}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default SupplierSetup;
