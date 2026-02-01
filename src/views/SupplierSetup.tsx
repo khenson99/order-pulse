@@ -238,43 +238,81 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     return () => clearInterval(interval);
   }, [isCurrentlyProcessing]);
 
-  // 1. START ALL PRIORITY SUPPLIERS IMMEDIATELY ON MOUNT
+  // 1. START PRIORITY SUPPLIERS - STAGGERED TO AVOID RATE LIMITS
   useEffect(() => {
-    // Start Amazon (ASIN extraction + Product Advertising API)
-    const startAmazon = async () => {
+    let amazonRetryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let priorityDelayTimeout: ReturnType<typeof setTimeout> | null = null;
+    
+    // Start Amazon with retry logic
+    const startAmazon = async (retryCount = 0) => {
       try {
-        console.log('🛒 Starting Amazon processing immediately...');
+        console.log(`🛒 Starting Amazon processing${retryCount > 0 ? ` (retry ${retryCount})` : ''}...`);
         const response = await jobsApi.startAmazon();
         setAmazonJobId(response.jobId);
+        setAmazonError(null);
       } catch (error: any) {
-        console.error('Failed to start Amazon processing:', error);
-        setAmazonError(error.message || 'Failed to start Amazon processing');
+        const errorMessage = error.message || 'Failed to start Amazon processing';
+        console.error('Amazon processing error:', errorMessage);
+        
+        // Retry on rate limit or temporary errors (up to 3 times)
+        if (retryCount < 3 && (errorMessage.includes('rate') || errorMessage.includes('429') || errorMessage.includes('Too many'))) {
+          const retryDelay = (retryCount + 1) * 3000; // 3s, 6s, 9s
+          console.log(`⏳ Rate limited, retrying Amazon in ${retryDelay / 1000}s...`);
+          amazonRetryTimeout = setTimeout(() => startAmazon(retryCount + 1), retryDelay);
+        } else {
+          setAmazonError(errorMessage);
+        }
       }
     };
     
-    // Start McMaster-Carr and Uline (AI extraction)
-    const startPrioritySuppliers = async () => {
+    // Start McMaster-Carr and Uline (delayed to avoid rate limits)
+    const startPrioritySuppliers = async (retryCount = 0) => {
       try {
-        console.log('🏭 Starting McMaster-Carr & Uline processing immediately...');
+        console.log(`🏭 Starting McMaster-Carr & Uline${retryCount > 0 ? ` (retry ${retryCount})` : ''}...`);
         const response = await jobsApi.startJob(['mcmaster.com', 'uline.com']);
         setPriorityJobId(response.jobId);
+        setPriorityError(null);
       } catch (error: any) {
-        console.error('Failed to start priority suppliers:', error);
-        setPriorityError(error.message || 'Failed to start McMaster-Carr & Uline');
+        const errorMessage = error.message || 'Failed to start McMaster-Carr & Uline';
+        console.error('Priority suppliers error:', errorMessage);
+        
+        // Retry on rate limit (up to 3 times)
+        if (retryCount < 3 && (errorMessage.includes('rate') || errorMessage.includes('429') || errorMessage.includes('Too many'))) {
+          const retryDelay = (retryCount + 1) * 4000; // 4s, 8s, 12s
+          console.log(`⏳ Rate limited, retrying priority suppliers in ${retryDelay / 1000}s...`);
+          setTimeout(() => startPrioritySuppliers(retryCount + 1), retryDelay);
+        } else {
+          setPriorityError(errorMessage);
+        }
       }
     };
     
-    // Start both in parallel
+    // Start Amazon immediately
     startAmazon();
-    startPrioritySuppliers();
+    
+    // Delay priority suppliers by 2 seconds to stagger API calls
+    priorityDelayTimeout = setTimeout(() => {
+      startPrioritySuppliers();
+    }, 2000);
+    
+    // Cleanup on unmount
+    return () => {
+      if (amazonRetryTimeout) clearTimeout(amazonRetryTimeout);
+      if (priorityDelayTimeout) clearTimeout(priorityDelayTimeout);
+    };
   }, []);
 
-  // 2. START SUPPLIER DISCOVERY IN PARALLEL (for other suppliers)
+  // 2. START SUPPLIER DISCOVERY (delayed to stagger API calls)
   useEffect(() => {
     if (!hasDiscovered && !isDiscovering) {
-      handleDiscoverSuppliers();
+      // Delay discovery by 4 seconds to avoid overwhelming the server
+      const discoveryTimeout = setTimeout(() => {
+        handleDiscoverSuppliers();
+      }, 4000);
+      
+      return () => clearTimeout(discoveryTimeout);
     }
-  }, []);
+  }, [hasDiscovered, isDiscovering]);
 
   // Poll Amazon job status
   const pollAmazonStatus = useCallback(async () => {

@@ -30,6 +30,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/connect-redis": "^0.0.23",
     "@types/cors": "^2.8.17",
     "@types/crypto-js": "^4.2.2",

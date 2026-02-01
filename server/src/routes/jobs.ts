@@ -16,20 +16,23 @@ import {
 
 const router = Router();
 
+// Rate limiters - more permissive to allow page refreshes
 const jobsLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 6,
+  max: 15, // Allow more requests for page refreshes
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many job requests. Slow down and retry in a minute.' },
+  message: { error: 'Too many job requests. Please wait a moment and try again.' },
+  keyGenerator: (req: Request) => req.session?.userId || req.ip || 'anonymous',
 });
 
 const amazonLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 8,
+  max: 15, // Allow more requests for retries and refreshes
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many Amazon processing requests. Try again later.' },
+  message: { error: 'Too many Amazon processing requests. Please wait a moment and try again.' },
+  keyGenerator: (req: Request) => req.session?.userId || req.ip || 'anonymous',
 });
 
 const MAX_SUPPLIERS = 25;

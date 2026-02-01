@@ -1,6 +1,9 @@
 import pino from 'pino';
-import pinoHttp from 'pino-http';
+import pinoHttpPkg from 'pino-http';
 import { env } from '../config.js';
+
+// Handle ESM/CJS interop
+const pinoHttp = (pinoHttpPkg as any).default || pinoHttpPkg;
 
 const logger = pino({
   level: env.NODE_ENV === 'production' ? 'info' : 'debug',
