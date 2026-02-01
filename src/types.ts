@@ -1,9 +1,91 @@
 export interface LineItem {
+  id?: string;  // Unique identifier for tracking
   name: string;
   quantity: number;
   unit: string;
   unitPrice?: number;
   totalPrice?: number;
+  // Source tracking fields
+  sourceEmailId?: string;
+  sourceOrderId?: string;
+  normalizedName?: string;  // For matching across orders
+  sku?: string;  // Part number/SKU if available
+}
+
+// Cross-order item tracking for velocity analysis
+export interface ItemVelocityProfile {
+  normalizedName: string;
+  displayName: string;
+  supplier: string;
+  sku?: string;
+  orders: {
+    orderId: string;
+    emailId: string;
+    date: string;
+    quantity: number;
+    unitPrice?: number;
+  }[];
+  // Calculated fields
+  totalQuantityOrdered: number;
+  orderCount: number;
+  averageCadenceDays: number;
+  dailyBurnRate: number;
+  firstOrderDate: string;
+  lastOrderDate: string;
+  nextPredictedOrder?: string;
+  // Recommendations
+  recommendedMin: number;
+  recommendedOrderQty: number;
+}
+
+// Tree view node types for the Order Journey
+export type JourneyNodeType = 'email' | 'order' | 'lineItem' | 'velocity';
+
+export interface JourneyNode {
+  id: string;
+  type: JourneyNodeType;
+  label: string;
+  subtitle?: string;
+  children?: JourneyNode[];
+  data?: EmailNodeData | OrderNodeData | LineItemNodeData | VelocityNodeData;
+  isExpanded?: boolean;
+}
+
+export interface EmailNodeData {
+  emailId: string;
+  sender: string;
+  subject: string;
+  date: string;
+}
+
+export interface OrderNodeData {
+  orderId: string;
+  emailId: string;
+  supplier: string;
+  orderDate: string;
+  totalAmount?: number;
+  itemCount: number;
+  confidence: number;
+}
+
+export interface LineItemNodeData {
+  lineItemId: string;
+  orderId: string;
+  emailId: string;
+  name: string;
+  normalizedName: string;
+  quantity: number;
+  unit: string;
+  unitPrice?: number;
+  sku?: string;
+}
+
+export interface VelocityNodeData {
+  normalizedName: string;
+  dailyBurnRate: number;
+  averageCadenceDays: number;
+  orderCount: number;
+  nextPredictedOrder?: string;
 }
 
 export interface ExtractedOrder {

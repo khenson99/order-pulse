@@ -6,6 +6,7 @@ import { CadenceView } from './views/CadenceView';
 import { ComposeEmail } from './views/ComposeEmail';
 import { LoginScreen } from './views/LoginScreen';
 import { PipelineView } from './views/PipelineView';
+import { JourneyView } from './views/JourneyView';
 import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
 import { processOrdersToInventory } from './utils/inventoryLogic';
 import { useAutoIngestion } from './hooks/useAutoIngestion';
@@ -79,6 +80,9 @@ export default function App() {
           setActiveView('analysis');
           break;
         case '4':
+          setActiveView('journey');
+          break;
+        case '5':
           setActiveView('compose');
           break;
       }
@@ -174,6 +178,14 @@ export default function App() {
         );
       case 'analysis':
         return <CadenceView inventory={inventory} />;
+      case 'journey':
+        return (
+          <JourneyView
+            orders={orders}
+            inventory={inventory}
+            onReorder={handleReorder}
+          />
+        );
       case 'compose':
         return (
           <ComposeEmail 

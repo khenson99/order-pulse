@@ -254,11 +254,99 @@ export async function createOrder(
   });
 }
 
+// Velocity profile input for creating items from velocity data
+export interface ItemVelocityProfileInput {
+  displayName: string;
+  supplier: string;
+  dailyBurnRate: number;
+  averageCadenceDays: number;
+  recommendedMin: number;
+  recommendedOrderQty: number;
+  unit?: string; // Defaults to 'EA' if not provided
+  location?: string;
+  primarySupplierLink?: string;
+  imageUrl?: string;
+}
+
+// Result type for sync operations
+export interface VelocitySyncResult {
+  displayName: string;
+  success: boolean;
+  itemId?: string;
+  error?: string;
+}
+
+// Create an item in Arda from velocity profile data
+// Calculates kanban parameters and sets order mechanism based on velocity
+export async function createItemFromVelocity(
+  profile: ItemVelocityProfileInput,
+  author: string
+): Promise<EntityRecord> {
+  // Calculate kanban parameters
+  const minQty = profile.recommendedMin;
+  const orderQty = profile.recommendedOrderQty;
+  const unit = profile.unit || 'EA';
+
+  // Set order mechanism based on velocity: AUTO for high velocity (>5/day), MANUAL otherwise
+  const orderMechanism = profile.dailyBurnRate > 5 ? 'AUTO' : 'MANUAL';
+
+  // Create item using existing createItem function
+  return createItem(
+    {
+      name: profile.displayName,
+      orderMechanism,
+      location: profile.location,
+      minQty,
+      minQtyUnit: unit,
+      orderQty,
+      orderQtyUnit: unit,
+      primarySupplier: profile.supplier,
+      primarySupplierLink: profile.primarySupplierLink,
+      imageUrl: profile.imageUrl,
+    },
+    author
+  );
+}
+
+// Sync multiple velocity profiles to Arda
+// Creates items for each profile and returns results with success/failure status
+export async function syncVelocityToArda(
+  profiles: ItemVelocityProfileInput[],
+  author: string
+): Promise<VelocitySyncResult[]> {
+  const results: VelocitySyncResult[] = [];
+
+  for (const profile of profiles) {
+    try {
+      const result = await createItemFromVelocity(profile, author);
+      
+      // Extract item ID from the result (assuming it's in the payload)
+      const itemId = (result.payload as { itemId?: string })?.itemId || result.rId;
+
+      results.push({
+        displayName: profile.displayName,
+        success: true,
+        itemId,
+      });
+    } catch (error) {
+      results.push({
+        displayName: profile.displayName,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return results;
+}
+
 export const ardaService = {
   createItem,
   createKanbanCard,
   createOrder,
   getTenantByEmail,
   isMockMode,
+  createItemFromVelocity,
+  syncVelocityToArda,
   isConfigured: () => Boolean(ARDA_API_KEY && ARDA_TENANT_ID && ARDA_TENANT_ID !== 'your_tenant_uuid_here'),
 };

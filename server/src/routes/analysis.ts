@@ -36,7 +36,9 @@ Return a JSON object with this structure:
   "totalAmount": number (total amount paid),
   "items": [
     {
-      "name": string (product/item name),
+      "name": string (full product/item name as shown),
+      "normalizedName": string (simplified lowercase name for matching, remove sizes/variants),
+      "sku": string or null (part number, catalog number, item number if visible),
       "quantity": number (default to 1 if not specified),
       "unit": string (default to "ea" if not specified),
       "unitPrice": number or null,
@@ -52,6 +54,21 @@ RULES:
 3. "Your order shipped" means there WAS an order - extract it
 4. Payment confirmations ARE orders - extract them
 5. Only set isOrder: false for newsletters, marketing emails, or emails with no purchase info
+
+ITEM EXTRACTION RULES:
+- For "normalizedName": Create a simplified, lowercase version of the item name by:
+  * Removing size information (e.g., "Small", "Large", "XL", sizes like "8oz", "16oz")
+  * Removing color/variant information (e.g., "Red", "Blue", "Black")
+  * Removing quantity mentions from the name itself
+  * Converting to lowercase and removing extra spaces
+  * Example: "Nike Air Max 90 - Size 10 - Black" → "nike air max 90"
+  
+- For "sku": Extract the SKU/part number/catalog number if visible:
+  * Look for patterns like "Item #", "Part #", "SKU:", "Catalog #", "Model #", "Product #"
+  * Look for alphanumeric codes near the item (e.g., "91255A123", "ABC-123-XYZ")
+  * SKU may appear in the same line as the item name or in a separate column/field
+  * If no SKU is visible or identifiable, set to null
+  * SKU should be extracted exactly as shown (preserve case and formatting)
 
 If this email has NO purchase/transaction information at all, return:
 {

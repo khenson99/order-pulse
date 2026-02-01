@@ -1,6 +1,16 @@
 // Arda API Routes - Proxy endpoints for frontend
 import { Router, Request, Response, NextFunction } from 'express';
-import { ardaService, ItemInput, KanbanCardInput, OrderHeaderInput } from '../services/arda.js';
+import { 
+  ardaService, 
+  ItemInput, 
+  KanbanCardInput, 
+  OrderHeaderInput,
+  createItemFromVelocity,
+  syncVelocityToArda,
+  ItemVelocityProfileInput,
+  VelocitySyncResult,
+  EntityRecord
+} from '../services/arda.js';
 import { cognitoService } from '../services/cognito.js';
 import { getUserEmail } from './auth.js';
 
@@ -274,6 +284,106 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to bulk sync items',
       stack: error instanceof Error ? error.stack : undefined,
+    });
+  }
+});
+
+// Sync velocity profiles to Arda
+router.post('/sync-velocity', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const credentials = getUserCredentials(req);
+    if (!credentials.author) {
+      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
+    }
+
+    const { profiles, author } = req.body;
+
+    // Validate request body
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      return res.status(400).json({
+        error: 'profiles array is required and must not be empty',
+      });
+    }
+
+    if (!author || typeof author !== 'string') {
+      return res.status(400).json({
+        error: 'author string is required',
+      });
+    }
+
+    // Validate each profile
+    for (const profile of profiles) {
+      if (!profile.displayName || !profile.supplier) {
+        return res.status(400).json({
+          error: 'Each profile must have displayName and supplier',
+        });
+      }
+    }
+
+    console.log(`📤 Syncing ${profiles.length} velocity profiles to Arda for user ${credentials.email}`);
+
+    // Use the provided author or fall back to credentials author
+    const syncAuthor = author || credentials.author!;
+    const results = await syncVelocityToArda(profiles, syncAuthor);
+
+    res.json({ results });
+  } catch (error) {
+    console.error('Arda sync velocity error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to sync velocity profiles to Arda',
+    });
+  }
+});
+
+// Sync a single item from velocity data
+router.post('/sync-item', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const credentials = getUserCredentials(req);
+    if (!credentials.author) {
+      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
+    }
+
+    const { author, ...profileData } = req.body;
+
+    // Validate required fields
+    if (!profileData.displayName || !profileData.supplier) {
+      return res.status(400).json({
+        error: 'Missing required fields: displayName and supplier are required',
+      });
+    }
+
+    // Use the provided author or fall back to credentials author
+    const syncAuthor = author || credentials.author!;
+
+    console.log(`📤 Syncing item "${profileData.displayName}" to Arda for user ${credentials.email}`);
+
+    const result = await createItemFromVelocity(profileData as ItemVelocityProfileInput, syncAuthor);
+    res.json({ success: true, record: result });
+  } catch (error) {
+    console.error('Arda sync item error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to sync item from velocity data',
+    });
+  }
+});
+
+// Get sync status (returns basic status since tracking is not yet implemented)
+router.get('/sync-status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const credentials = getUserCredentials(req);
+    
+    // Since sync status tracking is not yet implemented, return basic status
+    res.json({
+      success: true,
+      message: 'Sync status tracking is not yet implemented',
+      user: credentials.email,
+      ardaConfigured: ardaService.isConfigured(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Arda sync status error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get sync status',
     });
   }
 });
