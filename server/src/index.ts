@@ -55,7 +55,7 @@ for (const key of requiredSecrets) {
   }
 }
 if (isProduction && !process.env.REDIS_URL) {
-  throw new Error('REDIS_URL is required in production');
+  console.warn('⚠️ REDIS_URL not set in production - sessions will not persist across restarts');
 }
 
 // Trust proxy for Railway (required for secure cookies behind reverse proxy)

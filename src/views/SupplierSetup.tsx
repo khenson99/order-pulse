@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
 import { discoverApi, jobsApi, JobStatus, DiscoveredSupplier } from '../services/api';
+import { mergeSuppliers } from '../utils/supplierUtils';
 
 interface SupplierSetupProps {
   onScanComplete: (orders: ExtractedOrder[]) => void;
@@ -77,34 +78,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Merge priority suppliers with discovered ones (excluding Amazon)
-  const allSuppliers = useCallback(() => {
-    const merged = new Map<string, DiscoveredSupplier>();
-    
-    OTHER_PRIORITY_SUPPLIERS.forEach(s => merged.set(s.domain, { ...s }));
-    
-    discoveredSuppliers
-      .filter(s => !s.domain.includes('amazon'))
-      .forEach(s => {
-        if (merged.has(s.domain)) {
-          const existing = merged.get(s.domain)!;
-          merged.set(s.domain, {
-            ...existing,
-            emailCount: s.emailCount,
-            sampleSubjects: s.sampleSubjects,
-          });
-        } else {
-          merged.set(s.domain, s);
-        }
-      });
-    
-    return Array.from(merged.values()).sort((a, b) => {
-      const aPriority = OTHER_PRIORITY_SUPPLIERS.some(p => p.domain === a.domain);
-      const bPriority = OTHER_PRIORITY_SUPPLIERS.some(p => p.domain === b.domain);
-      if (aPriority && !bPriority) return -1;
-      if (!aPriority && bPriority) return 1;
-      return b.score - a.score;
-    });
-  }, [discoveredSuppliers]);
+const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, discoveredSuppliers), [discoveredSuppliers]);
 
   // 1. START ALL PRIORITY SUPPLIERS IMMEDIATELY ON MOUNT
   useEffect(() => {
@@ -348,7 +322,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     onScanComplete(allOrders);
   };
 
-  const suppliers = allSuppliers();
+  const suppliers = allSuppliers;
   const enabledCount = enabledSuppliers.size;
   const totalOrders = amazonOrders.length + priorityOrders.length + otherOrders.length;
   const isPriorityProcessing = (!isPriorityComplete && priorityJobId);
