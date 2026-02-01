@@ -1,25 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { IngestionEngine } from './views/IngestionEngine';
 import { Dashboard } from './views/Dashboard';
 import { InventoryView } from './views/InventoryView';
 import { CadenceView } from './views/CadenceView';
 import { ComposeEmail } from './views/ComposeEmail';
+import { LoginScreen } from './views/LoginScreen';
 import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
 import { processOrdersToInventory } from './utils/inventoryLogic';
+import { useAutoIngestion } from './hooks/useAutoIngestion';
+import { authApi } from './services/api';
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   
-  // Configuration State - Initialize from LocalStorage if available
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('arda_gemini_key') || '');
-  const [clientId, setClientId] = useState(() => localStorage.getItem('arda_client_id') || '');
-  
-  // Connection State
-  const [gmailToken, setGmailToken] = useState('');
+  // Auth State
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userProfile, setUserProfile] = useState<GoogleUserProfile | null>(null);
-  const [isMockConnected, setIsMockConnected] = useState(false);
-
+  
   // Data State
   const [orders, setOrders] = useState<ExtractedOrder[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -27,10 +24,38 @@ export default function App() {
   // Email Draft State for integrated reordering
   const [emailDraft, setEmailDraft] = useState<{ to: string, subject: string, body: string } | null>(null);
 
+  // Auto-ingestion hook
+  const ingestion = useAutoIngestion(userProfile, (newOrders) => {
+    setOrders(newOrders);
+  });
+
+  // Check auth on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const data = await authApi.getCurrentUser();
+        if (data.user) {
+          setUserProfile({
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            picture: data.user.picture_url,
+          });
+        }
+      } catch {
+        // Not authenticated
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+    checkAuth();
+  }, []);
+
   // Keyboard shortcuts for power users
   useEffect(() => {
+    if (!userProfile) return; // Only when logged in
+    
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if user is typing in an input field
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
@@ -41,15 +66,12 @@ export default function App() {
           setActiveView('dashboard');
           break;
         case '2':
-          setActiveView('ingest');
-          break;
-        case '3':
           setActiveView('inventory');
           break;
-        case '4':
+        case '3':
           setActiveView('analysis');
           break;
-        case '5':
+        case '4':
           setActiveView('compose');
           break;
       }
@@ -57,16 +79,7 @@ export default function App() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // Persistence Effects
-  useEffect(() => {
-    localStorage.setItem('arda_gemini_key', apiKey);
-  }, [apiKey]);
-
-  useEffect(() => {
-    localStorage.setItem('arda_client_id', clientId);
-  }, [clientId]);
+  }, [userProfile]);
 
   // When orders update, recalculate inventory stats
   useEffect(() => {
@@ -75,10 +88,6 @@ export default function App() {
       setInventory(inv);
     }
   }, [orders]);
-
-  const handleOrdersProcessed = (newOrders: ExtractedOrder[]) => {
-    setOrders(newOrders);
-  };
 
   const handleReorder = (item: InventoryItem) => {
     const draft = {
@@ -90,25 +99,40 @@ export default function App() {
     setActiveView('compose');
   };
 
-  // Handler for inline editing inventory items
   const handleUpdateInventoryItem = (id: string, updates: Partial<InventoryItem>) => {
     setInventory(prev => prev.map(item => 
       item.id === id ? { ...item, ...updates } : item
     ));
   };
 
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Ignore logout errors
+    }
+    setUserProfile(null);
+    setOrders([]);
+    setInventory([]);
+  };
+
+  // Show login screen if not authenticated
+  if (isCheckingAuth) {
+    return <LoginScreen onCheckingAuth={true} />;
+  }
+  
+  if (!userProfile) {
+    return <LoginScreen />;
+  }
+
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard orders={orders} inventory={inventory} onReorder={handleReorder} />;
-      case 'ingest':
         return (
-          <IngestionEngine 
-            userProfile={userProfile}
-            setUserProfile={setUserProfile}
-            isMockConnected={isMockConnected}
-            setIsMockConnected={setIsMockConnected}
-            onOrdersProcessed={handleOrdersProcessed} 
+          <Dashboard 
+            orders={orders} 
+            inventory={inventory} 
+            onReorder={handleReorder}
           />
         );
       case 'inventory':
@@ -124,11 +148,11 @@ export default function App() {
       case 'compose':
         return (
           <ComposeEmail 
-            gmailToken={gmailToken} 
-            isMockConnected={isMockConnected} 
+            gmailToken="" 
+            isMockConnected={false} 
             prefill={emailDraft}
             onClearDraft={() => setEmailDraft(null)}
-            apiKey={apiKey}
+            apiKey=""
           />
         );
       default:
@@ -138,7 +162,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-arda-bg-secondary text-arda-text-primary font-sans">
-      <Sidebar activeView={activeView} onChangeView={setActiveView} />
+      <Sidebar 
+        activeView={activeView} 
+        onChangeView={setActiveView}
+        userProfile={userProfile}
+        onLogout={handleLogout}
+        isIngesting={ingestion.isIngesting}
+        ingestionProgress={ingestion.progress}
+      />
       <main className="pl-64">
         <div className="max-w-7xl mx-auto p-8">
           {renderView()}

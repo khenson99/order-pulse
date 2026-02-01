@@ -20,7 +20,8 @@ import {
   Upload,
   Check,
   CreditCard,
-  Clock
+  Clock,
+  LogOut
 } from 'lucide-react';
 
 export const Icons = {
@@ -45,6 +46,8 @@ export const Icons = {
   Upload,
   Check,
   CreditCard,
-  Clock
+  Clock,
+  LogOut
 };
+
 
