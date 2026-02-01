@@ -29,7 +29,11 @@ import {
   GitBranch,
   Box,
   FileText,
-  Activity
+  Activity,
+  Building2,
+  Sparkles,
+  Power,
+  ScanLine
 } from 'lucide-react';
 
 export const Icons = {
@@ -63,7 +67,11 @@ export const Icons = {
   GitBranch,
   Box,
   FileText,
-  Activity
+  Activity,
+  Building2,
+  Sparkles,
+  Power,
+  ScanLine
 };
 
 

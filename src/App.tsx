@@ -7,6 +7,7 @@ import { ComposeEmail } from './views/ComposeEmail';
 import { LoginScreen } from './views/LoginScreen';
 import { PipelineView } from './views/PipelineView';
 import { JourneyView } from './views/JourneyView';
+import { SupplierSetup } from './views/SupplierSetup';
 import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
 import { processOrdersToInventory } from './utils/inventoryLogic';
 import { useAutoIngestion } from './hooks/useAutoIngestion';
@@ -205,6 +206,16 @@ export default function App() {
             prefill={emailDraft}
             onClearDraft={() => setEmailDraft(null)}
             apiKey=""
+          />
+        );
+      case 'setup':
+        return (
+          <SupplierSetup
+            onScanComplete={(newOrders) => {
+              setOrders(prev => [...prev, ...newOrders]);
+              setActiveView('dashboard');
+            }}
+            onSkip={() => setActiveView('dashboard')}
           />
         );
       default:

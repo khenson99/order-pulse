@@ -80,6 +80,33 @@ export const analysisApi = {
     }),
 };
 
+// Discover API
+export interface DiscoveredSupplier {
+  domain: string;
+  displayName: string;
+  emailCount: number;
+  score: number;
+  category: 'industrial' | 'retail' | 'office' | 'food' | 'electronics' | 'unknown';
+  sampleSubjects: string[];
+  isRecommended: boolean;
+}
+
+export const discoverApi = {
+  discoverSuppliers: async (): Promise<{ suppliers: DiscoveredSupplier[] }> => {
+    const response = await fetch(`${API_BASE_URL}/api/discover/discover-suppliers`, {
+      credentials: 'include',
+    });
+    if (!response.ok) throw new Error('Failed to discover suppliers');
+    return response.json();
+  },
+  
+  startJobWithFilter: (supplierDomains?: string[]) =>
+    fetchApi<{ jobId: string; status: string; message: string }>('/api/jobs/start', {
+      method: 'POST',
+      body: JSON.stringify({ supplierDomains }),
+    }),
+};
+
 // Jobs API - Background processing with polling
 export interface JobProgress {
   total: number;
@@ -124,10 +151,23 @@ export interface JobStatus {
 }
 
 export const jobsApi = {
-  startJob: () =>
-    fetchApi<{ jobId: string; status: string; message: string }>('/api/jobs/start', {
+  startJob: async (supplierDomain?: string): Promise<{ jobId: string }> => {
+    const url = supplierDomain 
+      ? `${API_BASE_URL}/api/jobs/start?supplier=${encodeURIComponent(supplierDomain)}`
+      : `${API_BASE_URL}/api/jobs/start`;
+    const response = await fetch(url, {
       method: 'POST',
-    }),
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      const error: ApiError = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.json();
+  },
   
   getStatus: (jobId?: string) =>
     fetchApi<JobStatus>(`/api/jobs/status${jobId ? `?jobId=${jobId}` : ''}`),

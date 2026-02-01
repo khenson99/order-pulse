@@ -7,6 +7,7 @@ export const NAV_ITEMS = [
   { id: 'inventory', label: 'Inventory Cards', icon: 'Package' },
   { id: 'analysis', label: 'Cadence Analysis', icon: 'BarChart3' },
   { id: 'compose', label: 'Send Email', icon: 'Send' },
+  { id: 'setup', label: 'Supplier Setup', icon: 'Settings' },
 ];
 
 export const MOCK_DELAY_MS = 800;
