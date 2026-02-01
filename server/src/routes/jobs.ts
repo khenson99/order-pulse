@@ -227,12 +227,24 @@ ${cleanBody.substring(0, 8000)}
       
       let parsed = JSON.parse(jsonMatch[0]);
       
-      // FALLBACK: If Gemini says not an order but we see clear signals, override
+      // FALLBACK 1: If Gemini says not an order but we see clear signals, override
       if (!parsed.isOrder) {
         const fallbackResult = keywordFallbackDetection(email, cleanBody);
         if (fallbackResult.isOrder) {
           console.log(`   🔄 Keyword fallback OVERRIDE: Gemini said no order but keywords detected`);
           parsed = { ...parsed, ...fallbackResult };
+        }
+      }
+      
+      // FALLBACK 2: If Gemini says it IS an order but returns no items, try extracting ourselves
+      if (parsed.isOrder && (!parsed.items || parsed.items.length === 0)) {
+        console.log(`   ⚠️ Gemini returned order with no items, trying regex extraction...`);
+        const extractedItems = extractItemsFromBody(cleanBody);
+        if (extractedItems.length > 0) {
+          console.log(`   ✅ Regex extraction found ${extractedItems.length} items`);
+          parsed.items = extractedItems;
+          parsed.totalAmount = extractedItems.reduce((sum: number, item: any) => 
+            sum + (item.totalPrice || item.unitPrice || 0), 0);
         }
       }
       
@@ -268,11 +280,90 @@ ${cleanBody.substring(0, 8000)}
   return { emailId: email.id, isOrder: false, items: [], confidence: 0 };
 }
 
+// Extract items from email body using regex patterns
+function extractItemsFromBody(body: string): any[] {
+  const items: any[] = [];
+  const seenNames = new Set<string>();
+  
+  // Pattern 1: "Product Name" followed by price like "$XX.XX"
+  // e.g., "Anker USB-C Cable $12.99"
+  const priceLinePattern = /([A-Z][^$\n]{5,60})\s*\$(\d+\.?\d*)/gi;
+  let match;
+  while ((match = priceLinePattern.exec(body)) !== null) {
+    const name = match[1].trim();
+    const price = parseFloat(match[2]);
+    // Skip if looks like totals or if already seen
+    if (!name.toLowerCase().includes('total') && 
+        !name.toLowerCase().includes('subtotal') && 
+        !name.toLowerCase().includes('shipping') &&
+        !name.toLowerCase().includes('tax') &&
+        !seenNames.has(name.toLowerCase())) {
+      seenNames.add(name.toLowerCase());
+      items.push({
+        name,
+        normalizedName: name.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim(),
+        quantity: 1,
+        unit: 'ea',
+        unitPrice: price,
+        totalPrice: price
+      });
+    }
+  }
+  
+  // Pattern 2: "Item # XXXXX" followed by product name and price
+  // e.g., Costco format: "Item # 1732381 $19.99"
+  const itemNumberPattern = /Item\s*#?\s*:?\s*(\d+)[^\$]*\$(\d+\.?\d*)/gi;
+  while ((match = itemNumberPattern.exec(body)) !== null) {
+    const sku = match[1];
+    const price = parseFloat(match[2]);
+    // Try to get the product name before "Item #"
+    const beforeMatch = body.substring(Math.max(0, match.index - 100), match.index);
+    const lines = beforeMatch.split('\n').filter(l => l.trim().length > 10);
+    const productName = lines[lines.length - 1]?.trim() || `Item ${sku}`;
+    
+    if (!seenNames.has(productName.toLowerCase()) && price > 0) {
+      seenNames.add(productName.toLowerCase());
+      items.push({
+        name: productName,
+        normalizedName: productName.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim(),
+        sku,
+        quantity: 1,
+        unit: 'ea',
+        unitPrice: price,
+        totalPrice: price
+      });
+    }
+  }
+  
+  // Pattern 3: Qty/Quantity followed by a number
+  // e.g., "Qty: 2" or "Quantity 3"
+  const qtyPattern = /([A-Za-z][^|\n]{5,60})\s*(?:Qty|Quantity)\s*:?\s*(\d+)\s*[|\s]*\$?(\d+\.?\d*)?/gi;
+  while ((match = qtyPattern.exec(body)) !== null) {
+    const name = match[1].trim();
+    const qty = parseInt(match[2], 10);
+    const price = match[3] ? parseFloat(match[3]) : 0;
+    
+    if (!seenNames.has(name.toLowerCase()) && qty > 0) {
+      seenNames.add(name.toLowerCase());
+      items.push({
+        name,
+        normalizedName: name.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim(),
+        quantity: qty,
+        unit: 'ea',
+        unitPrice: price || null,
+        totalPrice: price ? price * qty : null
+      });
+    }
+  }
+  
+  return items.slice(0, 20); // Limit to 20 items
+}
+
 // Keyword-based fallback detection when Gemini fails
 function keywordFallbackDetection(
   email: { id: string; subject: string; sender: string },
   body: string
-): { emailId: string; isOrder: boolean; supplier: string | null; items: any[]; confidence: number; orderDate: string } {
+): { emailId: string; isOrder: boolean; supplier: string | null; items: any[]; confidence: number; orderDate: string; totalAmount: number } {
   const combined = `${email.subject} ${email.sender} ${body}`.toLowerCase();
   
   // Strong order signal keywords
@@ -290,7 +381,7 @@ function keywordFallbackDetection(
     'costco': 'Costco',
     'walmart': 'Walmart',
     'target': 'Target',
-    'uline': 'ULine',
+    'uline': 'Uline',
     'grainger': 'Grainger',
     'fastenal': 'Fastenal',
     'mcmaster': 'McMaster-Carr',
@@ -325,15 +416,21 @@ function keywordFallbackDetection(
     }
   }
   
-  // If we have strong signals, return as order
+  // If we have strong signals, try to extract items
   if ((hasOrderKeyword && hasDollarAmount) || (detectedSupplier && hasDollarAmount)) {
+    const extractedItems = extractItemsFromBody(body);
+    const totalAmount = extractedItems.reduce((sum, item) => sum + (item.totalPrice || item.unitPrice || 0), 0);
+    
+    console.log(`   📋 Fallback extracted ${extractedItems.length} items from ${detectedSupplier || 'email'}`);
+    
     return {
       emailId: email.id,
       isOrder: true,
       supplier: detectedSupplier || extractSupplierFromSender(email.sender),
-      items: [], // Items would need deeper parsing
-      confidence: 0.6, // Lower confidence for fallback detection
-      orderDate: new Date().toISOString().split('T')[0]
+      items: extractedItems,
+      confidence: extractedItems.length > 0 ? 0.7 : 0.5,
+      orderDate: new Date().toISOString().split('T')[0],
+      totalAmount
     };
   }
   
@@ -343,7 +440,8 @@ function keywordFallbackDetection(
     supplier: null,
     items: [],
     confidence: 0,
-    orderDate: new Date().toISOString().split('T')[0]
+    orderDate: new Date().toISOString().split('T')[0],
+    totalAmount: 0
   };
 }
 

@@ -1,8 +1,21 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import { google } from 'googleapis';
 import { getValidAccessToken } from './auth.js';
 
 const router = Router();
+
+const discoverLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many discovery requests. Please wait a minute before retrying.',
+    });
+  },
+});
 
 // Health check for this router (no auth required)
 router.get('/health', (req: Request, res: Response) => {
@@ -14,7 +27,7 @@ router.get('/health', (req: Request, res: Response) => {
 });
 
 // Middleware to require authentication
-async function requireAuth(req: Request, res: Response, next: Function) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
@@ -179,7 +192,7 @@ function scoreSupplier(data: SupplierData): number {
 }
 
 // Discover suppliers from email headers
-router.get('/discover-suppliers', requireAuth, async (req: Request, res: Response) => {
+router.get('/discover-suppliers', discoverLimiter, requireAuth, async (req: Request, res: Response) => {
   try {
     console.log(`🔍 Discover request from user: ${req.session.userId}`);
     
