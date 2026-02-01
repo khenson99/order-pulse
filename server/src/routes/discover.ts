@@ -4,6 +4,15 @@ import { getValidAccessToken } from './auth.js';
 
 const router = Router();
 
+// Health check for this router (no auth required)
+router.get('/health', (req: Request, res: Response) => {
+  res.json({ 
+    status: 'ok', 
+    router: 'discover',
+    timestamp: new Date().toISOString() 
+  });
+});
+
 // Middleware to require authentication
 async function requireAuth(req: Request, res: Response, next: Function) {
   if (!req.session.userId) {
