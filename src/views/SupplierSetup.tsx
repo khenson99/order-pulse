@@ -12,6 +12,70 @@ import {
   PRIORITY_SUPPLIER_DOMAINS,
 } from './supplierSetupUtils';
 
+// Lean manufacturing wisdom - displayed while we ironically batch-process emails
+const LEAN_WISDOM = [
+  {
+    quote: "The irony of batch-processing your emails to teach you about single-piece flow is not lost on us.",
+    attribution: "— Arda Engineering, probably",
+  },
+  {
+    quote: "Batch processing: Because nothing says 'efficiency' like making 49 emails wait for the 50th.",
+    attribution: "— Every ERP System Ever",
+  },
+  {
+    quote: "In the time it takes to batch 100 orders, you could have flowed 100 orders. But here we are.",
+    attribution: "— Taiichi Ohno, if he saw this loading screen",
+  },
+  {
+    quote: "A batch in process is inventory in disguise. Speaking of which, we're currently 'inventorying' your inbox.",
+    attribution: "— The Toyota Production System",
+  },
+  {
+    quote: "Single-piece flow means doing one thing at a time. We're doing all your emails at once. Do as we say, not as we code.",
+    attribution: "— Software Engineering Proverb",
+  },
+  {
+    quote: "The best time to stop batching was 20 years ago. The second best time is after this loading screen finishes.",
+    attribution: "— Ancient Lean Proverb",
+  },
+  {
+    quote: "Every email we batch-process right now is a little lesson in why you shouldn't batch-process.",
+    attribution: "— The Arda Paradox",
+  },
+  {
+    quote: "If Ohno saw this loading spinner, he'd probably suggest we process one email, deliver the insight, then get the next one.",
+    attribution: "— Things We Know But Don't Do",
+  },
+  {
+    quote: "WIP limits are great! We're currently ignoring ours. Don't be like us.",
+    attribution: "— Kanban's Disappointed Dad Voice",
+  },
+  {
+    quote: "Small batches reduce lead time. Anyway, here's 500 emails at once.",
+    attribution: "— Arda's Growth Team",
+  },
+  {
+    quote: "The goal of lean is to eliminate waste. This loading screen is technically waste. We're working on it.",
+    attribution: "— Our Product Roadmap, Probably",
+  },
+  {
+    quote: "Flow efficiency > resource efficiency. Unless you're an email parser. Then it's complicated.",
+    attribution: "— DevOps Philosophy",
+  },
+  {
+    quote: "Muda, Mura, Muri: Waste, Unevenness, Overburden. This scan has all three. Your shop floor shouldn't.",
+    attribution: "— TPS for Hypocrites",
+  },
+  {
+    quote: "The seven wastes include 'waiting.' You're welcome.",
+    attribution: "— This Loading Screen",
+  },
+  {
+    quote: "One-piece flow would be: scan email → show insight → repeat. But our PM wanted a 'wow moment.' So here we batch.",
+    attribution: "— Honest Engineering Notes",
+  },
+];
+
 interface SupplierSetupProps {
   onScanComplete: (orders: ExtractedOrder[]) => void;
   onSkip: () => void;
@@ -26,6 +90,9 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [celebratingMilestone, setCelebratingMilestone] = useState<string | null>(null);
   const [achievedMilestones, setAchievedMilestones] = useState<Set<string>>(new Set());
   const [showInsights, setShowInsights] = useState(false);
+  
+  // Lean wisdom rotation
+  const [wisdomIndex, setWisdomIndex] = useState(() => Math.floor(Math.random() * LEAN_WISDOM.length));
 
   // Amazon processing state (starts immediately)
   const [amazonJobId, setAmazonJobId] = useState<string | null>(null);
@@ -153,6 +220,23 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       return () => clearTimeout(timer);
     }
   }, [amazonJobId, priorityJobId]);
+
+  // Rotate lean wisdom while processing (every 8 seconds)
+  const isCurrentlyProcessing = Boolean(
+    (!isAmazonComplete && amazonJobId) || 
+    (!isPriorityComplete && priorityJobId) || 
+    isScanning
+  );
+  
+  useEffect(() => {
+    if (!isCurrentlyProcessing) return;
+    
+    const interval = setInterval(() => {
+      setWisdomIndex(prev => (prev + 1) % LEAN_WISDOM.length);
+    }, 8000);
+    
+    return () => clearInterval(interval);
+  }, [isCurrentlyProcessing]);
 
   // 1. START ALL PRIORITY SUPPLIERS IMMEDIATELY ON MOUNT
   useEffect(() => {
@@ -473,6 +557,28 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
             We're scanning your emails to find orders, track spending, and identify 
             replenishment patterns. This usually takes about 30 seconds.
           </p>
+        </div>
+      )}
+
+      {/* Lean Wisdom - Displayed while batch processing (the irony!) */}
+      {isAnyProcessing && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5 transition-all duration-500">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+              <Icons.Lightbulb className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-900 mb-1">
+                While you wait, a word about batching...
+              </p>
+              <blockquote className="text-amber-800 italic text-sm leading-relaxed">
+                "{LEAN_WISDOM[wisdomIndex].quote}"
+              </blockquote>
+              <p className="text-xs text-amber-600 mt-2 font-medium">
+                {LEAN_WISDOM[wisdomIndex].attribution}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

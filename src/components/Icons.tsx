@@ -37,7 +37,9 @@ import {
   ExternalLink,
   Link,
   ShieldCheck,
-  Lock
+  Lock,
+  Lightbulb,
+  BookOpen,
 } from 'lucide-react';
 
 export const Icons = {
@@ -79,6 +81,8 @@ export const Icons = {
   ExternalLink,
   Link,
   ShieldCheck,
-  Lock
+  Lock,
+  Lightbulb,
+  BookOpen,
 };
 
