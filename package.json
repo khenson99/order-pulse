@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -22,6 +23,11 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",
+    "@testing-library/jest-dom": "^6.2.0",
+    "@testing-library/react": "^15.7.0",
+    "@testing-library/user-event": "^14.6.0",
+    "jsdom": "^23.6.0",
+    "vitest": "^0.34.8",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
