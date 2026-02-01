@@ -57,9 +57,15 @@ RETAILER-SPECIFIC PATTERNS:
 - Look for "Total" at the bottom for totalAmount
 - Order number is in "Order Number XXXXXXXXXX"
 
-**Amazon emails:**
-- Item format: Product name with "Qty: X" and price
-- Order number starts with digits like "111-XXXXXXX-XXXXXXX"
+**Amazon / Amazon Business emails:**
+- Order number format: "111-XXXXXXX-XXXXXXX" (e.g., "111-0528889-9155413")
+- Look for "Order #" followed by the number
+- Item format: Product name, then "Qty: X"
+- "Sold by [seller name]" indicates the seller, NOT part of the item name
+- IMPORTANT: Sections titled "Buy it again", "Recommended for you", "Customers also bought" show OTHER products - DO NOT extract these as order items
+- Shipping confirmations ("We have shipped your items") may not have prices - set unitPrice to null
+- Item names may be truncated with "..." - extract what's visible
+- For shipping date, use "Expected Delivery" date if no order date is shown
 
 **McMaster-Carr emails:**
 - SKUs are alphanumeric like "91255A123"
@@ -117,7 +123,12 @@ Should extract as:
   "totalPrice": 39.98
 }
 
-CRITICAL: Extract ALL items in the order. Do not stop at the first item. Scan the entire email for all products.
+CRITICAL RULES:
+1. Extract ALL items that were ACTUALLY ORDERED. Do not stop at the first item.
+2. DO NOT include items from "Buy it again", "Recommended for you", "Customers also bought", or similar suggestion sections - these are NOT part of the order.
+3. Shipping confirmations ARE orders - extract them even if price is not shown (set unitPrice to null).
+4. Look for "Qty:" or "Quantity" to identify actual order items.
+5. If item names are truncated with "...", extract what's visible.
 
 If this email has NO purchase/transaction information at all, return:
 {
