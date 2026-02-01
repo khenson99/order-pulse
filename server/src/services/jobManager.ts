@@ -134,11 +134,15 @@ export function createJob(
   const allowConcurrent = options?.allowConcurrent || false;
   const jobsForUser = userJobsByType.get(userId) || new Map<string, string>();
 
+  console.log(`🔧 Creating job: type=${jobType}, userId=${userId.substring(0, 8)}...`);
+  console.log(`   Current jobs for user by type:`, Array.from(jobsForUser.entries()).map(([t, id]) => `${t}=${id.substring(0, 8)}`).join(', ') || 'none');
+
   // Cancel any existing running job for this user + type (unless concurrent allowed)
   const existingJobId = jobsForUser.get(jobType);
   if (existingJobId && !allowConcurrent) {
     const existingJob = jobs.get(existingJobId);
     if (existingJob && existingJob.status === 'running') {
+      console.log(`   ⚠️ Cancelling existing ${jobType} job: ${existingJobId.substring(0, 8)}`);
       existingJob.status = 'failed';
       existingJob.error = 'Cancelled - new job started';
       existingJob.updatedAt = new Date();
