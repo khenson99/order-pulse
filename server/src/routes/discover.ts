@@ -172,11 +172,20 @@ function scoreSupplier(data: SupplierData): number {
 // Discover suppliers from email headers
 router.get('/discover-suppliers', requireAuth, async (req: Request, res: Response) => {
   try {
+    console.log(`🔍 Discover request from user: ${req.session.userId}`);
+    
     const accessToken = await getValidAccessToken(req.session.userId!);
     
     if (!accessToken) {
-      return res.status(401).json({ error: 'Token expired, please re-authenticate' });
+      console.error(`❌ No access token for user ${req.session.userId}`);
+      return res.status(401).json({ 
+        error: 'Session expired. Please log out and log back in.',
+        code: 'TOKEN_EXPIRED'
+      });
     }
+    
+    console.log(`✅ Got access token for discover`);
+
 
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: accessToken });

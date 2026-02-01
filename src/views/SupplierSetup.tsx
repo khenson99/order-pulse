@@ -294,12 +294,29 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md mx-auto">
                 <div className="flex items-start gap-3">
                   <Icons.AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <div>
+                  <div className="flex-1">
                     <h4 className="text-sm font-medium text-red-800">Discovery Failed</h4>
                     <p className="text-sm text-red-600 mt-1">{discoverError}</p>
-                    <p className="text-xs text-red-500 mt-2">
-                      Try refreshing the page or re-authenticating with Google.
-                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => {
+                          setDiscoverError(null);
+                          handleDiscoverSuppliers();
+                        }}
+                        className="text-sm bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded transition-colors"
+                      >
+                        Try Again
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Force re-login
+                          window.location.href = '/';
+                        }}
+                        className="text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded transition-colors"
+                      >
+                        Re-login
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

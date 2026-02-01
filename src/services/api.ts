@@ -96,7 +96,11 @@ export const discoverApi = {
     const response = await fetch(`${API_BASE_URL}/api/discover/discover-suppliers`, {
       credentials: 'include',
     });
-    if (!response.ok) throw new Error('Failed to discover suppliers');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMsg = errorData.error || `HTTP ${response.status}`;
+      throw new Error(errorMsg);
+    }
     return response.json();
   },
   
