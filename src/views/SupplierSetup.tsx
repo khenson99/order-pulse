@@ -468,38 +468,53 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
           </div>
         )}
 
-        {/* Amazon Live Results - Show items with images */}
-        {amazonOrders.length > 0 && amazonOrders[0]?.items?.length > 0 && (
+        {/* Amazon Items List - All items from all orders */}
+        {amazonOrders.length > 0 && (
           <div className="border-t border-orange-200 pt-3 mt-3">
-            <div className="text-xs text-arda-text-muted mb-2">Products found:</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-              {amazonOrders[0].items.slice(0, 8).map((item, i) => (
-                <div key={i} className="bg-white border border-green-200 rounded-lg p-2 flex items-center gap-2">
-                  {item.amazonEnriched?.imageUrl && (
-                    <img 
-                      src={item.amazonEnriched.imageUrl} 
-                      alt="" 
-                      className="w-10 h-10 object-contain flex-shrink-0"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs text-arda-text-primary truncate">
-                      {item.amazonEnriched?.itemName || item.name}
-                    </div>
-                    {(item.unitPrice ?? 0) > 0 && (
-                      <div className="text-xs text-green-600 font-medium">
-                        ${(item.unitPrice ?? 0).toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {amazonOrders[0].items.length > 8 && (
-              <div className="text-xs text-arda-text-muted mt-2">
-                + {amazonOrders[0].items.length - 8} more items
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs text-arda-text-muted">
+                {amazonOrders.reduce((sum, o) => sum + o.items.length, 0)} items from {amazonOrders.length} orders
               </div>
-            )}
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {amazonOrders.flatMap((order, orderIdx) => 
+                  order.items.map((item, itemIdx) => (
+                    <div 
+                      key={`${orderIdx}-${itemIdx}`} 
+                      className="bg-white border border-green-200 rounded-lg p-2 flex items-center gap-3"
+                    >
+                      {item.amazonEnriched?.imageUrl ? (
+                        <img 
+                          src={item.amazonEnriched.imageUrl} 
+                          alt="" 
+                          className="w-12 h-12 object-contain flex-shrink-0 rounded"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center flex-shrink-0">
+                          <Icons.Package className="w-6 h-6 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-arda-text-primary line-clamp-2">
+                          {item.amazonEnriched?.itemName || item.name}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {(item.unitPrice ?? 0) > 0 && (
+                            <span className="text-sm text-green-600 font-semibold">
+                              ${(item.unitPrice ?? 0).toFixed(2)}
+                            </span>
+                          )}
+                          <span className="text-xs text-arda-text-muted">
+                            {order.orderDate}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -601,21 +616,49 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
           </div>
         )}
 
-        {/* Priority Orders Results */}
+        {/* Priority Items List - All items from all orders */}
         {priorityOrders.length > 0 && (
           <div className="border-t border-blue-200 pt-3 mt-3">
-            <div className="text-xs text-arda-text-muted mb-2">Orders found:</div>
-            <div className="flex flex-wrap gap-2">
-              {priorityOrders.slice(0, 6).map((order, i) => (
-                <div key={order.id || i} className="text-xs bg-white border border-green-200 text-arda-text-secondary px-2 py-1 rounded">
-                  {order.supplier} • {order.items.length} items
-                </div>
-              ))}
-              {priorityOrders.length > 6 && (
-                <div className="text-xs text-arda-text-muted">
-                  + {priorityOrders.length - 6} more orders
-                </div>
-              )}
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs text-arda-text-muted">
+                {priorityOrders.reduce((sum, o) => sum + o.items.length, 0)} items from {priorityOrders.length} orders
+              </div>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {priorityOrders.flatMap((order, orderIdx) => 
+                  order.items.map((item, itemIdx) => (
+                    <div 
+                      key={`${orderIdx}-${itemIdx}`} 
+                      className="bg-white border border-blue-200 rounded-lg p-2 flex items-center gap-3"
+                    >
+                      <div className="w-10 h-10 bg-blue-50 rounded flex items-center justify-center flex-shrink-0">
+                        <Icons.Package className="w-5 h-5 text-blue-500" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-arda-text-primary line-clamp-2">
+                          {item.name}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {(item.unitPrice ?? 0) > 0 && (
+                            <span className="text-sm text-blue-600 font-semibold">
+                              ${(item.unitPrice ?? 0).toFixed(2)}
+                            </span>
+                          )}
+                          {item.quantity > 1 && (
+                            <span className="text-xs text-arda-text-muted">
+                              x{item.quantity}
+                            </span>
+                          )}
+                          <span className="text-xs text-arda-text-muted">
+                            {order.supplier}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -718,13 +761,41 @@ const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, disc
             
             {otherOrders.length > 0 && (
               <div className="border-t border-blue-200 mt-4 pt-4">
-                <div className="text-xs text-arda-text-muted mb-2">Orders found:</div>
-                <div className="flex flex-wrap gap-2">
-                  {otherOrders.slice(-6).reverse().map((order, i) => (
-                    <div key={order.id || i} className="text-xs bg-white border border-green-200 text-arda-text-secondary px-2 py-1 rounded">
-                      {order.supplier} • {order.items.length} items
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-arda-text-muted">
+                    {otherOrders.reduce((sum, o) => sum + o.items.length, 0)} items from {otherOrders.length} orders
+                  </div>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {otherOrders.flatMap((order, orderIdx) => 
+                      order.items.map((item, itemIdx) => (
+                        <div 
+                          key={`${orderIdx}-${itemIdx}`} 
+                          className="bg-white border border-green-200 rounded-lg p-2 flex items-center gap-3"
+                        >
+                          <div className="w-8 h-8 bg-green-50 rounded flex items-center justify-center flex-shrink-0">
+                            <Icons.Package className="w-4 h-4 text-green-500" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm text-arda-text-primary truncate">
+                              {item.name}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {(item.unitPrice ?? 0) > 0 && (
+                                <span className="text-xs text-green-600 font-semibold">
+                                  ${(item.unitPrice ?? 0).toFixed(2)}
+                                </span>
+                              )}
+                              <span className="text-xs text-arda-text-muted">
+                                {order.supplier}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             )}
