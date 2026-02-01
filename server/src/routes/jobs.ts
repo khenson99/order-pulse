@@ -362,7 +362,8 @@ function extractSupplierFromSender(sender: string): string {
 async function processEmailsInBackground(
   jobId: string,
   userId: string,
-  accessToken: string
+  accessToken: string,
+  supplierDomains?: string[]
 ) {
   const job = jobManager.getJob(jobId);
   if (!job) return;
@@ -383,7 +384,15 @@ async function processEmailsInBackground(
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const afterDate = sixMonthsAgo.toISOString().split('T')[0].replace(/-/g, '/');
 
-    const query = `subject:(order OR invoice OR receipt OR confirmation OR shipment OR purchase OR payment) after:${afterDate}`;
+    // Build query with optional supplier filter
+    let query = `subject:(order OR invoice OR receipt OR confirmation OR shipment OR purchase OR payment) after:${afterDate}`;
+    
+    // If supplier domains are specified, filter to only those suppliers
+    if (supplierDomains && supplierDomains.length > 0) {
+      const fromClause = supplierDomains.map(d => `from:${d}`).join(' OR ');
+      query = `(${fromClause}) ${query}`;
+      jobManager.addJobLog(jobId, `🔍 Filtering to ${supplierDomains.length} suppliers: ${supplierDomains.slice(0, 5).join(', ')}${supplierDomains.length > 5 ? '...' : ''}`);
+    }
     
     const listResponse = await gmail.users.messages.list({
       userId: 'me',
@@ -609,18 +618,33 @@ router.post('/start', requireAuth, async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Token expired, please re-authenticate' });
     }
 
+    // Get supplier domains from request body (optional)
+    const { supplierDomains } = req.body as { supplierDomains?: string[] };
+    
+    // Validate supplier domains if provided
+    const validDomains = supplierDomains?.filter(d => 
+      typeof d === 'string' && d.length > 0 && d.includes('.')
+    );
+
     // Create job
     const job = jobManager.createJob(userId);
-    jobManager.addJobLog(job.id, '🚀 Job created, starting processing...');
+    
+    if (validDomains && validDomains.length > 0) {
+      jobManager.addJobLog(job.id, `🚀 Job created for ${validDomains.length} selected suppliers`);
+    } else {
+      jobManager.addJobLog(job.id, '🚀 Job created, processing all suppliers...');
+    }
 
     // Start processing in background (don't await)
-    processEmailsInBackground(job.id, userId, accessToken);
+    processEmailsInBackground(job.id, userId, accessToken, validDomains);
 
     // Return immediately with job ID
     res.json({ 
       jobId: job.id,
       status: 'started',
-      message: 'Processing started in background'
+      message: validDomains?.length 
+        ? `Processing ${validDomains.length} suppliers in background`
+        : 'Processing all suppliers in background'
     });
   } catch (error: any) {
     console.error('Failed to start job:', error);

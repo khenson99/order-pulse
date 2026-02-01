@@ -155,16 +155,14 @@ export interface JobStatus {
 }
 
 export const jobsApi = {
-  startJob: async (supplierDomain?: string): Promise<{ jobId: string }> => {
-    const url = supplierDomain 
-      ? `${API_BASE_URL}/api/jobs/start?supplier=${encodeURIComponent(supplierDomain)}`
-      : `${API_BASE_URL}/api/jobs/start`;
-    const response = await fetch(url, {
+  startJob: async (supplierDomains?: string[]): Promise<{ jobId: string }> => {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/start`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ supplierDomains }),
     });
     if (!response.ok) {
       const error: ApiError = await response.json().catch(() => ({ error: 'Request failed' }));

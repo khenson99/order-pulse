@@ -205,8 +205,9 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     setJobStatus(null);
     
     try {
-      // Start the job - the backend will filter by selected suppliers
-      const response = await jobsApi.startJob();
+      // Start the job with the selected supplier domains
+      console.log('Starting scan for suppliers:', suppliersToScan);
+      const response = await jobsApi.startJob(suppliersToScan);
       setCurrentJobId(response.jobId);
     } catch (error: any) {
       console.error('Failed to start scan:', error);
