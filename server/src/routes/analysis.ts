@@ -75,9 +75,28 @@ RETAILER-SPECIFIC PATTERNS:
 - Usually have clear part numbers/SKUs
 - Often show unit price and extended price separately
 
+**SaaS / Subscription receipts (Stripe, PayPal, digital services):**
+- Receipts from companies like "Lovable Labs", "GetEmails", "Vercel", "Heroku", "AWS", etc.
+- The subject line often says "Your receipt from [Company] #[number]" - the NUMBER is the order number, NOT the item name
+- Look INSIDE the email body for the actual product/service name (e.g., "Pro Plan", "Monthly Subscription", "API Credits", "Usage-based billing")
+- The company name in "Your receipt from [Company]" is the SUPPLIER
+- If there's a line like "Amount: $X.XX" or "Total: $X.XX", that's the total
+- For subscription services, the item name might be: plan name, subscription tier, credits, or usage description
+- If no specific product is listed, use the company name + "Subscription" or "Service" as the item name (e.g., "Lovable Labs Subscription")
+
+CRITICAL - DO NOT USE EMAIL SUBJECT AS ITEM NAME:
+- "Your receipt from Lovable Labs Incorporated #2091-4979" → supplier: "Lovable Labs", orderNumber: "2091-4979", then find actual item in body
+- "Your receipt from GetEmails, LLC #2486-6774" → supplier: "GetEmails", orderNumber: "2486-6774", then find actual item in body
+- The receipt header/subject is NOT the product name - look for the product/service description in the body
+
 ITEM EXTRACTION RULES:
 
-1. For "name": Extract the FULL product name as shown (e.g., "Mr. Clean Magic Eraser, Extra Durable, 15-count")
+1. For "name": Extract the FULL product name as shown in the email BODY (e.g., "Mr. Clean Magic Eraser, Extra Durable, 15-count")
+   - NEVER use the email subject line as the item name
+   - NEVER use receipt headers like "Your receipt from [Company] #[number]" as the item name
+   - Look for actual product descriptions, plan names, or service descriptions
+   - For SaaS: "Pro Plan", "Monthly Subscription", "1000 API Credits", "Standard Tier"
+   - If truly no product name in body, use "[Company] Service" or "[Company] Subscription"
 
 2. For "normalizedName": Create a simplified version for matching:
    - Convert to lowercase
