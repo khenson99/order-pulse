@@ -64,6 +64,7 @@ export interface Job {
 // In-memory job storage (would be Redis/DB in production)
 const jobs = new Map<string, Job>();
 const userJobs = new Map<string, string>(); // userId -> jobId (latest)
+const jobPersistenceCache = new Map<string, string>();
 
 const JOB_KEY_PREFIX = 'orderpulse:job:';
 const USER_JOB_KEY = 'orderpulse:user';
@@ -90,8 +91,14 @@ function deserializeJob(payload: string): Job {
 }
 
 function persistJob(job: Job) {
+  const payload = JSON.stringify(serializeJob(job));
+  if (jobPersistenceCache.get(job.id) === payload) {
+    return;
+  }
+  jobPersistenceCache.set(job.id, payload);
+
   if (!redisClient) return;
-  redisClient.set(jobKey(job.id), JSON.stringify(serializeJob(job))).catch((err: Error) => {
+  redisClient.set(jobKey(job.id), payload).catch((err: Error) => {
     console.error('Failed to persist job to Redis:', err);
   });
 }

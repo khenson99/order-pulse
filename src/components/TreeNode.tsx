@@ -83,7 +83,7 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = ({
   focusedNodeId,
   onFocusChange,
 }) => {
-  const hasChildren = node.children?.length ? node.children.length > 0 : false;
+  const hasChildren = (node.children?.length ?? 0) > 0;
   const isExpanded = expandedNodes?.has(node.id) ?? (node.isExpanded ?? level < 2);
   const isFocused = focusedNodeId === node.id;
   const isNew = node.isNew ?? false;
@@ -277,4 +277,33 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = ({
   );
 };
 
+function getIsExpanded(
+  node: JourneyNode,
+  expandedNodes?: Set<string>,
+  level = 0,
+): boolean {
+  return expandedNodes?.has(node.id) ?? (node.isExpanded ?? level < 2);
+}
+
+function areTreeNodePropsEqual(prev: TreeNodeProps, next: TreeNodeProps): boolean {
+  if (prev.node.id !== next.node.id) return false;
+  if (prev.level !== next.level) return false;
+  if (prev.node.label !== next.node.label) return false;
+  if (prev.node.subtitle !== next.node.subtitle) return false;
+  if (prev.node.type !== next.node.type) return false;
+  if (prev.node.isNew !== next.node.isNew) return false;
+  if (prev.node.data !== next.node.data) return false;
+  if (getIsExpanded(prev.node, prev.expandedNodes, prev.level) !== getIsExpanded(next.node, next.expandedNodes, next.level)) {
+    return false;
+  }
+  if (prev.focusedNodeId !== next.focusedNodeId) return false;
+  if (prev.velocityProfiles !== next.velocityProfiles) return false;
+  if (prev.onNodeClick !== next.onNodeClick) return false;
+  if (prev.onExpandToggle !== next.onExpandToggle) return false;
+  if (prev.onFocusChange !== next.onFocusChange) return false;
+  return true;
+}
+
+const memoizedTreeNode = memo(TreeNodeComponent, areTreeNodePropsEqual);
+export const TreeNode = memoizedTreeNode;
 export default TreeNode;
