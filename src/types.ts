@@ -115,15 +115,30 @@ export interface VelocityNodeData {
   nextPredictedOrder?: string;
 }
 
+// Email type for tracking order lifecycle
+export type OrderEmailType = 'order' | 'shipped' | 'delivered' | 'unknown';
+
+export interface OrderEmail {
+  emailId: string;
+  emailType: OrderEmailType;
+  date: string;
+  subject: string;
+}
+
 export interface ExtractedOrder {
   id: string;
   originalEmailId: string;
   supplier: string;
   orderNumber?: string;  // Order/confirmation number from the email
   orderDate: string; // ISO String
+  shippedDate?: string; // When order was shipped
+  deliveredDate?: string; // When order was delivered
+  leadTimeDays?: number; // Days from order to delivery
   totalAmount?: number;
   items: LineItem[];
   confidence: number;
+  // Track all related emails for this order
+  relatedEmails?: OrderEmail[];
 }
 
 export type ItemColor = 'Red' | 'Orange' | 'Yellow' | 'Green' | 'Blue' | 'Gray' | 'Pink' | 'Purple';

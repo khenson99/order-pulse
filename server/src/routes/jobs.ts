@@ -13,6 +13,15 @@ import {
   extractAsinsFromEmail, 
   getAmazonItemDetails 
 } from '../services/amazon.js';
+import {
+  consolidateOrders,
+  detectEmailType,
+  extractOrderNumber,
+  normalizeItemName,
+  logConsolidationSummary,
+  RawOrderData,
+  ConsolidatedOrder,
+} from '../utils/orderConsolidation.js';
 
 const router = Router();
 
@@ -769,9 +778,10 @@ async function processEmailsInBackground(
     // Initialize Gemini model upfront
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    // STEP 3: Process vendor by vendor
+    // STEP 3: Process vendor by vendor and collect raw orders for consolidation
     let totalProcessed = 0;
     const totalEmails = emailInfos.length;
+    const rawOrders: RawOrderData[] = []; // Collect for consolidation
     
     for (const [vendorDomain, vendorEmails] of sortedVendors) {
       const vendorName = vendorDomain.split('.')[0].charAt(0).toUpperCase() + vendorDomain.split('.')[0].slice(1);
@@ -844,30 +854,40 @@ async function processEmailsInBackground(
           // Analyze with AI
           const result = await analyzeEmailWithRetry(model, email);
           
-          // Process result and LOG ITEMS FOUND
+          // Collect raw order data for consolidation (instead of adding immediately)
           if (result.isOrder && result.items?.length > 0) {
-            const order: ProcessedOrder = {
+            const rawOrder: RawOrderData = {
               id: result.emailId || email.id,
+              emailId: email.id,
+              subject: email.subject,
               supplier: result.supplier || vendorName,
+              orderNumber: extractOrderNumber(email.subject, email.body),
               orderDate: normalizeOrderDate(result.orderDate, email.date),
               totalAmount: result.totalAmount || 0,
               items: result.items.map((item: any, idx: number) => ({
                 id: `${email.id}-${idx}`,
                 name: item.name || 'Unknown Item',
+                normalizedName: normalizeItemName(item.name || ''),
                 quantity: item.quantity || 1,
                 unit: item.unit || 'ea',
                 unitPrice: item.unitPrice || 0,
+                asin: item.asin,
+                sku: item.partNumber || item.sku,
               })),
               confidence: result.confidence || 0.8,
             };
             
-            jobManager.addJobOrder(jobId, order);
+            rawOrders.push(rawOrder);
+            
+            // Log email type for visibility
+            const emailType = detectEmailType(email.subject);
+            const typeEmoji = emailType === 'order' ? '📦' : emailType === 'shipped' ? '🚚' : emailType === 'delivered' ? '✅' : '📧';
             
             // Log each item found for real-time visibility
             for (const item of result.items.slice(0, 3)) {
               const price = item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '';
               const qty = item.quantity > 1 ? `x${item.quantity}` : '';
-              jobManager.addJobLog(jobId, `   📦 ${item.name?.substring(0, 50) || 'Item'} ${qty} ${price}`);
+              jobManager.addJobLog(jobId, `   ${typeEmoji} ${item.name?.substring(0, 50) || 'Item'} ${qty} ${price}`);
             }
             if (result.items.length > 3) {
               jobManager.addJobLog(jobId, `   ... and ${result.items.length - 3} more items`);
@@ -895,15 +915,59 @@ async function processEmailsInBackground(
       jobManager.addJobLog(jobId, `   ✓ ${vendorName} complete (${ordersFound} total orders)`);
     }
 
+    // STEP 4: Consolidate orders (deduplicate and calculate lead times)
+    jobManager.updateJobProgress(jobId, { 
+      currentTask: 'Consolidating orders and calculating lead times...' 
+    });
+    jobManager.addJobLog(jobId, `\n📊 Consolidating ${rawOrders.length} raw orders...`);
+    
+    const consolidatedOrders = consolidateOrders(rawOrders);
+    logConsolidationSummary(rawOrders.length, consolidatedOrders);
+    
+    // Log consolidation results
+    const duplicatesRemoved = rawOrders.length - consolidatedOrders.length;
+    if (duplicatesRemoved > 0) {
+      jobManager.addJobLog(jobId, `   🔄 Removed ${duplicatesRemoved} duplicate/related emails`);
+    }
+    
+    const ordersWithLeadTime = consolidatedOrders.filter(o => o.leadTimeDays !== undefined);
+    if (ordersWithLeadTime.length > 0) {
+      const avgLeadTime = ordersWithLeadTime.reduce((sum, o) => sum + (o.leadTimeDays || 0), 0) / ordersWithLeadTime.length;
+      jobManager.addJobLog(jobId, `   ⏱️ ${ordersWithLeadTime.length} orders with lead time data (avg ${avgLeadTime.toFixed(1)} days)`);
+    }
+    
+    // Add consolidated orders to job
+    for (const consolidated of consolidatedOrders) {
+      const order: ProcessedOrder = {
+        id: consolidated.id,
+        supplier: consolidated.supplier,
+        orderDate: consolidated.orderDate,
+        totalAmount: consolidated.totalAmount || 0,
+        items: consolidated.items.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice || 0,
+          asin: item.asin,
+          amazonEnriched: item.amazonEnriched,
+        })),
+        confidence: consolidated.confidence,
+      };
+      
+      jobManager.addJobOrder(jobId, order);
+    }
+
     // Complete
     const finalJob = jobManager.getJob(jobId);
     jobManager.updateJob(jobId, { status: 'completed' });
     jobManager.setJobCurrentEmail(jobId, null);
     jobManager.updateJobProgress(jobId, { 
       processed: totalProcessed,
+      success: consolidatedOrders.length,
       currentTask: '✅ Complete' 
     });
-    jobManager.addJobLog(jobId, `🎉 Complete: ${finalJob?.progress.success || 0} orders from ${totalProcessed} emails across ${sortedVendors.length} vendors`);
+    jobManager.addJobLog(jobId, `🎉 Complete: ${consolidatedOrders.length} unique orders from ${totalProcessed} emails across ${sortedVendors.length} vendors`);
 
   } catch (error: any) {
     console.error('Background job error:', error);
@@ -1084,12 +1148,13 @@ async function processAmazonEmailsInBackground(
       currentTask: 'Extracting ASINs from Amazon emails...' 
     });
 
-    // Each email with ASINs becomes an order
+    // Each email with ASINs becomes a raw order for consolidation
     // Structure: { emailId, subject, date, items[] }
     interface EmailOrder {
       emailId: string;
       subject: string;
       date: string;
+      orderNumber?: string;
       items: { asin: string; quantity: number }[];
     }
     const emailOrders: EmailOrder[] = [];
@@ -1170,15 +1235,23 @@ async function processAmazonEmailsInBackground(
             quantity: quantities[index] || 1,
           }));
           
-          // Each email with ASINs = one order
+          // Extract order number for consolidation
+          const orderNumber = extractOrderNumber(subject, body);
+          
+          // Detect email type for logging
+          const emailType = detectEmailType(subject);
+          const typeEmoji = emailType === 'order' ? '📦' : emailType === 'shipped' ? '🚚' : emailType === 'delivered' ? '✅' : '📧';
+          
+          // Each email with ASINs = one raw order (will be consolidated later)
           emailOrders.push({
             emailId: msg.id!,
             subject,
             date,
+            orderNumber,
             items,
           });
           items.forEach(item => allAsins.add(item.asin));
-          jobManager.addJobLog(jobId, `📦 Found ${items.length} items in: ${subject.substring(0, 50)}...`);
+          jobManager.addJobLog(jobId, `${typeEmoji} Found ${items.length} items in: ${subject.substring(0, 50)}...`);
         }
 
         // Update progress
@@ -1192,7 +1265,7 @@ async function processAmazonEmailsInBackground(
       }
     }
 
-      jobManager.addJobLog(jobId, `🎯 Found ${emailOrders.length} orders with ${allAsins.size} unique items`);
+      jobManager.addJobLog(jobId, `🎯 Found ${emailOrders.length} emails with ${allAsins.size} unique items`);
 
     // Now enrich all unique ASINs with Amazon Product Advertising API
     if (allAsins.size > 0) {
@@ -1219,10 +1292,11 @@ async function processAmazonEmailsInBackground(
       const humanizedNames = await humanizeProductNames(productNamesToHumanize);
       jobManager.addJobLog(jobId, `✅ Humanized ${humanizedNames.size} verbose product names`);
 
-      // Create one order per email
-      let totalItems = 0;
+      // Build raw orders for consolidation
+      const rawAmazonOrders: RawOrderData[] = [];
+      
       for (const emailOrder of emailOrders) {
-        const items: ProcessedOrder['items'] = [];
+        const items: RawOrderData['items'] = [];
         
         for (const orderItem of emailOrder.items) {
           const data = enrichedData.get(orderItem.asin);
@@ -1232,6 +1306,7 @@ async function processAmazonEmailsInBackground(
           items.push({
             id: `amazon-item-${orderItem.asin}-${emailOrder.emailId}`,
             name: humanizedName || originalName || `Amazon Product ${orderItem.asin}`,
+            normalizedName: normalizeItemName(humanizedName || originalName || orderItem.asin),
             quantity: orderItem.quantity || 1,
             unit: 'each',
             unitPrice: parseFloat(data?.Price?.replace(/[^0-9.]/g, '') || '0'),
@@ -1259,25 +1334,66 @@ async function processAmazonEmailsInBackground(
           }
         } catch {}
 
-        // Create order for this email
-        const order: ProcessedOrder = {
+        // Create raw order for consolidation
+        rawAmazonOrders.push({
           id: `amazon-${emailOrder.emailId}`,
+          emailId: emailOrder.emailId,
+          subject: emailOrder.subject,
           supplier: 'Amazon',
+          orderNumber: emailOrder.orderNumber,
           orderDate,
           totalAmount: items.reduce((sum, item) => sum + (item.unitPrice || 0) * (item.quantity || 1), 0),
           items,
-          confidence: 1.0, // Direct from API
+          confidence: 1.0,
+        });
+      }
+      
+      // Consolidate Amazon orders (remove duplicates, track shipping/delivery)
+      jobManager.addJobLog(jobId, `\n📊 Consolidating ${rawAmazonOrders.length} Amazon emails...`);
+      const consolidatedAmazonOrders = consolidateOrders(rawAmazonOrders);
+      logConsolidationSummary(rawAmazonOrders.length, consolidatedAmazonOrders);
+      
+      const duplicatesRemoved = rawAmazonOrders.length - consolidatedAmazonOrders.length;
+      if (duplicatesRemoved > 0) {
+        jobManager.addJobLog(jobId, `   🔄 Removed ${duplicatesRemoved} duplicate/shipping/delivery emails`);
+      }
+      
+      const ordersWithLeadTime = consolidatedAmazonOrders.filter(o => o.leadTimeDays !== undefined);
+      if (ordersWithLeadTime.length > 0) {
+        const avgLeadTime = ordersWithLeadTime.reduce((sum, o) => sum + (o.leadTimeDays || 0), 0) / ordersWithLeadTime.length;
+        jobManager.addJobLog(jobId, `   ⏱️ ${ordersWithLeadTime.length} orders with lead time data (avg ${avgLeadTime.toFixed(1)} days)`);
+      }
+      
+      // Add consolidated orders to job
+      let totalItems = 0;
+      for (const consolidated of consolidatedAmazonOrders) {
+        const order: ProcessedOrder = {
+          id: consolidated.id,
+          supplier: 'Amazon',
+          orderDate: consolidated.orderDate,
+          totalAmount: consolidated.totalAmount || 0,
+          items: consolidated.items.map(item => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice || 0,
+            asin: item.asin,
+            amazonEnriched: item.amazonEnriched,
+          })),
+          confidence: consolidated.confidence,
         };
 
         jobManager.addJobOrder(jobId, order);
-        totalItems += items.length;
+        totalItems += consolidated.items.length;
         
-        // Log order summary
-        jobManager.addJobLog(jobId, `📋 Order ${orderDate}: ${items.length} item${items.length > 1 ? 's' : ''} - $${order.totalAmount.toFixed(2)}`);
+        // Log order with lead time if available
+        const leadTimeInfo = consolidated.leadTimeDays !== undefined ? ` (${consolidated.leadTimeDays}d lead time)` : '';
+        jobManager.addJobLog(jobId, `📋 Order ${consolidated.orderDate}: ${consolidated.items.length} item${consolidated.items.length > 1 ? 's' : ''} - $${(consolidated.totalAmount || 0).toFixed(2)}${leadTimeInfo}`);
       }
 
       jobManager.updateJobProgress(jobId, { success: totalItems });
-      jobManager.addJobLog(jobId, `🎉 Amazon complete: ${emailOrders.length} orders, ${totalItems} items`);
+      jobManager.addJobLog(jobId, `🎉 Amazon complete: ${consolidatedAmazonOrders.length} unique orders, ${totalItems} items`);
     } else {
       jobManager.addJobLog(jobId, '⚠️ No ASINs found in Amazon emails');
     }

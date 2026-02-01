@@ -43,6 +43,9 @@ export interface ProcessedOrder {
   id: string;
   supplier: string;
   orderDate: string;
+  shippedDate?: string;
+  deliveredDate?: string;
+  leadTimeDays?: number;
   totalAmount: number;
   items: ProcessedOrderItem[];
   confidence: number;
