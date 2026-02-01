@@ -394,22 +394,60 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           </div>
         )}
 
-        {/* Amazon Live Results */}
-        {amazonOrders.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {amazonOrders.slice(-5).reverse().map((order, i) => (
-              <div key={order.id || i} className="text-xs bg-white border border-green-200 text-arda-text-secondary px-2 py-1 rounded flex items-center gap-1">
-                <span className="text-green-500">✓</span>
-                {order.items.length} items
-                {order.items[0]?.amazonEnriched?.imageUrl && (
-                  <img 
-                    src={order.items[0].amazonEnriched.imageUrl} 
-                    alt="" 
-                    className="w-4 h-4 object-contain ml-1"
-                  />
-                )}
+        {/* Amazon Activity Logs */}
+        {amazonStatus?.logs && amazonStatus.logs.length > 0 && !isAmazonComplete && (
+          <div className="max-h-32 overflow-y-auto mb-3">
+            <div className="space-y-0.5 font-mono text-xs">
+              {amazonStatus.logs.slice(-8).reverse().map((log, i) => (
+                <div 
+                  key={i} 
+                  className={`py-0.5 ${
+                    log.includes('🛍️') ? 'text-green-600' : 
+                    log.includes('📦') ? 'text-orange-600' :
+                    log.includes('✅') ? 'text-green-600' :
+                    log.includes('⚠️') ? 'text-yellow-600' :
+                    'text-arda-text-muted'
+                  }`}
+                >
+                  {log}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Amazon Live Results - Show items with images */}
+        {amazonOrders.length > 0 && amazonOrders[0]?.items?.length > 0 && (
+          <div className="border-t border-orange-200 pt-3 mt-3">
+            <div className="text-xs text-arda-text-muted mb-2">Products found:</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {amazonOrders[0].items.slice(0, 8).map((item, i) => (
+                <div key={i} className="bg-white border border-green-200 rounded-lg p-2 flex items-center gap-2">
+                  {item.amazonEnriched?.imageUrl && (
+                    <img 
+                      src={item.amazonEnriched.imageUrl} 
+                      alt="" 
+                      className="w-10 h-10 object-contain flex-shrink-0"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-arda-text-primary truncate">
+                      {item.amazonEnriched?.itemName || item.name}
+                    </div>
+                    {(item.unitPrice ?? 0) > 0 && (
+                      <div className="text-xs text-green-600 font-medium">
+                        ${(item.unitPrice ?? 0).toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {amazonOrders[0].items.length > 8 && (
+              <div className="text-xs text-arda-text-muted mt-2">
+                + {amazonOrders[0].items.length - 8} more items
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>
@@ -485,12 +523,36 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
               </>
             )}
 
+            {/* Show live logs with items being found */}
+            {jobStatus?.logs && jobStatus.logs.length > 0 && (
+              <div className="border-t border-blue-200 mt-4 pt-4 max-h-48 overflow-y-auto">
+                <div className="text-xs text-arda-text-muted mb-2">Activity:</div>
+                <div className="space-y-1 font-mono text-xs">
+                  {jobStatus.logs.slice(-15).reverse().map((log, i) => (
+                    <div 
+                      key={i} 
+                      className={`py-0.5 ${
+                        log.includes('📦') ? 'text-green-600 pl-4' : 
+                        log.includes('🏢') ? 'text-blue-600 font-medium' :
+                        log.includes('✓') ? 'text-green-600' :
+                        log.includes('⚠️') ? 'text-yellow-600' :
+                        log.includes('❌') ? 'text-red-600' :
+                        'text-arda-text-muted'
+                      }`}
+                    >
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {otherOrders.length > 0 && (
               <div className="border-t border-blue-200 mt-4 pt-4">
-                <div className="text-xs text-arda-text-muted mb-2">Recent:</div>
+                <div className="text-xs text-arda-text-muted mb-2">Orders found:</div>
                 <div className="flex flex-wrap gap-2">
                   {otherOrders.slice(-6).reverse().map((order, i) => (
-                    <div key={order.id || i} className="text-xs bg-white border border-blue-200 text-arda-text-secondary px-2 py-1 rounded">
+                    <div key={order.id || i} className="text-xs bg-white border border-green-200 text-arda-text-secondary px-2 py-1 rounded">
                       {order.supplier} • {order.items.length} items
                     </div>
                   ))}
