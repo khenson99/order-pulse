@@ -1,5 +1,8 @@
 import { InventoryItem, ExtractedOrder } from '../types';
 import { Icons } from '../components/Icons';
+import { buildVelocityProfiles } from '../utils/inventoryLogic';
+import { VelocityBadge } from '../components/VelocityBadge';
+import { ReorderSparkline } from '../components/ReorderSparkline';
 
 interface DashboardProps {
   orders: ExtractedOrder[];
@@ -10,6 +13,10 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ orders, inventory, onReorder }) => {
   const totalSpend = orders.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
   const activeSuppliers = new Set(inventory.map(i => i.supplier)).size;
+  
+  // Build velocity profiles
+  const velocityProfiles = buildVelocityProfiles(orders);
+  const profilesArray = Array.from(velocityProfiles.values());
   
   // Analytics calculations
   const avgCadence = inventory.length > 0
@@ -23,6 +30,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ orders, inventory, onReord
     : null;
 
   const totalLineItems = orders.reduce((sum, o) => sum + o.items.length, 0);
+  
+  // Top Movers: Fastest by burn rate
+  const topBurnRate = profilesArray
+    .filter(p => p.dailyBurnRate > 0)
+    .sort((a, b) => b.dailyBurnRate - a.dailyBurnRate)
+    .slice(0, 3);
+  
+  // Top Movers: Shortest cadence (most frequently ordered)
+  const topCadence = profilesArray
+    .filter(p => p.averageCadenceDays > 0 && p.orderCount >= 2)
+    .sort((a, b) => a.averageCadenceDays - b.averageCadenceDays)
+    .slice(0, 3);
+  
+  // Next Orders: Items predicted to need reordering in next 7 days
+  const today = new Date();
+  const sevenDaysFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const nextOrders = profilesArray
+    .filter(p => {
+      if (!p.nextPredictedOrder) return false;
+      const predictedDate = new Date(p.nextPredictedOrder);
+      return predictedDate >= today && predictedDate <= sevenDaysFromNow;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.nextPredictedOrder!).getTime();
+      const dateB = new Date(b.nextPredictedOrder!).getTime();
+      return dateA - dateB;
+    });
+  
+  const getUrgencyColor = (dateStr: string): { text: string; bg: string } => {
+    const date = new Date(dateStr);
+    const daysUntil = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysUntil <= 2) return { text: 'text-red-500', bg: 'bg-red-500' };
+    if (daysUntil <= 4) return { text: 'text-orange-500', bg: 'bg-orange-500' };
+    return { text: 'text-yellow-500', bg: 'bg-yellow-500' };
+  };
 
   return (
     <div className="space-y-6">
@@ -66,6 +108,126 @@ export const Dashboard: React.FC<DashboardProps> = ({ orders, inventory, onReord
             <div className="text-xs text-arda-text-muted">
               {fastestMover.dailyBurnRate.toFixed(1)} units/day • From {fastestMover.supplier}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Movers Section */}
+      {(topBurnRate.length > 0 || topCadence.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Top Burn Rate */}
+          {topBurnRate.length > 0 && (
+            <div className="bg-white border border-arda-border rounded-xl shadow-arda p-4">
+              <h3 className="text-sm font-semibold text-arda-text-primary mb-3 flex items-center gap-2">
+                <Icons.Zap className="w-4 h-4 text-arda-accent" />
+                Fastest Moving
+              </h3>
+              <div className="space-y-2">
+                {topBurnRate.map((profile, idx) => (
+                  <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-xs font-medium text-arda-text-muted w-5">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-arda-text-primary truncate">{profile.displayName}</div>
+                        <div className="text-xs text-arda-text-muted truncate">{profile.supplier}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {profile.orders.length >= 2 && (
+                        <div className="hidden sm:block">
+                          <ReorderSparkline
+                            orders={profile.orders.map(o => ({ date: o.date, quantity: o.quantity }))}
+                            width={60}
+                            height={20}
+                          />
+                        </div>
+                      )}
+                      <VelocityBadge
+                        dailyBurnRate={profile.dailyBurnRate}
+                        averageCadenceDays={profile.averageCadenceDays}
+                        orderCount={profile.orderCount}
+                        compact
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Top Cadence */}
+          {topCadence.length > 0 && (
+            <div className="bg-white border border-arda-border rounded-xl shadow-arda p-4">
+              <h3 className="text-sm font-semibold text-arda-text-primary mb-3 flex items-center gap-2">
+                <Icons.Calendar className="w-4 h-4 text-arda-accent" />
+                Most Frequent Orders
+              </h3>
+              <div className="space-y-2">
+                {topCadence.map((profile, idx) => (
+                  <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-xs font-medium text-arda-text-muted w-5">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-arda-text-primary truncate">{profile.displayName}</div>
+                        <div className="text-xs text-arda-text-muted truncate">{profile.supplier}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {profile.orders.length >= 2 && (
+                        <div className="hidden sm:block">
+                          <ReorderSparkline
+                            orders={profile.orders.map(o => ({ date: o.date, quantity: o.quantity }))}
+                            width={60}
+                            height={20}
+                          />
+                        </div>
+                      )}
+                      <div className="text-xs text-arda-text-muted">
+                        {Math.round(profile.averageCadenceDays)}d cadence
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Next Orders Section */}
+      {nextOrders.length > 0 && (
+        <div className="bg-white border border-arda-border rounded-xl shadow-arda p-4">
+          <h3 className="text-sm font-semibold text-arda-text-primary mb-3 flex items-center gap-2">
+            <Icons.Clock className="w-4 h-4 text-arda-accent" />
+            Next Orders (Next 7 Days)
+          </h3>
+          <div className="space-y-2">
+            {nextOrders.map((profile) => {
+              const daysUntil = Math.ceil((new Date(profile.nextPredictedOrder!).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+              const urgency = getUrgencyColor(profile.nextPredictedOrder!);
+              return (
+                <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className={`w-2 h-2 rounded-full ${urgency.bg}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-arda-text-primary truncate">{profile.displayName}</div>
+                      <div className="text-xs text-arda-text-muted truncate">{profile.supplier}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <VelocityBadge
+                      dailyBurnRate={profile.dailyBurnRate}
+                      averageCadenceDays={profile.averageCadenceDays}
+                      orderCount={profile.orderCount}
+                      compact
+                    />
+                    <div className={`text-xs font-medium ${urgency.text}`}>
+                      {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil}d`}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

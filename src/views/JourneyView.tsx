@@ -1,8 +1,11 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ExtractedOrder, InventoryItem, RawEmail, LineItemNodeData, ItemVelocityProfile } from '../types';
 import { OrderTree } from '../components/OrderTree';
+import { ReorderAlerts } from '../components/ReorderAlerts';
+import { OrderTimeline } from '../components/OrderTimeline';
 import { Icons } from '../components/Icons';
 import { buildVelocityProfiles } from '../utils/inventoryLogic';
+import { exportVelocityToCSV, exportOrdersToCSV } from '../utils/exportUtils';
 
 interface JourneyViewProps {
   orders: ExtractedOrder[];
@@ -11,147 +14,6 @@ interface JourneyViewProps {
   onReorder?: (item: InventoryItem) => void;
 }
 
-// CSV Helper Functions
-const velocityToCSV = (profiles: Map<string, ItemVelocityProfile>): string => {
-  const headers = [
-    'Item Name',
-    'Supplier',
-    'SKU',
-    'Total Quantity Ordered',
-    'Order Count',
-    'Average Cadence (Days)',
-    'Daily Burn Rate',
-    'First Order Date',
-    'Last Order Date',
-    'Next Predicted Order',
-    'Recommended Min Qty',
-    'Recommended Order Qty'
-  ];
-
-  const rows = Array.from(profiles.values()).map(profile => [
-    escapeCSV(profile.displayName),
-    escapeCSV(profile.supplier),
-    escapeCSV(profile.sku || ''),
-    profile.totalQuantityOrdered.toString(),
-    profile.orderCount.toString(),
-    profile.averageCadenceDays.toFixed(2),
-    profile.dailyBurnRate.toFixed(2),
-    profile.firstOrderDate,
-    profile.lastOrderDate,
-    profile.nextPredictedOrder || '',
-    profile.recommendedMin.toString(),
-    profile.recommendedOrderQty.toString()
-  ]);
-
-  return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-};
-
-const ordersToCSV = (orders: ExtractedOrder[]): string => {
-  const headers = [
-    'Order ID',
-    'Email ID',
-    'Supplier',
-    'Order Date',
-    'Total Amount',
-    'Confidence',
-    'Item Name',
-    'Normalized Name',
-    'SKU',
-    'Quantity',
-    'Unit',
-    'Unit Price',
-    'Total Price'
-  ];
-
-  const rows: string[] = [];
-  orders.forEach(order => {
-    if (order.items.length === 0) {
-      // Include order even if no items
-      rows.push([
-        escapeCSV(order.id),
-        escapeCSV(order.originalEmailId),
-        escapeCSV(order.supplier),
-        order.orderDate,
-        order.totalAmount?.toString() || '',
-        order.confidence.toString(),
-        '', '', '', '', '', '', ''
-      ].join(','));
-    } else {
-      order.items.forEach(item => {
-        rows.push([
-          escapeCSV(order.id),
-          escapeCSV(order.originalEmailId),
-          escapeCSV(order.supplier),
-          order.orderDate,
-          order.totalAmount?.toString() || '',
-          order.confidence.toString(),
-          escapeCSV(item.name),
-          escapeCSV(item.normalizedName || ''),
-          escapeCSV(item.sku || ''),
-          item.quantity.toString(),
-          escapeCSV(item.unit),
-          item.unitPrice?.toString() || '',
-          item.totalPrice?.toString() || ''
-        ].join(','));
-      });
-    }
-  });
-
-  return [headers.join(','), ...rows].join('\n');
-};
-
-const recommendationsToCSV = (profiles: Map<string, ItemVelocityProfile>): string => {
-  const headers = [
-    'Item Name',
-    'Supplier',
-    'SKU',
-    'Daily Burn Rate',
-    'Average Cadence (Days)',
-    'Recommended Min Qty (Reorder Point)',
-    'Recommended Order Qty (EOQ)',
-    'Next Predicted Order Date'
-  ];
-
-  const rows = Array.from(profiles.values()).map(profile => [
-    escapeCSV(profile.displayName),
-    escapeCSV(profile.supplier),
-    escapeCSV(profile.sku || ''),
-    profile.dailyBurnRate.toFixed(2),
-    profile.averageCadenceDays.toFixed(2),
-    profile.recommendedMin.toString(),
-    profile.recommendedOrderQty.toString(),
-    profile.nextPredictedOrder || ''
-  ]);
-
-  return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-};
-
-const escapeCSV = (value: string | undefined): string => {
-  if (!value) return '';
-  const stringValue = String(value);
-  // If contains comma, quote, or newline, wrap in quotes and escape quotes
-  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-    return `"${stringValue.replace(/"/g, '""')}"`;
-  }
-  return stringValue;
-};
-
-const downloadCSV = (content: string, filename: string): void => {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  URL.revokeObjectURL(url);
-};
-
 export const JourneyView: React.FC<JourneyViewProps> = ({
   orders,
   inventory,
@@ -159,8 +21,7 @@ export const JourneyView: React.FC<JourneyViewProps> = ({
   onReorder,
 }) => {
   const [selectedItem, setSelectedItem] = useState<LineItemNodeData | null>(null);
-  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
-  const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<'tree' | 'timeline'>('tree');
   
   // Build velocity profiles for the selected item panel
   const velocityProfiles = useMemo(() => 
@@ -183,102 +44,88 @@ export const JourneyView: React.FC<JourneyViewProps> = ({
     ? inventory.find(i => i.name.toLowerCase().trim() === selectedItem.normalizedName)
     : undefined;
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
-        setExportDropdownOpen(false);
-      }
-    };
-
-    if (exportDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [exportDropdownOpen]);
-
-  // Export handlers
-  const handleExportVelocity = () => {
-    const csv = velocityToCSV(velocityProfiles);
-    const dateStr = new Date().toISOString().split('T')[0];
-    downloadCSV(csv, `velocity_data_${dateStr}.csv`);
-    setExportDropdownOpen(false);
-  };
-
+  // Export handlers using utility functions
   const handleExportOrders = () => {
-    const csv = ordersToCSV(orders);
-    const dateStr = new Date().toISOString().split('T')[0];
-    downloadCSV(csv, `order_history_${dateStr}.csv`);
-    setExportDropdownOpen(false);
+    exportOrdersToCSV(orders);
   };
 
-  const handleExportRecommendations = () => {
-    const csv = recommendationsToCSV(velocityProfiles);
-    const dateStr = new Date().toISOString().split('T')[0];
-    downloadCSV(csv, `recommendations_${dateStr}.csv`);
-    setExportDropdownOpen(false);
+  const handleExportItems = () => {
+    const profilesArray = Array.from(velocityProfiles.values());
+    exportVelocityToCSV(profilesArray);
   };
 
   return (
     <div className="flex flex-col gap-4 h-[calc(100vh-8rem)]">
-      {/* Header with Export Button */}
+      {/* Header with Title and Export Buttons */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-white">Order Journey</h2>
-        <div className="relative" ref={exportDropdownRef}>
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+            onClick={handleExportOrders}
             className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
           >
             <Icons.Download className="w-4 h-4" />
-            <span>Export</span>
-            <Icons.ChevronDown className={`w-4 h-4 transition-transform ${exportDropdownOpen ? 'rotate-180' : ''}`} />
+            <span>Export Orders CSV</span>
           </button>
-          
-          {exportDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
-              <div className="py-1">
-                <button
-                  onClick={handleExportVelocity}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 transition-colors"
-                >
-                  Export Velocity Data (CSV)
-                </button>
-                <button
-                  onClick={handleExportOrders}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 transition-colors"
-                >
-                  Export Order History (CSV)
-                </button>
-                <button
-                  onClick={handleExportRecommendations}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 transition-colors"
-                >
-                  Export Recommendations (CSV)
-                </button>
-              </div>
-            </div>
-          )}
+          <button
+            onClick={handleExportItems}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+          >
+            <Icons.Download className="w-4 h-4" />
+            <span>Export Items CSV</span>
+          </button>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-800">
+        <button
+          onClick={() => setActiveTab('tree')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'tree'
+              ? 'text-white border-b-2 border-arda-accent'
+              : 'text-slate-400 hover:text-slate-300'
+          }`}
+        >
+          Tree
+        </button>
+        <button
+          onClick={() => setActiveTab('timeline')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'timeline'
+              ? 'text-white border-b-2 border-arda-accent'
+              : 'text-slate-400 hover:text-slate-300'
+          }`}
+        >
+          Timeline
+        </button>
       </div>
 
       {/* Main Content */}
       <div className="flex gap-6 flex-1 min-h-0">
-      {/* Main Tree View */}
-      <div className="flex-1 min-w-0">
-        <OrderTree
-          orders={orders}
-          emails={emails}
-          onItemClick={handleItemClick}
-          className="h-full"
-        />
-      </div>
+        {/* Main Content Area */}
+        <div className="flex-1 min-w-0">
+          {activeTab === 'tree' ? (
+            <OrderTree
+              orders={orders}
+              emails={emails}
+              onItemClick={handleItemClick}
+              className="h-full"
+            />
+          ) : (
+            <OrderTimeline
+              orders={orders}
+              onOrderClick={(order) => {
+                // Could navigate to order details or highlight in tree
+                console.log('Order clicked:', order);
+              }}
+            />
+          )}
+        </div>
 
-      {/* Item Detail Panel */}
-      {selectedItem && selectedProfile && (
-        <div className="w-96 flex-shrink-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden flex flex-col">
+        {/* Item Detail Panel or Reorder Alerts */}
+        {selectedItem && selectedProfile ? (
+          <div className="w-96 flex-shrink-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden flex flex-col">
           {/* Header */}
           <div className="p-4 border-b border-slate-800 flex items-start justify-between">
             <div className="flex-1 min-w-0">
@@ -410,6 +257,34 @@ export const JourneyView: React.FC<JourneyViewProps> = ({
               Push to Arda
             </button>
           </div>
+        </div>
+      ) : (
+        <div className="w-96 flex-shrink-0">
+          <ReorderAlerts
+            velocityProfiles={velocityProfiles}
+            onItemClick={(normalizedName) => {
+              // Find and select the item when clicked from alerts
+              const matchingOrder = orders.find(order =>
+                order.items.some(item => item.normalizedName === normalizedName)
+              );
+              if (matchingOrder) {
+                const matchingItem = matchingOrder.items.find(item => item.normalizedName === normalizedName);
+                if (matchingItem) {
+                  handleItemClick({
+                    lineItemId: matchingItem.id || `${matchingOrder.id}-item`,
+                    normalizedName: matchingItem.normalizedName || matchingItem.name.toLowerCase().trim(),
+                    name: matchingItem.name,
+                    quantity: matchingItem.quantity,
+                    unit: matchingItem.unit,
+                    unitPrice: matchingItem.unitPrice,
+                    sku: matchingItem.sku,
+                    orderId: matchingOrder.id,
+                    emailId: matchingOrder.originalEmailId,
+                  });
+                }
+              }
+            }}
+          />
         </div>
       )}
       </div>

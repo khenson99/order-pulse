@@ -335,6 +335,58 @@ router.post('/sync-velocity', requireAuth, async (req: Request, res: Response) =
   }
 });
 
+// Push velocity items to Arda
+router.post('/push-velocity', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const credentials = getUserCredentials(req);
+    if (!credentials.author) {
+      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
+    }
+
+    const { items } = req.body;
+
+    // Validate request body
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'items array is required and must not be empty',
+      });
+    }
+
+    // Validate each item
+    for (const item of items) {
+      if (!item.displayName || !item.supplier) {
+        return res.status(400).json({
+          success: false,
+          error: 'Each item must have displayName and supplier',
+        });
+      }
+    }
+
+    console.log(`📤 Pushing ${items.length} velocity items to Arda for user ${credentials.email}`);
+    console.log(`   Author: ${credentials.author}, Tenant: ${credentials.tenantId}`);
+
+    // Call syncVelocityToArda with items and credentials author
+    const results = await ardaService.syncVelocityToArda(items, credentials.author);
+
+    const successful = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
+    res.json({
+      success: failed === 0,
+      summary: { total: items.length, successful, failed },
+      results,
+    });
+  } catch (error) {
+    console.error('Arda push velocity error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to push velocity items to Arda',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  }
+});
+
 // Sync a single item from velocity data
 router.post('/sync-item', requireAuth, async (req: Request, res: Response) => {
   try {

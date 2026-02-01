@@ -49,6 +49,7 @@ export interface JourneyNode {
   children?: JourneyNode[];
   data?: EmailNodeData | OrderNodeData | LineItemNodeData | VelocityNodeData;
   isExpanded?: boolean;
+  isNew?: boolean;
 }
 
 export interface EmailNodeData {

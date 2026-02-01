@@ -18,24 +18,128 @@ import {
  * - Extra whitespace
  * - Common suffixes/prefixes
  * - Part number variations
+ * - Product codes in parentheses/brackets
+ * - Size/quantity patterns
+ * - Common abbreviations
  */
 export const normalizeItemName = (name: string): string => {
   let normalized = name
     .toLowerCase()
     .trim()
-    // Remove common filler words
-    .replace(/\b(the|a|an)\b/gi, '')
-    // Normalize whitespace
+    // Normalize dashes and underscores to spaces
+    .replace(/[-_]/g, ' ')
+    // Normalize multiple spaces to single space
     .replace(/\s+/g, ' ')
+    // Remove common prefixes
+    .replace(/^(the|a|an)\s+/i, '')
+    // Remove product codes in parentheses or brackets (e.g., "Item (SKU-12345)", "Item [ABC-123]")
+    .replace(/\s*[\(\[][^)\]]*[\)\]]\s*/g, '')
+    // Remove common size/quantity patterns (e.g., "100 pack", "box of 50", "50ct", "12pk")
+    .replace(/\b\d+\s*(pack|box|case|bag|ct|pk|count|each|ea|unit|units|pcs|pieces)\b/gi, '')
+    .replace(/\b(box|case|pack|bag)\s+of\s+\d+\b/gi, '')
+    // Normalize common abbreviations
+    .replace(/\bea\.?\b/gi, 'ea')
+    .replace(/\bpkg\.?\b/gi, 'pack')
+    .replace(/\bpcs?\.?\b/gi, 'pieces')
+    .replace(/\bct\.?\b/gi, 'count')
+    .replace(/\bpk\.?\b/gi, 'pack')
     // Remove common suffixes
-    .replace(/\s*[-–]\s*(pack|box|case|bag|each|ea|pk|ct|count)$/i, '')
-    // Normalize units in parentheses
-    .replace(/\s*\([^)]*\)\s*$/, '')
+    .replace(/\s*[-–]\s*(pack|box|case|bag|each|ea|pk|ct|count|unit|units)\s*$/i, '')
     // Remove trailing punctuation
-    .replace(/[.,;:!?]+$/, '')
+    .replace(/[.,;:!?]+$/g, '')
+    // Final whitespace normalization
+    .replace(/\s+/g, ' ')
     .trim();
   
   return normalized;
+};
+
+/**
+ * Calculate simple string similarity using Levenshtein-like distance
+ * Returns a value between 0 (identical) and 1 (completely different)
+ */
+const calculateSimilarity = (str1: string, str2: string): number => {
+  const len1 = str1.length;
+  const len2 = str2.length;
+  
+  // If one string is empty, return 0 if both empty, 1 otherwise
+  if (len1 === 0) return len2 === 0 ? 0 : 1;
+  if (len2 === 0) return 1;
+  
+  // If strings are identical, return 0
+  if (str1 === str2) return 0;
+  
+  // Check prefix match (first 3+ characters)
+  const prefixLen = Math.min(3, Math.min(len1, len2));
+  if (prefixLen >= 3 && str1.substring(0, prefixLen) === str2.substring(0, prefixLen)) {
+    // If prefix matches, use a simpler comparison
+    const longer = Math.max(len1, len2);
+    const shorter = Math.min(len1, len2);
+    const diff = longer - shorter;
+    
+    // Count character differences in overlapping portion
+    let differences = 0;
+    for (let i = 0; i < shorter; i++) {
+      if (str1[i] !== str2[i]) differences++;
+    }
+    
+    // Normalize: differences + length difference
+    return (differences + diff) / longer;
+  }
+  
+  // Simple Levenshtein distance calculation
+  const matrix: number[][] = [];
+  
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,      // deletion
+        matrix[i][j - 1] + 1,      // insertion
+        matrix[i - 1][j - 1] + cost  // substitution
+      );
+    }
+  }
+  
+  const distance = matrix[len1][len2];
+  const maxLen = Math.max(len1, len2);
+  return maxLen === 0 ? 0 : distance / maxLen;
+};
+
+/**
+ * Find similar items using fuzzy matching
+ * Returns profiles with normalized names similar to the given normalized name
+ * Uses string similarity and prefix matching
+ */
+export const findSimilarItems = (
+  normalizedName: string,
+  profiles: Map<string, ItemVelocityProfile>
+): ItemVelocityProfile[] => {
+  const similar: Array<{ profile: ItemVelocityProfile; similarity: number }> = [];
+  const threshold = 0.3; // Consider items similar if similarity score <= 0.3 (70%+ match)
+  
+  profiles.forEach((profile, key) => {
+    // Skip exact matches
+    if (key === normalizedName) return;
+    
+    const similarity = calculateSimilarity(normalizedName, key);
+    
+    if (similarity <= threshold) {
+      similar.push({ profile, similarity });
+    }
+  });
+  
+  // Sort by similarity (most similar first)
+  similar.sort((a, b) => a.similarity - b.similarity);
+  
+  return similar.map(item => item.profile);
 };
 
 /**

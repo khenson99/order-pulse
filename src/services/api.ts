@@ -236,6 +236,26 @@ export interface ArdaEntityRecord {
   retired: boolean;
 }
 
+export interface ArdaItemVelocityProfileInput {
+  displayName: string;
+  supplier: string;
+  dailyBurnRate: number;
+  averageCadenceDays: number;
+  recommendedMin: number;
+  recommendedOrderQty: number;
+  unit?: string;
+  location?: string;
+  primarySupplierLink?: string;
+  imageUrl?: string;
+}
+
+export interface ArdaVelocitySyncResult {
+  displayName: string;
+  success: boolean;
+  itemId?: string;
+  error?: string;
+}
+
 export const ardaApi = {
   // Check if Arda is configured
   getStatus: () => fetchApi<{ configured: boolean; message: string }>('/api/arda/status'),
@@ -272,5 +292,16 @@ export const ardaApi = {
     fetchApi<{ success: boolean; record: ArdaEntityRecord }>('/api/arda/orders', {
       method: 'POST',
       body: JSON.stringify(order),
+    }),
+
+  // Push velocity items to Arda
+  pushVelocityItems: (items: ArdaItemVelocityProfileInput[]) =>
+    fetchApi<{
+      success: boolean;
+      summary: { total: number; successful: number; failed: number };
+      results: ArdaVelocitySyncResult[];
+    }>('/api/arda/push-velocity', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
     }),
 };
