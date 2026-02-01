@@ -409,50 +409,98 @@ async function processEmailsInBackground(
     const listResponse = await gmail.users.messages.list({
       userId: 'me',
       q: query,
-      maxResults: 500,
+      maxResults: 200, // Reduced for faster processing
     });
 
     const messageIds = listResponse.data.messages || [];
     jobManager.addJobLog(jobId, `📬 Found ${messageIds.length} matching emails`);
-    jobManager.updateJobProgress(jobId, { 
-      total: messageIds.length,
-      currentTask: 'Starting one-piece flow processing...' 
-    });
-
+    
     if (messageIds.length === 0) {
       jobManager.addJobLog(jobId, '⚠️ No order-related emails found in the last 6 months');
       jobManager.updateJob(jobId, { status: 'completed' });
       return;
     }
 
+    // STEP 1: Fetch headers for ALL emails to sort by vendor
+    jobManager.updateJobProgress(jobId, { 
+      total: messageIds.length,
+      currentTask: 'Fetching email headers to group by vendor...' 
+    });
+    
+    interface EmailInfo {
+      id: string;
+      subject: string;
+      sender: string;
+      vendorDomain: string;
+    }
+    
+    const emailInfos: EmailInfo[] = [];
+    
+    for (let i = 0; i < messageIds.length; i++) {
+      const msg = messageIds[i];
+      try {
+        const metaMsg = await gmail.users.messages.get({
+          userId: 'me',
+          id: msg.id!,
+          format: 'metadata',
+          metadataHeaders: ['From', 'Subject'],
+        });
+        
+        const headers = metaMsg.data.payload?.headers || [];
+        const sender = headers.find(h => h.name === 'From')?.value || '';
+        const subject = headers.find(h => h.name === 'Subject')?.value || '';
+        
+        // Extract domain from sender
+        const domainMatch = sender.match(/@([a-zA-Z0-9.-]+)/);
+        const vendorDomain = domainMatch ? domainMatch[1].toLowerCase() : 'unknown';
+        
+        emailInfos.push({ id: msg.id!, subject, sender, vendorDomain });
+      } catch (error) {
+        console.error(`Error fetching metadata for ${msg.id}:`, error);
+      }
+      
+      if (i % 20 === 0) {
+        jobManager.updateJobProgress(jobId, { 
+          processed: i,
+          currentTask: `Indexing emails ${i}/${messageIds.length}...` 
+        });
+      }
+    }
+    
+    // STEP 2: Group and sort by vendor domain
+    const emailsByVendor = new Map<string, EmailInfo[]>();
+    for (const email of emailInfos) {
+      const existing = emailsByVendor.get(email.vendorDomain) || [];
+      existing.push(email);
+      emailsByVendor.set(email.vendorDomain, existing);
+    }
+    
+    // Sort vendors by email count (most emails first) and create ordered list
+    const sortedVendors = Array.from(emailsByVendor.entries())
+      .sort((a, b) => b[1].length - a[1].length);
+    
+    jobManager.addJobLog(jobId, `📊 Grouped into ${sortedVendors.length} vendors`);
+    for (const [vendor, emails] of sortedVendors.slice(0, 5)) {
+      jobManager.addJobLog(jobId, `   • ${vendor}: ${emails.length} emails`);
+    }
+
     // Initialize Gemini model upfront
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    // ONE-PIECE FLOW: Fetch small batch → Analyze immediately → Repeat
-    // Inspired by Shigeo Shingo's Toyota Production System principles
-    const FETCH_BATCH_SIZE = 10; // Small batches for quick feedback
+    // STEP 3: Process vendor by vendor
     let totalProcessed = 0;
-    let totalFetched = 0;
+    const totalEmails = emailInfos.length;
     
-    jobManager.addJobLog(jobId, `🔄 One-piece flow: Processing in batches of ${FETCH_BATCH_SIZE} (fetch → analyze → repeat)`);
-
-    for (let batchStart = 0; batchStart < messageIds.length; batchStart += FETCH_BATCH_SIZE) {
-      const batchMessageIds = messageIds.slice(batchStart, batchStart + FETCH_BATCH_SIZE);
-      const batchNum = Math.floor(batchStart / FETCH_BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(messageIds.length / FETCH_BATCH_SIZE);
+    for (const [vendorDomain, vendorEmails] of sortedVendors) {
+      const vendorName = vendorDomain.split('.')[0].charAt(0).toUpperCase() + vendorDomain.split('.')[0].slice(1);
+      jobManager.addJobLog(jobId, `\n🏢 Processing ${vendorName} (${vendorEmails.length} emails)...`);
       
-      jobManager.updateJobProgress(jobId, { 
-        currentTask: `Batch ${batchNum}/${totalBatches}: Fetching...` 
-      });
-
-      // STEP 1: Fetch this small batch of emails (including PDF attachments)
-      const batchEmails: Array<{ id: string; subject: string; sender: string; body: string }> = [];
-      
-      for (const msg of batchMessageIds) {
+      for (const emailInfo of vendorEmails) {
         try {
+          // Fetch full email content
           const fullMsg = await gmail.users.messages.get({
             userId: 'me',
-            id: msg.id!,
+            id: emailInfo.id,
             format: 'full',
           });
           
@@ -481,74 +529,86 @@ async function processEmailsInBackground(
           );
           
           if (pdfAttachments.length > 0) {
-            console.log(`   📎 Found ${pdfAttachments.length} PDF attachment(s) for email ${msg.id}`);
             for (const pdfAttachment of pdfAttachments) {
-              const pdfText = await extractPdfText(gmail, msg.id!, pdfAttachment.attachmentId);
+              const pdfText = await extractPdfText(gmail, emailInfo.id, pdfAttachment.attachmentId);
               if (pdfText) {
-                body += `\n\n--- PDF ATTACHMENT: ${pdfAttachment.filename} ---\n${pdfText.substring(0, 15000)}\n--- END PDF ---`;
-                console.log(`   ✅ Extracted ${pdfText.length} chars from ${pdfAttachment.filename}`);
+                body += `\n\n--- PDF: ${pdfAttachment.filename} ---\n${pdfText.substring(0, 15000)}`;
               }
             }
           }
 
-          batchEmails.push({
-            id: msg.id!,
+          const email = {
+            id: emailInfo.id,
             subject: getHeader('Subject'),
             sender: getHeader('From'),
             body,
+          };
+
+          // Update current email being processed
+          jobManager.setJobCurrentEmail(jobId, {
+            id: email.id,
+            subject: email.subject,
+            sender: email.sender,
+            snippet: email.body.substring(0, 100) + '...',
           });
-          totalFetched++;
-        } catch (error) {
-          console.error(`Failed to load email ${msg.id}:`, error);
+          
+          jobManager.updateJobProgress(jobId, { 
+            processed: totalProcessed,
+            currentTask: `${vendorName}: ${emailInfo.subject.substring(0, 40)}...`
+          });
+
+          // Analyze with AI
+          const result = await analyzeEmailWithRetry(model, email);
+          
+          // Process result and LOG ITEMS FOUND
+          if (result.isOrder && result.items?.length > 0) {
+            const order: ProcessedOrder = {
+              id: result.emailId || email.id,
+              supplier: result.supplier || vendorName,
+              orderDate: result.orderDate || new Date().toISOString().split('T')[0],
+              totalAmount: result.totalAmount || 0,
+              items: result.items.map((item: any, idx: number) => ({
+                id: `${email.id}-${idx}`,
+                name: item.name || 'Unknown Item',
+                quantity: item.quantity || 1,
+                unit: item.unit || 'ea',
+                unitPrice: item.unitPrice || 0,
+              })),
+              confidence: result.confidence || 0.8,
+            };
+            
+            jobManager.addJobOrder(jobId, order);
+            
+            // Log each item found for real-time visibility
+            for (const item of result.items.slice(0, 3)) {
+              const price = item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '';
+              const qty = item.quantity > 1 ? `x${item.quantity}` : '';
+              jobManager.addJobLog(jobId, `   📦 ${item.name?.substring(0, 50) || 'Item'} ${qty} ${price}`);
+            }
+            if (result.items.length > 3) {
+              jobManager.addJobLog(jobId, `   ... and ${result.items.length - 3} more items`);
+            }
+          }
+          
+          totalProcessed++;
+          
+          // Small delay between requests to avoid rate limits
+          await delay(100);
+          
+        } catch (error: any) {
+          console.error(`Failed to process email ${emailInfo.id}:`, error);
+          // Log rate limit errors specifically
+          if (error.message?.includes('429') || error.message?.includes('quota')) {
+            jobManager.addJobLog(jobId, `   ⚠️ Rate limited - waiting...`);
+            await delay(2000);
+          }
         }
       }
-
-      // STEP 2: Immediately analyze this batch (don't wait for all emails)
-      jobManager.updateJobProgress(jobId, { 
-        currentTask: `Batch ${batchNum}/${totalBatches}: Analyzing ${batchEmails.length} emails...` 
-      });
       
-      if (batchNum === 1) {
-        jobManager.addJobLog(jobId, `⚡ First batch ready! Analyzing ${batchEmails.length} emails immediately...`);
-      }
-
-      for (const email of batchEmails) {
-        jobManager.setJobCurrentEmail(jobId, {
-          id: email.id,
-          subject: email.subject,
-          sender: email.sender,
-          snippet: email.body.substring(0, 100) + '...',
-        });
-
-        const result = await analyzeEmailWithRetry(model, email);
-        processAnalysisResult(jobId, email, result);
-        totalProcessed++;
-        
-        // Update progress after each email for smooth UI updates
-        jobManager.updateJobProgress(jobId, { 
-          processed: totalProcessed,
-          currentTask: `Batch ${batchNum}/${totalBatches}: ${totalProcessed}/${messageIds.length}`
-        });
-        
-        // Small delay between requests to avoid rate limits
-        await delay(50);
-      }
-
-      // Log batch completion
+      // Log vendor completion
       const currentJob = jobManager.getJob(jobId);
       const ordersFound = currentJob?.progress.success || 0;
-      
-      if (batchNum === 1) {
-        jobManager.addJobLog(jobId, `✅ First batch complete! ${ordersFound} orders found so far`);
-      } else if (batchNum % 5 === 0) {
-        // Log progress every 5 batches
-        jobManager.addJobLog(jobId, `📊 Progress: ${totalProcessed}/${messageIds.length} emails, ${ordersFound} orders found`);
-      }
-
-      // Small delay between batches
-      if (batchStart + FETCH_BATCH_SIZE < messageIds.length) {
-        await delay(200);
-      }
+      jobManager.addJobLog(jobId, `   ✓ ${vendorName} complete (${ordersFound} total orders)`);
     }
 
     // Complete
@@ -559,7 +619,7 @@ async function processEmailsInBackground(
       processed: totalProcessed,
       currentTask: '✅ Complete' 
     });
-    jobManager.addJobLog(jobId, `🎉 Pipeline Complete. ${finalJob?.progress.success || 0} orders identified from ${totalProcessed} emails.`);
+    jobManager.addJobLog(jobId, `🎉 Complete: ${finalJob?.progress.success || 0} orders from ${totalProcessed} emails across ${sortedVendors.length} vendors`);
 
   } catch (error: any) {
     console.error('Background job error:', error);

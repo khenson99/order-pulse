@@ -1,8 +1,11 @@
+import './utils/loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import session from 'express-session';
-import dotenv from 'dotenv';
+import connectRedis from 'connect-redis';
+import * as Sentry from '@sentry/node';
+import redisClient from './utils/redisClient.js';
 import { authRouter } from './routes/auth.js';
 import { gmailRouter } from './routes/gmail.js';
 import { analysisRouter } from './routes/analysis.js';
@@ -13,9 +16,8 @@ import { amazonRouter } from './routes/amazon.js';
 import ardaRouter from './routes/arda.js';
 import cognitoRouter from './routes/cognito.js';
 import { cognitoService } from './services/cognito.js';
-
-// Load .env from server directory (npm run dev runs from server/)
-dotenv.config();
+import { initializeJobManager } from './services/jobManager.js';
+import { startCognitoSyncScheduler } from './services/cognitoScheduler.js';
 
 // Debug: Log OAuth config status
 console.log('🔐 OAuth Config:', {
@@ -26,13 +28,44 @@ console.log('🔐 OAuth Config:', {
 });
 
 const app = express();
+const sentryDsn = process.env.SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+  });
+}
 const PORT = process.env.PORT || 3001;
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
+const requiredSecrets = [
+  'SESSION_SECRET',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GEMINI_API_KEY',
+  'ARDA_TENANT_ID',
+];
+for (const key of requiredSecrets) {
+  if (!process.env[key]) {
+    const message = `${key} is recommended to run OrderPulse`;
+    if (isProduction) {
+      throw new Error(`${key} is required in production`);
+    }
+    console.warn(`⚠️ ${message}`);
+  }
+}
+if (isProduction && !process.env.REDIS_URL) {
+  throw new Error('REDIS_URL is required in production');
+}
 
 // Trust proxy for Railway (required for secure cookies behind reverse proxy)
 if (isProduction) {
   app.set('trust proxy', 1);
 }
+
+const sessionSecret = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
+const RedisSessionStore = connectRedis(session);
+const sessionStore = redisClient ? new RedisSessionStore({ client: redisClient }) : undefined;
 
 // Security middleware
 app.use(helmet());
@@ -46,7 +79,8 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Session configuration
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
+  store: sessionStore,
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -74,56 +108,26 @@ app.use('/api/discover', discoverRouter);
 app.use('/api/amazon', amazonRouter);
 
 // Error handler
+if (sentryDsn) {
+  app.use(Sentry.Handlers.errorHandler());
+}
+
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Server error:', err);
+  if (sentryDsn) {
+    Sentry.captureException(err);
+  }
   res.status(500).json({ error: 'Internal server error' });
 });
-
-// Daily Cognito sync scheduler (runs at 2 AM every day)
-function scheduleDailyCognitoSync() {
-  const SYNC_HOUR = 2; // 2 AM
-  
-  function scheduleNext() {
-    const now = new Date();
-    const next = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() + (now.getHours() >= SYNC_HOUR ? 1 : 0),
-      SYNC_HOUR,
-      0,
-      0,
-      0
-    );
-    
-    const msUntilNext = next.getTime() - now.getTime();
-    console.log(`⏰ Next Cognito sync scheduled for: ${next.toISOString()}`);
-    
-    setTimeout(async () => {
-      console.log('🔄 Running scheduled Cognito sync...');
-      try {
-        await cognitoService.syncUsersFromGitHub();
-        console.log('✅ Scheduled Cognito sync completed');
-      } catch (error) {
-        console.error('❌ Scheduled Cognito sync failed:', error);
-      }
-      scheduleNext(); // Schedule next day
-    }, msUntilNext);
-  }
-  
-  scheduleNext();
-}
 
 app.listen(PORT, () => {
   console.log(`🚀 OrderPulse API running on http://localhost:${PORT}`);
   console.log(`📧 Frontend URL: ${process.env.FRONTEND_URL}`);
   
-  // Start daily sync scheduler
-  scheduleDailyCognitoSync();
+  startCognitoSyncScheduler();
   
-  // Log Cognito status
   const status = cognitoService.getSyncStatus();
   console.log(`👥 Cognito users: ${status.userCount} loaded`);
 });
 
 export default app;
-

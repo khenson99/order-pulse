@@ -1,5 +1,6 @@
 // Job Manager - Background processing for email analysis
 import { v4 as uuidv4 } from 'uuid';
+import redisClient from '../utils/redisClient.js';
 
 export interface JobProgress {
   total: number;
@@ -62,6 +63,55 @@ export interface Job {
 const jobs = new Map<string, Job>();
 const userJobs = new Map<string, string>(); // userId -> jobId (latest)
 
+const JOB_KEY_PREFIX = 'orderpulse:job:';
+const USER_JOB_KEY = 'orderpulse:user';
+
+function jobKey(jobId: string): string {
+  return `${JOB_KEY_PREFIX}${jobId}`;
+}
+
+function serializeJob(job: Job) {
+  return {
+    ...job,
+    createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
+  };
+}
+
+function deserializeJob(payload: string): Job {
+  const parsed = JSON.parse(payload);
+  return {
+    ...parsed,
+    createdAt: new Date(parsed.createdAt),
+    updatedAt: new Date(parsed.updatedAt),
+  };
+}
+
+function persistJob(job: Job) {
+  if (!redisClient) return;
+  redisClient.set(jobKey(job.id), JSON.stringify(serializeJob(job))).catch((err: Error) => {
+    console.error('Failed to persist job to Redis:', err);
+  });
+}
+
+function persistUserJob(userId: string, jobId: string) {
+  if (!redisClient) return;
+  redisClient.hset(USER_JOB_KEY, userId, jobId).catch((err: Error) => {
+    console.error('Failed to persist user job mapping:', err);
+  });
+}
+
+function cleanupRedisMapping(userId: string, jobId: string) {
+  if (!redisClient) return;
+  redisClient.hget(USER_JOB_KEY, userId).then((existing: string | null) => {
+    if (existing === jobId) {
+      return redisClient!.hdel(USER_JOB_KEY, userId);
+    }
+  }).catch((err: Error) => {
+    console.error('Failed to clean up user job mapping:', err);
+  });
+}
+
 export function createJob(userId: string): Job {
   // Cancel any existing running job for this user
   const existingJobId = userJobs.get(userId);
@@ -94,6 +144,8 @@ export function createJob(userId: string): Job {
 
   jobs.set(job.id, job);
   userJobs.set(userId, job.id);
+  persistJob(job);
+  persistUserJob(userId, job.id);
 
   return job;
 }
@@ -115,6 +167,7 @@ export function updateJob(jobId: string, updates: Partial<Job>): Job | undefined
   if (!job) return undefined;
 
   Object.assign(job, updates, { updatedAt: new Date() });
+  persistJob(job);
   return job;
 }
 
@@ -128,6 +181,7 @@ export function addJobLog(jobId: string, message: string): void {
     if (job.logs.length > 100) {
       job.logs = job.logs.slice(0, 100);
     }
+    persistJob(job);
   }
 }
 
@@ -136,6 +190,7 @@ export function addJobOrder(jobId: string, order: ProcessedOrder): void {
   if (job) {
     job.orders.push(order);
     job.updatedAt = new Date();
+    persistJob(job);
   }
 }
 
@@ -144,6 +199,7 @@ export function setJobCurrentEmail(jobId: string, email: EmailPreview | null): v
   if (job) {
     job.currentEmail = email;
     job.updatedAt = new Date();
+    persistJob(job);
   }
 }
 
@@ -152,6 +208,7 @@ export function updateJobProgress(jobId: string, progress: Partial<JobProgress>)
   if (job) {
     Object.assign(job.progress, progress);
     job.updatedAt = new Date();
+    persistJob(job);
   }
 }
 
@@ -164,6 +221,12 @@ export function cleanupOldJobs(): void {
       // Clean up user mapping if this was their latest job
       if (userJobs.get(job.userId) === jobId) {
         userJobs.delete(job.userId);
+        cleanupRedisMapping(job.userId, jobId);
+      }
+      if (redisClient) {
+        redisClient.del(jobKey(jobId)).catch((err: Error) => {
+          console.error('Failed to remove job from Redis:', err);
+        });
       }
     }
   }
@@ -183,3 +246,33 @@ export const jobManager = {
   updateJobProgress,
   cleanupOldJobs,
 };
+
+export async function initializeJobManager(): Promise<void> {
+  if (!redisClient) {
+    console.log('⚠️ Redis unavailable – job store will remain in-memory only');
+    return;
+  }
+
+  try {
+    const keys = await redisClient.keys(`${JOB_KEY_PREFIX}*`);
+    for (const key of keys) {
+      const payload = await redisClient.get(key);
+      if (!payload) continue;
+      const job = deserializeJob(payload);
+      jobs.set(job.id, job);
+    }
+
+    const userEntries = await redisClient.hgetall(USER_JOB_KEY);
+    for (const [userId, jobId] of Object.entries(userEntries) as [string, string][]) {
+      if (!jobs.has(jobId)) {
+        await redisClient.hdel(USER_JOB_KEY, userId);
+        continue;
+      }
+      userJobs.set(userId, jobId);
+    }
+
+    console.log(`✅ Job manager hydrated ${jobs.size} jobs from Redis`);
+  } catch (error) {
+    console.error('Failed to hydrate jobs from Redis:', error);
+  }
+}
