@@ -25,6 +25,7 @@ interface UseAutoIngestionResult {
   logs: string[];
   error: string | null;
   startIngestion: () => Promise<void>;
+  resetAndRestart: () => Promise<void>;
   jobStatus: 'pending' | 'running' | 'completed' | 'failed' | null;
 }
 
@@ -154,6 +155,48 @@ export function useAutoIngestion(
     }
   }, [isIngesting, userProfile]);
 
+  // Reset all state and restart ingestion from scratch
+  const resetAndRestart = useCallback(async () => {
+    // Stop any current polling
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    
+    // Clear all state
+    setIsIngesting(false);
+    setCurrentJobId(null);
+    setJobStatus(null);
+    setError(null);
+    setProgress({ total: 0, processed: 0, success: 0, failed: 0, currentTask: 'Waiting...' });
+    setCurrentEmail(null);
+    setOrders([]);
+    setLogs(['[' + new Date().toLocaleTimeString() + '] Reset complete. Starting fresh...']);
+    
+    // Notify parent to clear orders
+    onOrdersProcessed([]);
+    
+    // Small delay then start fresh
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    if (userProfile) {
+      setIsIngesting(true);
+      setProgress({ total: 0, processed: 0, success: 0, failed: 0, currentTask: 'Starting...' });
+      setLogs(prev => [...prev, '[' + new Date().toLocaleTimeString() + '] Starting email analysis...']);
+      
+      try {
+        const result = await jobsApi.startJob();
+        if (result.jobId) {
+          setCurrentJobId(result.jobId);
+          setJobStatus('running');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to start ingestion');
+        setIsIngesting(false);
+      }
+    }
+  }, [userProfile, onOrdersProcessed]);
+
   // Auto-start on first auth
   useEffect(() => {
     if (userProfile && !hasStartedRef.current) {
@@ -206,6 +249,7 @@ export function useAutoIngestion(
     logs,
     error,
     startIngestion,
+    resetAndRestart,
     jobStatus,
   };
 }

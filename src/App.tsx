@@ -134,6 +134,17 @@ export default function App() {
     setActiveView('dashboard');
   };
 
+  const handleReset = async () => {
+    // Clear local state
+    setOrders([]);
+    setInventory([]);
+    setHasSeenPipeline(false);
+    setActiveView('pipeline');
+    
+    // Trigger the ingestion hook to reset and restart
+    await ingestion.resetAndRestart();
+  };
+
   // Show login screen if not authenticated
   if (isCheckingAuth) {
     return <LoginScreen onCheckingAuth={true} />;
@@ -208,6 +219,7 @@ export default function App() {
         onChangeView={setActiveView}
         userProfile={userProfile}
         onLogout={handleLogout}
+        onReset={handleReset}
         isIngesting={ingestion.isIngesting}
         ingestionProgress={ingestion.progress}
       />

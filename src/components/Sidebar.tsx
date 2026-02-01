@@ -15,6 +15,7 @@ interface SidebarProps {
   onChangeView: (view: string) => void;
   userProfile?: GoogleUserProfile | null;
   onLogout?: () => void;
+  onReset?: () => void;
   isIngesting?: boolean;
   ingestionProgress?: IngestionProgress;
 }
@@ -24,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onChangeView,
   userProfile,
   onLogout,
+  onReset,
   isIngesting,
   ingestionProgress,
 }) => {
@@ -82,6 +84,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           );
         })}
+        
+        {/* Divider */}
+        <div className="my-3 border-t border-arda-border" />
+        
+        {/* Reset Button */}
+        <button
+          onClick={onReset}
+          disabled={isIngesting}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+            isIngesting
+              ? 'text-arda-text-muted cursor-not-allowed'
+              : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+          }`}
+        >
+          <Icons.RefreshCw className={`w-5 h-5 ${isIngesting ? 'animate-spin' : ''}`} />
+          {isIngesting ? 'Processing...' : 'Reset & Re-scan'}
+        </button>
       </nav>
 
       {/* User Profile & Logout */}
