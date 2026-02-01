@@ -134,6 +134,8 @@ export interface InventoryItem {
   originalName?: string;  // Full Amazon name for tooltip
   supplier: string;
   location?: string;
+  asin?: string;
+  amazonEnriched?: AmazonItemData;
   totalQuantityOrdered: number;
   orderCount: number;
   firstOrderDate: string;

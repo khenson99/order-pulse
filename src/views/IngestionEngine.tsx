@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { MOCK_EMAILS } from '../services/mockData';
-import { authApi, gmailApi, analysisApi, ordersApi, jobsApi, API_BASE_URL, JobStatus } from '../services/api';
-import { ExtractedOrder, ProcessingStatus, GoogleUserProfile } from '../types';
+import { authApi, gmailApi, analysisApi, ordersApi, jobsApi, amazonApi, API_BASE_URL, JobStatus } from '../services/api';
+import { ExtractedOrder, ProcessingStatus, GoogleUserProfile, InventoryItem, ReviewStatus } from '../types';
+import { InventoryView } from './InventoryView';
+import { buildVelocityProfiles, normalizeItemName } from '../utils/inventoryLogic';
 
 interface IngestionEngineProps {
   userProfile: GoogleUserProfile | null;
@@ -40,6 +42,11 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [currentEmail, setCurrentEmail] = useState<EmailPreview | null>(null);
   const [processedOrders, setProcessedOrders] = useState<ExtractedOrder[]>([]);
+  const [queueItems, setQueueItems] = useState<InventoryItem[]>([]);
+  const [orderReview, setOrderReview] = useState<Record<string, ReviewStatus>>({});
+  const [supplierReview, setSupplierReview] = useState<Record<string, ReviewStatus>>({});
+  const [itemReview, setItemReview] = useState<Record<string, ReviewStatus>>({});
+  const [amazonLookupLoadingIds, setAmazonLookupLoadingIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
   const [jobStatus, setJobStatus] = useState<'pending' | 'running' | 'completed' | 'failed' | null>(null);
   
@@ -48,11 +55,222 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
 
   const isConnected = !!userProfile || isMockConnected;
 
+  const supplierKey = useCallback((name: string) => name.trim().toLowerCase(), []);
+
+  const excludedItemIds = useMemo(() => (
+    new Set(
+      Object.entries(itemReview)
+        .filter(([, status]) => status === 'excluded')
+        .map(([id]) => id)
+    )
+  ), [itemReview]);
+
+  const filteredOrders = useMemo(() => {
+    return processedOrders
+      .filter(order => {
+        const orderStatus = orderReview[order.id] || 'pending';
+        const supplierStatus = supplierReview[supplierKey(order.supplier)] || 'pending';
+        return orderStatus !== 'excluded' && supplierStatus !== 'excluded';
+      })
+      .map(order => ({
+        ...order,
+        items: order.items.filter(item => {
+          const key = item.normalizedName || normalizeItemName(item.name);
+          return !excludedItemIds.has(key);
+        }),
+      }))
+      .filter(order => order.items.length > 0);
+  }, [processedOrders, orderReview, supplierReview, supplierKey, excludedItemIds]);
+
+  const visibleQueueItems = useMemo(() => (
+    queueItems.filter(item => item.isDraft !== false && (itemReview[item.id] || 'pending') !== 'excluded')
+  ), [queueItems, itemReview]);
+
+  useEffect(() => {
+    onOrdersProcessed(filteredOrders);
+  }, [filteredOrders, onOrdersProcessed]);
+
   const addLog = (msg: string) => setLogs(prev => {
     // Avoid duplicates
     if (prev[0]?.includes(msg.substring(10))) return prev;
     return [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 99)];
   });
+
+  const buildQueueItemsFromOrders = useCallback((orders: ExtractedOrder[]): InventoryItem[] => {
+    if (orders.length === 0) return [];
+    const profiles = buildVelocityProfiles(orders);
+    return Array.from(profiles.values()).map(profile => {
+      const lastOrder = profile.orders[profile.orders.length - 1];
+      return {
+        id: profile.normalizedName,
+        name: profile.displayName || profile.normalizedName,
+        supplier: profile.supplier,
+        asin: profile.asin,
+        totalQuantityOrdered: profile.totalQuantityOrdered,
+        orderCount: profile.orderCount,
+        firstOrderDate: profile.firstOrderDate,
+        lastOrderDate: profile.lastOrderDate,
+        averageCadenceDays: Math.round(profile.averageCadenceDays),
+        dailyBurnRate: Math.round(profile.dailyBurnRate * 100) / 100,
+        recommendedMin: profile.recommendedMin,
+        recommendedOrderQty: profile.recommendedOrderQty,
+        lastPrice: lastOrder?.unitPrice || 0,
+        history: profile.orders.map(order => ({ date: order.date, quantity: order.quantity })),
+        imageUrl: profile.imageUrl,
+        productUrl: profile.amazonUrl,
+        isDraft: true,
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (processedOrders.length === 0) return;
+    setOrderReview(prev => {
+      const next = { ...prev };
+      processedOrders.forEach(order => {
+        if (!next[order.id]) next[order.id] = 'pending';
+      });
+      return next;
+    });
+    setSupplierReview(prev => {
+      const next = { ...prev };
+      processedOrders.forEach(order => {
+        const key = supplierKey(order.supplier);
+        if (!next[key]) next[key] = 'pending';
+      });
+      return next;
+    });
+  }, [processedOrders, supplierKey]);
+
+  useEffect(() => {
+    if (filteredOrders.length === 0) return;
+    const incoming = buildQueueItemsFromOrders(filteredOrders);
+    setQueueItems(prev => {
+      const prevMap = new Map(prev.map(item => [item.id, item]));
+      const next = incoming.map(item => {
+        const existing = prevMap.get(item.id);
+        if (!existing) return item;
+        return {
+          ...item,
+          name: existing.name ?? item.name,
+          supplier: existing.supplier ?? item.supplier,
+          location: existing.location ?? item.location,
+          recommendedMin: existing.recommendedMin ?? item.recommendedMin,
+          recommendedOrderQty: existing.recommendedOrderQty ?? item.recommendedOrderQty,
+          color: existing.color ?? item.color,
+          imageUrl: existing.imageUrl ?? item.imageUrl,
+          productUrl: existing.productUrl ?? item.productUrl,
+          asin: existing.asin ?? item.asin,
+          isDraft: existing.isDraft ?? item.isDraft,
+        };
+      });
+      const nextIds = new Set(next.map(item => item.id));
+      const carry = prev.filter(item => !nextIds.has(item.id));
+      const merged = [...next, ...carry];
+      setItemReview(current => {
+        const updated = { ...current };
+        merged.forEach(item => {
+          if (!updated[item.id]) updated[item.id] = 'pending';
+        });
+        return updated;
+      });
+      return merged;
+    });
+  }, [filteredOrders, buildQueueItemsFromOrders]);
+
+  const handleQueueUpdate = useCallback((id: string, updates: Partial<InventoryItem>) => {
+    setQueueItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+  }, []);
+
+  const handleItemReviewChange = useCallback((id: string, status: ReviewStatus) => {
+    setItemReview(prev => ({ ...prev, [id]: status }));
+  }, []);
+
+  const handleOrderReviewChange = useCallback((orderId: string, status: ReviewStatus) => {
+    setOrderReview(prev => ({ ...prev, [orderId]: status }));
+  }, []);
+
+  const handleSupplierReviewChange = useCallback((supplier: string, status: ReviewStatus) => {
+    const key = supplierKey(supplier);
+    setSupplierReview(prev => ({ ...prev, [key]: status }));
+  }, [supplierKey]);
+
+  const extractAsinFromUrl = (url: string): string | null => {
+    const patterns = [
+      /amazon\.com\/dp\/([A-Z0-9]{10})/i,
+      /amazon\.com\/gp\/product\/([A-Z0-9]{10})/i,
+      /amazon\.com\/.*\/dp\/([A-Z0-9]{10})/i,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const parsePrice = (value?: string): number | null => {
+    if (!value) return null;
+    const parsed = parseFloat(value.replace(/[^0-9.]/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const handleAmazonLookup = useCallback(async (item: InventoryItem) => {
+    const asin = item.asin || (item.productUrl ? extractAsinFromUrl(item.productUrl) : null);
+    if (!asin) {
+      addLog('⚠️ No ASIN found for this item. Add an Amazon URL or ASIN.');
+      return;
+    }
+
+    setAmazonLookupLoadingIds(prev => new Set(prev).add(item.id));
+    try {
+      const result = await amazonApi.getItem(asin);
+      const data = result.item;
+      handleQueueUpdate(item.id, {
+        asin: data.ASIN || asin,
+        name: data.ItemName || item.name,
+        originalName: data.ItemName || item.originalName,
+        imageUrl: data.ImageURL || item.imageUrl,
+        productUrl: data.AmazonURL || item.productUrl,
+        lastPrice: parsePrice(data.Price) ?? item.lastPrice,
+        amazonEnriched: data,
+      });
+      addLog(`✅ Amazon lookup complete for ${asin}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Amazon lookup failed';
+      addLog(`❌ Amazon lookup failed: ${message}`);
+    } finally {
+      setAmazonLookupLoadingIds(prev => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  }, [addLog, handleQueueUpdate]);
+
+  const reviewBadgeClasses: Record<ReviewStatus, string> = {
+    pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+    approved: 'bg-green-50 text-green-700 border-green-200',
+    excluded: 'bg-red-50 text-red-700 border-red-200',
+  };
+
+  const orderRows = useMemo(() => {
+    return [...processedOrders].sort((a, b) => {
+      return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
+    });
+  }, [processedOrders]);
+
+  const supplierRows = useMemo(() => {
+    const map = new Map<string, { supplier: string; orderCount: number; itemCount: number; totalAmount: number }>();
+    processedOrders.forEach(order => {
+      const key = supplierKey(order.supplier);
+      const existing = map.get(key) || { supplier: order.supplier, orderCount: 0, itemCount: 0, totalAmount: 0 };
+      existing.orderCount += 1;
+      existing.itemCount += order.items.length;
+      existing.totalAmount += order.totalAmount || 0;
+      map.set(key, existing);
+    });
+    return Array.from(map.values()).sort((a, b) => b.orderCount - a.orderCount);
+  }, [processedOrders, supplierKey]);
 
   // Poll for job status
   const pollJobStatus = useCallback(async () => {
@@ -93,7 +311,6 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
           confidence: o.confidence,
         }));
         setProcessedOrders(convertedOrders);
-        onOrdersProcessed(convertedOrders);
       }
       
       if (status.logs) {
@@ -118,7 +335,7 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
     } catch (error) {
       console.error('Polling error:', error);
     }
-  }, [currentJobId, onOrdersProcessed]);
+  }, [currentJobId]);
 
   // Check for existing job on mount
   useEffect(() => {
@@ -233,6 +450,11 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
     addLog('Disconnected.');
     setProcessingStatus({ total: 0, processed: 0, success: 0, failed: 0, currentTask: 'Waiting to start...' });
     setProcessedOrders([]);
+    setQueueItems([]);
+    setOrderReview({});
+    setSupplierReview({});
+    setItemReview({});
+    setAmazonLookupLoadingIds(new Set());
     setCurrentEmail(null);
     setCurrentJobId(null);
     setJobStatus(null);
@@ -249,6 +471,11 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
       try {
         setIsProcessing(true);
         setProcessedOrders([]);
+        setQueueItems([]);
+        setOrderReview({});
+        setSupplierReview({});
+        setItemReview({});
+        setAmazonLookupLoadingIds(new Set());
         setLogs([]);
         setProcessingStatus({ total: 0, processed: 0, success: 0, failed: 0, currentTask: 'Starting job...' });
         
@@ -266,6 +493,11 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
       // Mock mode - process locally (unchanged)
       setIsProcessing(true);
       setProcessedOrders([]);
+      setQueueItems([]);
+      setOrderReview({});
+      setSupplierReview({});
+      setItemReview({});
+      setAmazonLookupLoadingIds(new Set());
       setProcessingStatus(prev => ({ ...prev, currentTask: 'Initializing...', processed: 0, success: 0, failed: 0 }));
       
       const emailsToProcess = MOCK_EMAILS.map(e => ({
@@ -335,7 +567,6 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
           }
           
           setProcessedOrders([...allOrders]);
-          onOrdersProcessed([...allOrders]);
           
           return true;
         } catch (error) {

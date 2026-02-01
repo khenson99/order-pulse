@@ -1,5 +1,7 @@
 // Amazon Product Advertising API Integration
-// Uses the Affimation proxy API for simplified access
+// Uses the official Amazon PAAPI 5.0 SDK
+
+import amazonPaapi from 'amazon-paapi';
 
 interface AmazonItemResponse {
   ASIN: string;
@@ -14,18 +16,13 @@ interface AmazonItemResponse {
   UPC?: string;
 }
 
-interface AmazonApiResponse {
-  items?: AmazonItemResponse[];
-  error?: string;
-}
-
 // API Configuration - loaded from environment variables
 const AMAZON_API_CONFIG = {
-  url: process.env.AMAZON_API_URL || 'https://api.affimation.com/V2/item',
-  apiKey: process.env.AMAZON_API_KEY || '',
   accessKey: process.env.AMAZON_ACCESS_KEY || '',
   secretKey: process.env.AMAZON_SECRET_KEY || '',
   partnerTag: process.env.AMAZON_PARTNER_TAG || 'arda06-20',
+  partnerType: 'Associates' as const,
+  marketplace: 'www.amazon.com' as const,
 };
 
 // ASIN pattern: B followed by 9 alphanumeric, or 10 digits
@@ -72,7 +69,7 @@ export function extractAsinFromUrl(url: string): string | null {
   return null;
 }
 
-// Fetch item details from Amazon API
+// Fetch item details from Amazon API using official PAAPI 5.0
 export async function getAmazonItemDetails(asins: string[]): Promise<Map<string, AmazonItemResponse>> {
   const results = new Map<string, AmazonItemResponse>();
   
@@ -81,7 +78,7 @@ export async function getAmazonItemDetails(asins: string[]): Promise<Map<string,
   }
   
   // Check if credentials are configured
-  if (!AMAZON_API_CONFIG.apiKey || !AMAZON_API_CONFIG.accessKey || !AMAZON_API_CONFIG.secretKey) {
+  if (!AMAZON_API_CONFIG.accessKey || !AMAZON_API_CONFIG.secretKey) {
     console.warn('⚠️ Amazon API credentials not configured');
     return results;
   }
@@ -89,41 +86,65 @@ export async function getAmazonItemDetails(asins: string[]): Promise<Map<string,
   try {
     console.log(`🛒 Fetching Amazon data for ${asins.length} ASINs:`, asins);
     
-    const response = await fetch(AMAZON_API_CONFIG.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': AMAZON_API_CONFIG.apiKey,
-      },
-      body: JSON.stringify({
-        itemids: asins,
-        access_key: AMAZON_API_CONFIG.accessKey,
-        secret_key: AMAZON_API_CONFIG.secretKey,
-        partner_tag: AMAZON_API_CONFIG.partnerTag,
-        Resources: [
-          'ItemInfo.ProductInfo',
-          'ItemInfo.TechnicalInfo',
-          'ItemInfo.ExternalIds',
-          'ItemInfo.Title',
-          'Images.Primary.Large',
-          'Offers.Listings.Price',
-        ],
-      }),
-    });
+    // Amazon PAAPI allows max 10 items per request
+    const batchSize = 10;
     
-    if (!response.ok) {
-      console.error('Amazon API error:', response.status, response.statusText);
-      return results;
-    }
-    
-    const data = await response.json() as AmazonApiResponse;
-    
-    if (data.items) {
-      for (const item of data.items) {
-        if (item.ASIN) {
-          results.set(item.ASIN, item);
-          console.log(`  ✓ ${item.ASIN}: ${item.ItemName?.substring(0, 50)}...`);
+    for (let i = 0; i < asins.length; i += batchSize) {
+      const batch = asins.slice(i, i + batchSize);
+      
+      try {
+        const commonParameters = {
+          AccessKey: AMAZON_API_CONFIG.accessKey,
+          SecretKey: AMAZON_API_CONFIG.secretKey,
+          PartnerTag: AMAZON_API_CONFIG.partnerTag,
+          PartnerType: AMAZON_API_CONFIG.partnerType,
+          Marketplace: AMAZON_API_CONFIG.marketplace,
+        };
+        
+        const requestParameters = {
+          ItemIds: batch,
+          ItemIdType: 'ASIN' as const,
+          Condition: 'New' as const,
+          Resources: [
+            'ItemInfo.Title',
+            'ItemInfo.ProductInfo',
+            'ItemInfo.ExternalIds',
+            'Images.Primary.Large',
+            'Offers.Listings.Price',
+          ],
+        };
+        
+        const response = await amazonPaapi.GetItems(commonParameters, requestParameters);
+        
+        if (response.ItemsResult?.Items) {
+          for (const item of response.ItemsResult.Items) {
+            const itemData: AmazonItemResponse = {
+              ASIN: item.ASIN,
+              ItemName: item.ItemInfo?.Title?.DisplayValue,
+              Price: item.Offers?.Listings?.[0]?.Price?.DisplayAmount,
+              ImageURL: item.Images?.Primary?.Large?.URL,
+              AmazonURL: item.DetailPageURL,
+              UnitCount: item.ItemInfo?.ProductInfo?.UnitCount?.DisplayValue,
+            };
+            
+            // Extract UPC from ExternalIds
+            const upcs = item.ItemInfo?.ExternalIds?.UPCs?.DisplayValues;
+            if (upcs && upcs.length > 0) {
+              itemData.UPC = upcs[0];
+            }
+            
+            results.set(item.ASIN, itemData);
+            console.log(`  ✓ ${item.ASIN}: ${itemData.ItemName?.substring(0, 50)}...`);
+          }
         }
+        
+        // Rate limit: wait between batches
+        if (i + batchSize < asins.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+      } catch (batchError: any) {
+        console.error(`Error fetching batch starting at ${i}:`, batchError?.message || batchError);
       }
     }
     

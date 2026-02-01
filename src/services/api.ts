@@ -257,6 +257,10 @@ export interface InventoryItem {
   recommendedOrderQty: number;
   lastPrice: number;
   suppliers: string;
+  location?: string;
+  imageUrl?: string;
+  productUrl?: string;
+  asin?: string;
 }
 
 export const ordersApi = {

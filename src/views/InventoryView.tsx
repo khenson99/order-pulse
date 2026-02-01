@@ -1,12 +1,24 @@
 import { useState, useCallback } from 'react';
-import { InventoryItem, ItemColor } from '../types';
+import { InventoryItem, ItemColor, ReviewStatus } from '../types';
 import { Icons } from '../components/Icons';
 import { ardaApi, ArdaItemInput } from '../services/api';
 
 interface InventoryViewProps {
   inventory: InventoryItem[];
-  onReorder: (item: InventoryItem) => void;
+  onReorder?: (item: InventoryItem) => void;
   onUpdateItem?: (id: string, updates: Partial<InventoryItem>) => void;
+  title?: string;
+  subtitle?: string;
+  showBulkSync?: boolean;
+  showHistoryAction?: boolean;
+  showReorderAction?: boolean;
+  emptyMessage?: string;
+  reviewStatusById?: Record<string, ReviewStatus>;
+  onReviewStatusChange?: (id: string, status: ReviewStatus) => void;
+  showReviewColumn?: boolean;
+  onAmazonLookup?: (item: InventoryItem) => void;
+  showAmazonLookupAction?: boolean;
+  amazonLookupLoadingIds?: Set<string>;
 }
 
 // Available colors for the color picker
@@ -148,7 +160,28 @@ const ColorPicker: React.FC<{
   );
 };
 
-export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReorder, onUpdateItem }) => {
+export const InventoryView: React.FC<InventoryViewProps> = ({
+  inventory,
+  onReorder,
+  onUpdateItem,
+  title = 'Inventory Intelligence',
+  subtitle,
+  showBulkSync = true,
+  showHistoryAction = true,
+  showReorderAction = true,
+  emptyMessage,
+  reviewStatusById,
+  onReviewStatusChange,
+  showReviewColumn = false,
+  onAmazonLookup,
+  showAmazonLookupAction = false,
+  amazonLookupLoadingIds,
+}) => {
+  const reviewBadgeClasses: Record<ReviewStatus, string> = {
+    pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+    approved: 'bg-green-50 text-green-700 border-green-200',
+    excluded: 'bg-red-50 text-red-700 border-red-200',
+  };
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const [syncingItems, setSyncingItems] = useState<Set<string>>(new Set());
   const [syncResults, setSyncResults] = useState<Record<string, 'success' | 'error' | null>>({});
@@ -187,6 +220,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
         primarySupplier: item.supplier,
         orderQty: item.recommendedOrderQty,
         orderQtyUnit: 'each',
+        location: item.location,
+        primarySupplierLink: item.productUrl,
+        imageUrl: item.imageUrl,
       };
       await ardaApi.createItem(ardaItem);
       setSyncResults(prev => ({ ...prev, [item.id]: 'success' }));
@@ -219,6 +255,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
         primarySupplier: item.supplier,
         orderQty: item.recommendedOrderQty,
         orderQtyUnit: 'each',
+        location: item.location,
+        primarySupplierLink: item.productUrl,
+        imageUrl: item.imageUrl,
       }));
       const result = await ardaApi.bulkCreateItems(ardaItems);
       
@@ -257,7 +296,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
     return (
       <div className="flex flex-col items-center justify-center h-96 text-arda-text-muted">
         <Icons.Package className="w-16 h-16 mb-4 opacity-20 text-arda-accent" />
-        <p>No inventory data derived yet. Go to Ingestion Engine to process emails.</p>
+        <p>{emptyMessage || 'No inventory data derived yet. Go to Ingestion Engine to process emails.'}</p>
       </div>
     );
   }
@@ -273,20 +312,27 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-arda-text-primary">Inventory Intelligence</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-arda-text-primary">{title}</h2>
+          {subtitle && (
+            <p className="text-xs text-arda-text-secondary mt-1">{subtitle}</p>
+          )}
+        </div>
         <div className="flex gap-2">
-          <button
-            onClick={handleBulkSync}
-            disabled={isBulkSyncing}
-            className="bg-arda-success/10 hover:bg-arda-success text-arda-success hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border border-arda-success/30 disabled:opacity-50"
-          >
-            {isBulkSyncing ? (
-              <Icons.Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Icons.Upload className="w-3 h-3" />
-            )}
-            Sync All to Arda
-          </button>
+          {showBulkSync && (
+            <button
+              onClick={handleBulkSync}
+              disabled={isBulkSyncing}
+              className="bg-arda-success/10 hover:bg-arda-success text-arda-success hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border border-arda-success/30 disabled:opacity-50"
+            >
+              {isBulkSyncing ? (
+                <Icons.Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Icons.Upload className="w-3 h-3" />
+              )}
+              Sync All to Arda
+            </button>
+          )}
           <span className="bg-arda-bg-tertiary text-arda-text-secondary px-3 py-1 rounded-lg text-sm flex items-center gap-2 border border-arda-border">
             <Icons.Package className="w-4 h-4"/> {items.length} Items
           </span>
@@ -319,10 +365,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
                 <th className="px-3 py-3 text-left w-12">Color</th>
                 <th className="px-3 py-3 text-left min-w-[180px]">Item Name</th>
                 <th className="px-3 py-3 text-left min-w-[120px]">Supplier</th>
+                <th className="px-3 py-3 text-left min-w-[120px]">Location</th>
                 <th className="px-3 py-3 text-right w-20">Order Qty</th>
                 <th className="px-3 py-3 text-right w-20">Min Qty</th>
                 <th className="px-3 py-3 text-left w-32">Image URL</th>
                 <th className="px-3 py-3 text-left w-32">Product URL</th>
+                {showReviewColumn && (
+                  <th className="px-3 py-3 text-left w-40">Review</th>
+                )}
                 <th className="px-3 py-3 text-center w-12">Status</th>
                 <th className="px-3 py-3 text-right w-28">Actions</th>
               </tr>
@@ -370,6 +420,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
                       value={item.supplier}
                       onSave={(val) => handleUpdate(item.id, { supplier: String(val) })}
                       className="text-arda-text-secondary"
+                    />
+                  </td>
+
+                  {/* Location */}
+                  <td className="px-1 py-2">
+                    <EditableCell
+                      value={item.location}
+                      onSave={(val) => handleUpdate(item.id, { location: String(val) })}
+                      className="text-arda-text-secondary"
+                      placeholder="Add location"
                     />
                   </td>
 
@@ -423,6 +483,45 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
                     />
                   </td>
 
+                  {/* Review */}
+                  {showReviewColumn && (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${reviewBadgeClasses[reviewStatusById?.[item.id] || 'pending']}`}>
+                          {(reviewStatusById?.[item.id] || 'pending').toUpperCase()}
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!onReviewStatusChange) return;
+                              const current = reviewStatusById?.[item.id] || 'pending';
+                              onReviewStatusChange(item.id, current === 'approved' ? 'pending' : 'approved');
+                            }}
+                            className="text-xs px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50 transition-colors"
+                            title="Approve item"
+                            aria-label="Approve item"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!onReviewStatusChange) return;
+                              const current = reviewStatusById?.[item.id] || 'pending';
+                              onReviewStatusChange(item.id, current === 'excluded' ? 'pending' : 'excluded');
+                            }}
+                            className="text-xs px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
+                            title="Exclude item"
+                            aria-label="Exclude item"
+                          >
+                            Exclude
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  )}
+
                   {/* Status */}
                   <td className="px-3 py-2 text-center">
                     {syncResults[item.id] === 'success' && (
@@ -450,6 +549,21 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
                       >
                         <Icons.Clock className="w-4 h-4" />
                       </button>
+                      {showAmazonLookupAction && onAmazonLookup && (
+                        <button
+                          onClick={() => onAmazonLookup(item)}
+                          disabled={(!item.asin && !item.productUrl) || amazonLookupLoadingIds?.has(item.id)}
+                          className="p-1.5 text-arda-text-muted hover:text-arda-accent transition-colors rounded hover:bg-arda-accent/10 disabled:opacity-50"
+                          title="Lookup Amazon info"
+                          aria-label="Lookup Amazon info"
+                        >
+                          {amazonLookupLoadingIds?.has(item.id) ? (
+                            <Icons.Loader2 className="w-4 h-4 animate-spin text-arda-accent" />
+                          ) : (
+                            <Icons.Search className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleSyncToArda(item)}
                         disabled={syncingItems.has(item.id)}
@@ -458,13 +572,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onReord
                       >
                         <Icons.Upload className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => onReorder(item)}
-                        className="p-1.5 text-arda-accent hover:bg-arda-accent/10 transition-colors rounded"
-                        title="Reorder"
-                      >
-                        <Icons.Send className="w-4 h-4" />
-                      </button>
+                      {showReorderAction && onReorder && (
+                        <button
+                          onClick={() => onReorder(item)}
+                          className="p-1.5 text-arda-accent hover:bg-arda-accent/10 transition-colors rounded"
+                          title="Reorder"
+                        >
+                          <Icons.Send className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
