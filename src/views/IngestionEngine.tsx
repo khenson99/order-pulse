@@ -449,7 +449,7 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
                   <p className="text-arda-text-secondary text-sm max-w-xs mx-auto">
                     Sign in to scan your inbox for orders, or use simulated data for testing.
                   </p>
-                  <p className="text-arda-600 text-xs">
+                  <p className="text-arda-text-muted text-xs">
                     ✓ Secure server-side OAuth • ✓ Background processing
                   </p>
                 </div>
@@ -475,15 +475,15 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
                   </button>
                   
                   <div className="flex items-center gap-2 w-full my-1">
-                    <div className="h-px bg-arda-700 flex-1"></div>
-                    <span className="text-xs text-arda-600 uppercase">Or</span>
-                    <div className="h-px bg-arda-700 flex-1"></div>
+                    <div className="h-px bg-arda-border flex-1"></div>
+                    <span className="text-xs text-arda-text-muted uppercase">Or</span>
+                    <div className="h-px bg-arda-border flex-1"></div>
                   </div>
 
                   <button
                     onClick={handleMockConnect}
                     disabled={isConnecting}
-                    className="w-full bg-transparent border border-arda-700 text-arda-400 px-4 py-2 rounded-md font-medium text-xs hover:text-white hover:border-arda-500 flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                    className="w-full bg-transparent border border-arda-border text-arda-text-muted px-4 py-2 rounded-md font-medium text-xs hover:text-arda-text-primary hover:border-arda-text-muted flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                   >
                     Use Demo Data
                   </button>
@@ -493,19 +493,19 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
               <div className="text-center w-full animate-in fade-in duration-500">
                 <div className="relative mx-auto mb-4 w-20 h-20">
                   {userProfile?.picture ? (
-                     <img src={userProfile.picture} alt="Profile" className="w-20 h-20 rounded-full border-4 border-arda-700" />
+                     <img src={userProfile.picture} alt="Profile" className="w-20 h-20 rounded-full border-4 border-arda-border" />
                   ) : (
                     <div className={`w-20 h-20 rounded-full flex items-center justify-center ${userProfile ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
                       {userProfile ? <Icons.Inbox className="w-10 h-10" /> : <Icons.Package className="w-10 h-10" />}
                     </div>
                   )}
-                  <div className="absolute bottom-0 right-0 bg-green-500 w-5 h-5 rounded-full border-4 border-arda-800"></div>
+                  <div className="absolute bottom-0 right-0 bg-green-500 w-5 h-5 rounded-full border-4 border-white"></div>
                 </div>
                 
-                <h3 className="text-xl font-bold text-white mb-1">
+                <h3 className="text-xl font-bold text-arda-text-primary mb-1">
                   {userProfile ? `Welcome, ${userProfile.given_name}` : 'Mock Mode'}
                 </h3>
-                <p className="text-arda-500 text-sm mb-2">
+                <p className="text-arda-text-muted text-sm mb-2">
                   {userProfile ? userProfile.email : 'Ready to analyze inventory patterns'}
                 </p>
                 {userProfile && (
@@ -516,7 +516,7 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
                 
                 <button
                   onClick={handleDisconnect}
-                  className="text-xs text-red-400 hover:text-red-300 border border-red-900 bg-red-500/10 px-4 py-2 rounded-full transition-colors"
+                  className="text-xs text-red-400 hover:text-red-300 border border-red-200 bg-red-500/10 px-4 py-2 rounded-full transition-colors"
                 >
                   Sign Out
                 </button>

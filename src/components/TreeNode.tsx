@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { Icons } from './Icons';
 import { VelocityBadge } from './VelocityBadge';
 import { ReorderSparkline } from './ReorderSparkline';
@@ -73,7 +73,7 @@ const getNodeColors = (type: JourneyNodeType) => {
   }
 };
 
-export const TreeNode: React.FC<TreeNodeProps> = ({
+const TreeNodeComponent: React.FC<TreeNodeProps> = ({
   node,
   level,
   velocityProfiles,
@@ -83,39 +83,37 @@ export const TreeNode: React.FC<TreeNodeProps> = ({
   focusedNodeId,
   onFocusChange,
 }) => {
-  const hasChildren = node.children && node.children.length > 0;
+  const hasChildren = node.children?.length ? node.children.length > 0 : false;
   const isExpanded = expandedNodes?.has(node.id) ?? (node.isExpanded ?? level < 2);
   const isFocused = focusedNodeId === node.id;
   const isNew = node.isNew ?? false;
-  
-  const Icon = getNodeIcon(node.type);
-  const colors = getNodeColors(node.type);
-  
-  const handleToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newExpanded = !isExpanded;
-    onExpandToggle?.(node.id, newExpanded);
-  };
-  
-  const handleClick = () => {
+
+  const Icon = useMemo(() => getNodeIcon(node.type), [node.type]);
+  const colors = useMemo(() => getNodeColors(node.type), [node.type]);
+
+  const velocityProfile = useMemo(() => {
+    if (node.type !== 'lineItem' || !velocityProfiles) return undefined;
+    const data = node.data as LineItemNodeData | undefined;
+    if (!data?.normalizedName) return undefined;
+    return velocityProfiles.get(data.normalizedName);
+  }, [node.type, node.data, velocityProfiles]);
+
+  const handleToggle = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onExpandToggle?.(node.id, !isExpanded);
+    },
+    [isExpanded, node.id, onExpandToggle],
+  );
+
+  const handleClick = useCallback(() => {
     onFocusChange?.(node.id);
     onNodeClick?.(node);
-  };
+  }, [node, onFocusChange, onNodeClick]);
 
-  const handleMouseEnter = () => {
+  const handleMouseEnter = useCallback(() => {
     onFocusChange?.(node.id);
-  };
-
-  // Get velocity profile for line items
-  const getVelocityProfileForNode = (): ItemVelocityProfile | undefined => {
-    if (node.type === 'lineItem' && velocityProfiles) {
-      const data = node.data as LineItemNodeData;
-      return velocityProfiles.get(data.normalizedName);
-    }
-    return undefined;
-  };
-
-  const velocityProfile = getVelocityProfileForNode();
+  }, [node.id, onFocusChange]);
 
   return (
     <div className="select-none">

@@ -124,7 +124,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ orders, inventory, onReord
               </h3>
               <div className="space-y-2">
                 {topBurnRate.map((profile, idx) => (
-                  <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-arda-bg-tertiary transition-colors">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="text-xs font-medium text-arda-text-muted w-5">{idx + 1}.</span>
                       <div className="flex-1 min-w-0">
@@ -164,7 +164,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ orders, inventory, onReord
               </h3>
               <div className="space-y-2">
                 {topCadence.map((profile, idx) => (
-                  <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-arda-bg-tertiary transition-colors">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="text-xs font-medium text-arda-text-muted w-5">{idx + 1}.</span>
                       <div className="flex-1 min-w-0">
@@ -206,7 +206,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ orders, inventory, onReord
               const daysUntil = Math.ceil((new Date(profile.nextPredictedOrder!).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
               const urgency = getUrgencyColor(profile.nextPredictedOrder!);
               return (
-                <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                <div key={profile.normalizedName} className="flex items-center justify-between p-2 rounded-lg hover:bg-arda-bg-tertiary transition-colors">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <div className={`w-2 h-2 rounded-full ${urgency.bg}`} />
                     <div className="flex-1 min-w-0">
