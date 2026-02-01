@@ -5,13 +5,14 @@ import { InventoryView } from './views/InventoryView';
 import { CadenceView } from './views/CadenceView';
 import { ComposeEmail } from './views/ComposeEmail';
 import { LoginScreen } from './views/LoginScreen';
+import { PipelineView } from './views/PipelineView';
 import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
 import { processOrdersToInventory } from './utils/inventoryLogic';
 import { useAutoIngestion } from './hooks/useAutoIngestion';
 import { authApi } from './services/api';
 
 export default function App() {
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState('pipeline'); // Start with pipeline view
   
   // Auth State
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -20,6 +21,9 @@ export default function App() {
   // Data State
   const [orders, setOrders] = useState<ExtractedOrder[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  
+  // Track if pipeline has been viewed
+  const [hasSeenPipeline, setHasSeenPipeline] = useState(false);
   
   // Email Draft State for integrated reordering
   const [emailDraft, setEmailDraft] = useState<{ to: string, subject: string, body: string } | null>(null);
@@ -41,6 +45,9 @@ export default function App() {
             name: data.user.name,
             picture: data.user.picture_url,
           });
+          // If user is already logged in and has data, skip pipeline
+          setHasSeenPipeline(true);
+          setActiveView('dashboard');
         }
       } catch {
         // Not authenticated
@@ -53,7 +60,7 @@ export default function App() {
 
   // Keyboard shortcuts for power users
   useEffect(() => {
-    if (!userProfile) return; // Only when logged in
+    if (!userProfile || activeView === 'pipeline') return;
     
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -79,7 +86,7 @@ export default function App() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [userProfile]);
+  }, [userProfile, activeView]);
 
   // When orders update, recalculate inventory stats
   useEffect(() => {
@@ -114,6 +121,13 @@ export default function App() {
     setUserProfile(null);
     setOrders([]);
     setInventory([]);
+    setHasSeenPipeline(false);
+    setActiveView('pipeline');
+  };
+
+  const handleContinueToDashboard = () => {
+    setHasSeenPipeline(true);
+    setActiveView('dashboard');
   };
 
   // Show login screen if not authenticated
@@ -123,6 +137,21 @@ export default function App() {
   
   if (!userProfile) {
     return <LoginScreen />;
+  }
+
+  // Show pipeline view while ingesting or if user hasn't seen it yet
+  if (activeView === 'pipeline' || (!hasSeenPipeline && (ingestion.isIngesting || orders.length === 0))) {
+    return (
+      <PipelineView
+        isIngesting={ingestion.isIngesting}
+        progress={ingestion.progress}
+        currentEmail={ingestion.currentEmail}
+        orders={orders}
+        inventory={inventory}
+        logs={ingestion.logs}
+        onContinueToDashboard={handleContinueToDashboard}
+      />
+    );
   }
 
   const renderView = () => {
