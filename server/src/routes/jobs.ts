@@ -34,6 +34,25 @@ const amazonLimiter = rateLimit({
 
 const MAX_SUPPLIERS = 25;
 
+function parseEmailDate(dateHeader?: string): string | null {
+  if (!dateHeader) return null;
+  const parsed = new Date(dateHeader);
+  if (isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().split('T')[0];
+}
+
+function normalizeOrderDate(orderDate?: string, fallbackDate?: string): string {
+  const candidates = [orderDate, fallbackDate];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const parsed = new Date(candidate);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
 function sanitizeSupplierDomains(domains: unknown): string[] {
   if (!Array.isArray(domains)) return [];
 
@@ -127,7 +146,7 @@ Return JSON:
 {
   "isOrder": true,
   "supplier": "Exact Company Name",
-  "orderDate": "${new Date().toISOString().split('T')[0]}",
+  "orderDate": "YYYY-MM-DD",
   "totalAmount": 123.45,
   "items": [
     {"name": "ACTUAL product name from email", "quantity": 2, "unit": "ea", "unitPrice": 10.50, "partNumber": "ABC-123", "asin": null},
@@ -138,6 +157,8 @@ Return JSON:
 
 ONLY set isOrder: false for pure marketing, password resets, or newsletters.
 If it's an order but you can't find specific items, still mark isOrder: true with items: []
+
+If you cannot find an order date in the email body, use the email Date header (provided below).
 
 EMAIL:
 `;
@@ -210,7 +231,7 @@ function stripHtml(html: string): string {
 // Analyze a single email with retry logic
 async function analyzeEmailWithRetry(
   model: any,
-  email: { id: string; subject: string; sender: string; body: string },
+  email: { id: string; subject: string; sender: string; body: string; date?: string },
   maxRetries: number = 3
 ): Promise<any> {
   // Clean the body - strip HTML if needed
@@ -222,6 +243,7 @@ async function analyzeEmailWithRetry(
   const emailContent = `
 Subject: ${email.subject}
 From: ${email.sender}
+Date: ${email.date || 'Unknown'}
 Content:
 ${cleanBody.substring(0, 8000)}
 `;
@@ -277,6 +299,9 @@ ${cleanBody.substring(0, 8000)}
             sum + (item.totalPrice || item.unitPrice || 0), 0);
         }
       }
+
+      // Normalize order date (prefer email header date if missing/invalid)
+      parsed.orderDate = normalizeOrderDate(parsed.orderDate, email.date);
       
       console.log(`   Result: isOrder=${parsed.isOrder}, items=${parsed.items?.length || 0}, supplier=${parsed.supplier}`);
       
@@ -391,10 +416,11 @@ function extractItemsFromBody(body: string): any[] {
 
 // Keyword-based fallback detection when Gemini fails
 function keywordFallbackDetection(
-  email: { id: string; subject: string; sender: string },
+  email: { id: string; subject: string; sender: string; date?: string },
   body: string
 ): { emailId: string; isOrder: boolean; supplier: string | null; items: any[]; confidence: number; orderDate: string; totalAmount: number } {
   const combined = `${email.subject} ${email.sender} ${body}`.toLowerCase();
+  const emailDate = parseEmailDate(email.date) || new Date().toISOString().split('T')[0];
   
   // Strong order signal keywords
   const orderKeywords = [
@@ -459,7 +485,7 @@ function keywordFallbackDetection(
       supplier: detectedSupplier || extractSupplierFromSender(email.sender),
       items: extractedItems,
       confidence: extractedItems.length > 0 ? 0.7 : 0.5,
-      orderDate: new Date().toISOString().split('T')[0],
+      orderDate: emailDate,
       totalAmount
     };
   }
@@ -470,7 +496,7 @@ function keywordFallbackDetection(
     supplier: null,
     items: [],
     confidence: 0,
-    orderDate: new Date().toISOString().split('T')[0],
+    orderDate: emailDate,
     totalAmount: 0
   };
 }
@@ -560,6 +586,7 @@ async function processEmailsInBackground(
       subject: string;
       sender: string;
       vendorDomain: string;
+      date: string;
     }
     
     const emailInfos: EmailInfo[] = [];
@@ -571,18 +598,19 @@ async function processEmailsInBackground(
           userId: 'me',
           id: msg.id!,
           format: 'metadata',
-          metadataHeaders: ['From', 'Subject'],
+          metadataHeaders: ['From', 'Subject', 'Date'],
         });
         
         const headers = metaMsg.data.payload?.headers || [];
         const sender = headers.find(h => h.name === 'From')?.value || '';
         const subject = headers.find(h => h.name === 'Subject')?.value || '';
+        const date = headers.find(h => h.name === 'Date')?.value || '';
         
         // Extract domain from sender
         const domainMatch = sender.match(/@([a-zA-Z0-9.-]+)/);
         const vendorDomain = domainMatch ? domainMatch[1].toLowerCase() : 'unknown';
         
-        emailInfos.push({ id: msg.id!, subject, sender, vendorDomain });
+        emailInfos.push({ id: msg.id!, subject, sender, vendorDomain, date });
       } catch (error) {
         console.error(`Error fetching metadata for ${msg.id}:`, error);
       }
@@ -665,10 +693,12 @@ async function processEmailsInBackground(
             }
           }
 
+          const headerDate = getHeader('Date') || emailInfo.date || '';
           const email = {
             id: emailInfo.id,
             subject: getHeader('Subject'),
             sender: getHeader('From'),
+            date: headerDate,
             body,
           };
 
@@ -693,7 +723,7 @@ async function processEmailsInBackground(
             const order: ProcessedOrder = {
               id: result.emailId || email.id,
               supplier: result.supplier || vendorName,
-              orderDate: result.orderDate || new Date().toISOString().split('T')[0],
+              orderDate: normalizeOrderDate(result.orderDate, email.date),
               totalAmount: result.totalAmount || 0,
               items: result.items.map((item: any, idx: number) => ({
                 id: `${email.id}-${idx}`,
@@ -762,7 +792,7 @@ async function processEmailsInBackground(
 // Helper to process analysis result
 function processAnalysisResult(
   jobId: string, 
-  email: { id: string; subject: string; sender: string; body: string },
+  email: { id: string; subject: string; sender: string; body: string; date?: string },
   result: any
 ) {
   const job = jobManager.getJob(jobId);
@@ -780,7 +810,7 @@ function processAnalysisResult(
     const order: ProcessedOrder = {
       id: result.emailId,
       supplier: result.supplier || extractSupplierFromSender(email.sender),
-      orderDate: result.orderDate || new Date().toISOString().split('T')[0],
+      orderDate: normalizeOrderDate(result.orderDate, email.date),
       totalAmount: result.totalAmount || 0,
       items: items.map((item: any, idx: number) => ({
         id: `${result.emailId}-${idx}`,
