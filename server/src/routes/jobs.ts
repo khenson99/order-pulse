@@ -1038,14 +1038,15 @@ router.post('/start', jobsLimiter, requireAuth, async (req: Request, res: Respon
       return res.status(401).json({ error: 'Token expired, please re-authenticate' });
     }
 
-    const { supplierDomains } = req.body as { supplierDomains?: unknown };
+    const { supplierDomains, jobType } = req.body as { supplierDomains?: unknown; jobType?: string };
     const validDomains = sanitizeSupplierDomains(supplierDomains);
     if (supplierDomains && validDomains.length === 0) {
       return res.status(400).json({ error: 'supplierDomains must contain valid hostnames' });
     }
 
-    // Create job
-    const job = jobManager.createJob(userId, { jobType: 'suppliers' });
+    // Create job with specified type (defaults to 'suppliers')
+    const effectiveJobType = typeof jobType === 'string' && jobType.length > 0 ? jobType : 'suppliers';
+    const job = jobManager.createJob(userId, { jobType: effectiveJobType });
     
     if (validDomains.length > 0) {
       jobManager.addJobLog(job.id, `🚀 Job created for ${validDomains.length} selected suppliers: ${validDomains.join(', ')}`);

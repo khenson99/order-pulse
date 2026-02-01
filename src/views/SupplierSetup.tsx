@@ -267,7 +267,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     const startPrioritySuppliers = async (retryCount = 0) => {
       try {
         console.log(`🏭 Starting McMaster-Carr & Uline${retryCount > 0 ? ` (retry ${retryCount})` : ''}...`);
-        const response = await jobsApi.startJob(['mcmaster.com', 'uline.com']);
+        const response = await jobsApi.startJob(['mcmaster.com', 'uline.com'], 'priority');
         setPriorityJobId(response.jobId);
         setPriorityError(null);
       } catch (error: any) {
@@ -486,7 +486,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     setJobStatus(null);
     
     try {
-      const response = await jobsApi.startJob(domainsToScan);
+      const response = await jobsApi.startJob(domainsToScan, 'other');
       setCurrentJobId(response.jobId);
     } catch (error: any) {
       console.error('Scan error:', error);
