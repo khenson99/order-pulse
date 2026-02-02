@@ -130,8 +130,8 @@ router.post('/items', async (req: Request, res: Response) => {
       minQtyUnit: itemData.minQtyUnit || 'each',
       primarySupplier: itemData.primarySupplier,
       location: itemData.location,
-      orderQty: itemData.orderQty,
-      orderQtyUnit: itemData.orderQtyUnit,
+      orderQty: itemData.orderQty || 1,
+      orderQtyUnit: itemData.orderQtyUnit || 'each',
       primarySupplierLink: itemData.primarySupplierLink,
       imageUrl: itemData.imageUrl,
     };
