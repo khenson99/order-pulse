@@ -1,12 +1,10 @@
 import Redis from 'ioredis';
 
 const redisUrl = process.env.REDIS_URL;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let redisClient: any = null;
+let redisClient: Redis | null = null;
 
 if (redisUrl) {
   try {
-    // @ts-ignore - ioredis ESM/CJS compat
     redisClient = new Redis(redisUrl);
     redisClient.on('error', (error: Error) => {
       console.error('Redis connection error:', error);
@@ -24,3 +22,12 @@ if (redisUrl) {
 }
 
 export default redisClient;
+
+export async function closeRedisClient(): Promise<void> {
+  if (!redisClient) return;
+  try {
+    await redisClient.quit();
+  } catch (error) {
+    console.error('Error closing Redis client:', error);
+  }
+}

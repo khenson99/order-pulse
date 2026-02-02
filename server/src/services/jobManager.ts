@@ -268,8 +268,19 @@ export function cleanupOldJobs(): void {
   }
 }
 
-// Run cleanup every 10 minutes
-setInterval(cleanupOldJobs, 10 * 60 * 1000);
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+function startCleanupScheduler(): void {
+  if (cleanupInterval) return;
+  cleanupInterval = setInterval(cleanupOldJobs, 10 * 60 * 1000);
+}
+
+export function stopCleanupScheduler(): void {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+  }
+}
 
 export const jobManager = {
   createJob,
@@ -286,6 +297,7 @@ export const jobManager = {
 export async function initializeJobManager(): Promise<void> {
   if (!redisClient) {
     console.log('⚠️ Redis unavailable – job store will remain in-memory only');
+    startCleanupScheduler();
     return;
   }
 
@@ -327,4 +339,10 @@ export async function initializeJobManager(): Promise<void> {
   } catch (error) {
     console.error('Failed to hydrate jobs from Redis:', error);
   }
+
+  startCleanupScheduler();
+}
+
+export function shutdownJobManager(): void {
+  stopCleanupScheduler();
 }

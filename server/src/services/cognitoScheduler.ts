@@ -3,6 +3,7 @@ import { cognitoService } from './cognito.js';
 
 const LOCK_KEY = 'orderpulse:cognito:lock';
 const LOCK_TTL = 1000 * 60 * 60 * 3; // 3 hours
+let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function shouldRunCognitoSync(): boolean {
   if (process.env.ENABLE_COGNITO_SYNC === 'false') {
@@ -48,18 +49,26 @@ async function runCognitoSync() {
 }
 
 export function startCognitoSyncScheduler(): void {
+  if (syncTimeout) return; // already scheduled
   if (!shouldRunCognitoSync()) return;
 
   const syncHour = Number(process.env.COGNITO_SYNC_HOUR ?? '2');
 
-  async function scheduleNext() {
+  const scheduleNext = () => {
     const delay = getNextRunDelay(syncHour);
     console.log(`⏰ Next Cognito sync scheduled in ${Math.round(delay / 1000 / 60)} minutes`);
-    setTimeout(async () => {
+    syncTimeout = setTimeout(async () => {
       await runCognitoSync();
       scheduleNext();
     }, delay);
-  }
+  };
 
   scheduleNext();
+}
+
+export function stopCognitoSyncScheduler(): void {
+  if (syncTimeout) {
+    clearTimeout(syncTimeout);
+    syncTimeout = null;
+  }
 }

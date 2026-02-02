@@ -49,7 +49,7 @@ export function extractAsinsFromEmail(emailBody: string, emailSubject: string): 
     /amazon\.com[^"'\s]*?\/dp\/([A-Z0-9]{10})/gi,
     /amazon\.com[^"'\s]*?\/gp\/product\/([A-Z0-9]{10})/gi,
     /amazon\.com[^"'\s]*?\/gp\/aw\/d\/([A-Z0-9]{10})/gi,  // Mobile URLs
-    /amazon\.com[^"'\s]*?ASIN[=\/]([A-Z0-9]{10})/gi,
+    /amazon\.com[^"'\s]*?ASIN[=/]([A-Z0-9]{10})/gi,
     /a\.co\/d\/([A-Za-z0-9]+)/gi,  // Short URLs (may need expansion)
   ];
   

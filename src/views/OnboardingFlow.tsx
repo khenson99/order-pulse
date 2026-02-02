@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
-import { SupplierSetup } from './SupplierSetup';
+import { SupplierSetup, EmailScanState } from './SupplierSetup';
 import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
 import { CSVUploadStep, CSVItem } from './CSVUploadStep';
@@ -169,6 +169,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Track when user can proceed from email step (Amazon + priority done)
   const [canProceedFromEmail, setCanProceedFromEmail] = useState(false);
   
+  // Preserve email scan state for navigation
+  const [emailScanState, setEmailScanState] = useState<EmailScanState | undefined>(undefined);
+  
   // Mobile session ID for syncing
   const [mobileSessionId] = useState(() => 
     `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -199,8 +202,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     }
   }, []);
 
-  // Handle email step completion
-  const handleEmailComplete = useCallback((orders: ExtractedOrder[]) => {
+  // Handle email orders update (does NOT auto-advance - user clicks Continue)
+  const handleEmailOrdersUpdate = useCallback((orders: ExtractedOrder[]) => {
     setEmailOrders(orders);
     // Convert orders to simple email items for master list
     const items: EmailItem[] = orders.flatMap(order => 
@@ -216,8 +219,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       }))
     );
     setEmailItems(items);
-    handleStepComplete('email');
-  }, [handleStepComplete]);
+    // Don't auto-advance - user will click Continue when ready
+  }, []);
 
   // Handle barcode scan
   const handleBarcodeScanned = useCallback((barcode: ScannedBarcode) => {
@@ -269,6 +272,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Handle when user can proceed from email step (key suppliers done)
   const handleCanProceedFromEmail = useCallback((canProceed: boolean) => {
     setCanProceedFromEmail(canProceed);
+  }, []);
+
+  // Preserve email scan state for navigation
+  const handleEmailScanStateChange = useCallback((state: EmailScanState) => {
+    setEmailScanState(state);
   }, []);
 
   // Go to previous step
@@ -371,10 +379,12 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       case 'email':
         return (
           <SupplierSetup
-            onScanComplete={handleEmailComplete}
+            onScanComplete={handleEmailOrdersUpdate}
             onSkip={() => handleStepComplete('email')}
             onProgressUpdate={handleEmailProgressUpdate}
             onCanProceed={handleCanProceedFromEmail}
+            onStateChange={handleEmailScanStateChange}
+            initialState={emailScanState}
           />
         );
       

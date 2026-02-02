@@ -28,6 +28,33 @@ export interface BarcodeLookupOptions {
   timeoutMs?: number;
 }
 
+function deadlineFromNow(timeoutMs: number): number {
+  const safe = Number.isFinite(timeoutMs) ? Math.max(0, Number(timeoutMs)) : 0;
+  return Date.now() + safe;
+}
+
+function msUntil(deadlineMs: number): number {
+  return Math.max(0, deadlineMs - Date.now());
+}
+
+async function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error('Timeout');
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Timeout')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -158,10 +185,14 @@ function getGtinCandidates(rawBarcode: string): string[] {
   return validFirst;
 }
 
-async function getCached(code: string): Promise<CachePayload | null> {
+async function getCached(code: string, maxWaitMs?: number): Promise<CachePayload | null> {
   if (!redisClient) return null;
+  if (Number.isFinite(maxWaitMs) && Number(maxWaitMs) <= 0) return null;
   try {
-    const cached = await redisClient.get(`barcode:lookup:${code}`);
+    const getPromise = redisClient.get(`barcode:lookup:${code}`) as Promise<string | null>;
+    const cached = Number.isFinite(maxWaitMs)
+      ? await promiseWithTimeout(getPromise, Number(maxWaitMs))
+      : await getPromise;
     if (!cached) return null;
     return JSON.parse(cached) as CachePayload;
   } catch (err) {
@@ -170,10 +201,20 @@ async function getCached(code: string): Promise<CachePayload | null> {
   }
 }
 
-async function setCached(code: string, payload: CachePayload, ttlSeconds: number): Promise<void> {
+async function setCached(code: string, payload: CachePayload, ttlSeconds: number, maxWaitMs?: number): Promise<void> {
   if (!redisClient) return;
+  if (Number.isFinite(maxWaitMs) && Number(maxWaitMs) <= 0) return;
   try {
-    await redisClient.setEx(`barcode:lookup:${code}`, ttlSeconds, JSON.stringify(payload));
+    const setPromise = redisClient.setEx(
+      `barcode:lookup:${code}`,
+      ttlSeconds,
+      JSON.stringify(payload)
+    ) as Promise<unknown>;
+    if (Number.isFinite(maxWaitMs)) {
+      await promiseWithTimeout(setPromise, Number(maxWaitMs));
+    } else {
+      await setPromise;
+    }
   } catch (err) {
     appLogger.warn({ err }, 'Barcode lookup cache write failed');
   }
@@ -344,7 +385,7 @@ async function lookupFromUpcItemDb(code: string, timeoutMs: number): Promise<Loo
   }
 }
 
-async function lookupAcrossProviders(code: string, timeoutMs: number): Promise<{ product: BarcodeProductInfo | null; hadError: boolean }> {
+async function lookupAcrossProviders(code: string, deadlineMs: number): Promise<{ product: BarcodeProductInfo | null; hadError: boolean }> {
   let hadError = false;
 
   // Provider order: use the most general catalog first (when configured), then free sources.
@@ -355,7 +396,13 @@ async function lookupAcrossProviders(code: string, timeoutMs: number): Promise<{
   ];
 
   for (const provider of providers) {
-    const result = await provider(code, timeoutMs);
+    const remainingMs = msUntil(deadlineMs);
+    if (remainingMs <= 0) {
+      // Treat deadline exhaustion as an error to avoid caching "not found".
+      return { product: null, hadError: true };
+    }
+
+    const result = await provider(code, remainingMs);
     if (result.status === 'found') return { product: result.product, hadError };
     if (result.status === 'error') hadError = true;
   }
@@ -372,27 +419,34 @@ async function lookupAcrossProviders(code: string, timeoutMs: number): Promise<{
  */
 export async function lookupProductByBarcode(rawBarcode: string, options: BarcodeLookupOptions = {}): Promise<BarcodeProductInfo | null> {
   const timeoutMs = Number.isFinite(options.timeoutMs) ? Number(options.timeoutMs) : 5000;
+  const deadlineMs = deadlineFromNow(timeoutMs);
   const candidates = getGtinCandidates(rawBarcode);
   if (candidates.length === 0) return null;
 
   // Cache read across all candidate representations.
   for (const code of candidates) {
-    const cached = await getCached(code);
+    const remainingMs = msUntil(deadlineMs);
+    if (remainingMs <= 0) return null;
+
+    const cached = await getCached(code, remainingMs);
     if (!cached) continue;
     if ('notFound' in cached) continue;
     if (cached.name) return cached;
   }
 
   for (const code of candidates) {
-    const { product, hadError } = await lookupAcrossProviders(code, timeoutMs);
+    const remainingMs = msUntil(deadlineMs);
+    if (remainingMs <= 0) return null;
+
+    const { product, hadError } = await lookupAcrossProviders(code, deadlineMs);
     if (product?.name) {
-      await setCached(code, product, CACHE_FOUND_TTL_SECONDS);
+      await setCached(code, product, CACHE_FOUND_TTL_SECONDS, msUntil(deadlineMs));
       return product;
     }
 
     // Only cache "not found" when providers did not error (avoid locking in transient failures).
     if (!hadError) {
-      await setCached(code, { notFound: true }, CACHE_NOT_FOUND_TTL_SECONDS);
+      await setCached(code, { notFound: true }, CACHE_NOT_FOUND_TTL_SECONDS, msUntil(deadlineMs));
     }
   }
 

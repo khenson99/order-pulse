@@ -501,7 +501,7 @@ function extractItemsFromBody(body: string): any[] {
   
   // Pattern 2: "Item # XXXXX" followed by product name and price
   // e.g., Costco format: "Item # 1732381 $19.99"
-  const itemNumberPattern = /Item\s*#?\s*:?\s*(\d+)[^\$]*\$(\d+\.?\d*)/gi;
+  const itemNumberPattern = /Item\s*#?\s*:?\s*(\d+)[^$]*\$(\d+\.?\d*)/gi;
   while ((match = itemNumberPattern.exec(body)) !== null) {
     const sku = match[1];
     const price = parseFloat(match[2]);
@@ -1349,7 +1349,9 @@ async function processAmazonEmailsInBackground(
           if (!isNaN(parsed.getTime())) {
             orderDate = parsed.toISOString().split('T')[0];
           }
-        } catch {}
+        } catch {
+          // Keep default date when parsing fails
+        }
 
         // Create raw order for consolidation
         rawAmazonOrders.push({

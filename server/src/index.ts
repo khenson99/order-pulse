@@ -5,7 +5,7 @@ import session from 'express-session';
 import RedisStore from 'connect-redis';
 import * as Sentry from '@sentry/node';
 import compression from 'compression';
-import redisClient from './utils/redisClient.js';
+import redisClient, { closeRedisClient } from './utils/redisClient.js';
 import { authRouter } from './routes/auth.js';
 import { gmailRouter } from './routes/gmail.js';
 import { analysisRouter } from './routes/analysis.js';
@@ -18,13 +18,13 @@ import cognitoRouter from './routes/cognito.js';
 import scanRouter from './routes/scan.js';
 import photoRouter from './routes/photo.js';
 import { cognitoService } from './services/cognito.js';
-import { initializeJobManager } from './services/jobManager.js';
-import { startCognitoSyncScheduler } from './services/cognitoScheduler.js';
+import { initializeJobManager, shutdownJobManager } from './services/jobManager.js';
+import { startCognitoSyncScheduler, stopCognitoSyncScheduler } from './services/cognitoScheduler.js';
 import { appLogger, requestLogger } from './middleware/requestLogger.js';
 import { securityHeaders } from './middleware/securityHeaders.js';
 import { defaultLimiter, authLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { corsOrigin, env, isProduction, port } from './config.js';
+import { corsOrigin, isProduction, port } from './config.js';
 
 // Debug: Log OAuth config status
 console.log('🔐 OAuth Config:', {
@@ -35,6 +35,8 @@ console.log('🔐 OAuth Config:', {
 });
 
 const app = express();
+let server: ReturnType<typeof app.listen> | null = null;
+let isShuttingDown = false;
 const sentryDsn = process.env.SENTRY_DSN;
 if (sentryDsn) {
   Sentry.init({
@@ -46,10 +48,15 @@ if (sentryDsn) {
 const PORT = port;
 const requiredSecrets = [
   'SESSION_SECRET',
+  'ENCRYPTION_KEY',
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
   'GEMINI_API_KEY',
   'ARDA_TENANT_ID',
+  'ARDA_API_KEY',
+  'DATABASE_URL',
+  'BACKEND_URL',
+  'FRONTEND_URL',
 ];
 for (const key of requiredSecrets) {
   if (!process.env[key]) {
@@ -70,7 +77,7 @@ if (isProduction) {
 }
 
 const sessionSecret = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
-// @ts-ignore - connect-redis type issues
+// @ts-expect-error connect-redis types are slightly out of sync with express-session
 const sessionStore = redisClient ? new RedisStore({ client: redisClient }) : undefined;
 
 // Core middleware
@@ -121,10 +128,36 @@ app.use('/api/photo', photoRouter);
 // Error handler
 app.use(errorHandler);
 
+async function shutdown(reason: string, exitCode = 0): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  appLogger.warn({ reason }, '⚠️ Initiating graceful shutdown');
+
+  stopCognitoSyncScheduler();
+  shutdownJobManager();
+
+  // Stop accepting new connections
+  await new Promise<void>((resolve) => {
+    if (server) {
+      server.close(() => resolve());
+    } else {
+      resolve();
+    }
+  });
+
+  await closeRedisClient();
+
+  // Flush Sentry (if enabled)
+  await Sentry.close(2000).catch(() => undefined);
+
+  process.exit(exitCode);
+}
+
 async function startServer() {
   await initializeJobManager();
 
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     appLogger.info(`🚀 OrderPulse API running on http://localhost:${PORT}`);
     appLogger.info(`📧 Frontend URL: ${process.env.FRONTEND_URL}`);
     
@@ -137,7 +170,18 @@ async function startServer() {
 
 startServer().catch((error) => {
   console.error('Failed to start OrderPulse API:', error);
-  process.exit(1);
+  void shutdown('startup-failure', 1);
+});
+
+process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.on('SIGINT', () => { void shutdown('SIGINT'); });
+process.on('unhandledRejection', (reason) => {
+  appLogger.error({ err: reason }, 'Unhandled promise rejection');
+  void shutdown('unhandledRejection', 1);
+});
+process.on('uncaughtException', (error) => {
+  appLogger.error({ err: error }, 'Uncaught exception');
+  void shutdown('uncaughtException', 1);
 });
 
 export default app;

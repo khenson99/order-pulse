@@ -89,11 +89,24 @@ interface BackgroundEmailProgress {
   currentTask?: string;
 }
 
+// State that can be preserved when navigating away
+export interface EmailScanState {
+  amazonOrders: ExtractedOrder[];
+  priorityOrders: ExtractedOrder[];
+  otherOrders: ExtractedOrder[];
+  isAmazonComplete: boolean;
+  isPriorityComplete: boolean;
+  discoveredSuppliers: DiscoveredSupplier[];
+  hasDiscovered: boolean;
+}
+
 interface SupplierSetupProps {
   onScanComplete: (orders: ExtractedOrder[]) => void;
   onSkip: () => void;
   onProgressUpdate?: (progress: BackgroundEmailProgress | null) => void;
   onCanProceed?: (canProceed: boolean) => void;
+  onStateChange?: (state: EmailScanState) => void;
+  initialState?: EmailScanState;
 }
 
 export const SupplierSetup: React.FC<SupplierSetupProps> = ({
@@ -101,46 +114,51 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onSkip,
   onProgressUpdate,
   onCanProceed,
+  onStateChange,
+  initialState,
 }) => {
+  // Track if we already have restored state (don't restart scans)
+  const hasRestoredState = Boolean(initialState && (initialState.amazonOrders.length > 0 || initialState.priorityOrders.length > 0 || initialState.otherOrders.length > 0));
+  
   // Onboarding phase states
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(!hasRestoredState);
   const [celebratingMilestone, setCelebratingMilestone] = useState<string | null>(null);
   const [achievedMilestones, setAchievedMilestones] = useState<Set<string>>(new Set());
   
   // Lean wisdom rotation
   const [wisdomIndex, setWisdomIndex] = useState(() => Math.floor(Math.random() * LEAN_WISDOM.length));
 
-  // Amazon processing state (starts immediately)
+  // Amazon processing state (starts immediately if no initial state)
   const [amazonJobId, setAmazonJobId] = useState<string | null>(null);
   const [amazonStatus, setAmazonStatus] = useState<JobStatus | null>(null);
-  const [amazonOrders, setAmazonOrders] = useState<ExtractedOrder[]>([]);
+  const [amazonOrders, setAmazonOrders] = useState<ExtractedOrder[]>(initialState?.amazonOrders || []);
   const [amazonError, setAmazonError] = useState<string | null>(null);
-  const [isAmazonComplete, setIsAmazonComplete] = useState(false);
+  const [isAmazonComplete, setIsAmazonComplete] = useState(initialState?.isAmazonComplete || false);
   const amazonPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Priority suppliers (McMaster-Carr, Uline) processing state (starts immediately)
+  // Priority suppliers (McMaster-Carr, Uline) processing state (starts immediately if no initial state)
   const [priorityJobId, setPriorityJobId] = useState<string | null>(null);
   const [priorityStatus, setPriorityStatus] = useState<JobStatus | null>(null);
-  const [priorityOrders, setPriorityOrders] = useState<ExtractedOrder[]>([]);
+  const [priorityOrders, setPriorityOrders] = useState<ExtractedOrder[]>(initialState?.priorityOrders || []);
   const [priorityError, setPriorityError] = useState<string | null>(null);
-  const [isPriorityComplete, setIsPriorityComplete] = useState(false);
+  const [isPriorityComplete, setIsPriorityComplete] = useState(initialState?.isPriorityComplete || false);
   const priorityPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Discovery state (runs in parallel)
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoveryProgress, setDiscoveryProgress] = useState<string>('');
-  const [discoveredSuppliers, setDiscoveredSuppliers] = useState<DiscoveredSupplier[]>([]);
+  const [discoveredSuppliers, setDiscoveredSuppliers] = useState<DiscoveredSupplier[]>(initialState?.discoveredSuppliers || []);
   const [enabledSuppliers, setEnabledSuppliers] = useState<Set<string>>(
     new Set(['mcmaster.com', 'uline.com'])
   );
   const [, setDiscoverError] = useState<string | null>(null);
-  const [hasDiscovered, setHasDiscovered] = useState(false);
+  const [hasDiscovered, setHasDiscovered] = useState(initialState?.hasDiscovered || false);
 
   // Other suppliers scanning state
   const [isScanning, setIsScanning] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
-  const [otherOrders, setOtherOrders] = useState<ExtractedOrder[]>([]);
+  const [otherOrders, setOtherOrders] = useState<ExtractedOrder[]>(initialState?.otherOrders || []);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Computed values for the experience
@@ -247,7 +265,14 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   }, []);
 
   // 1. START PRIORITY SUPPLIERS - STAGGERED TO AVOID RATE LIMITS
+  // Skip if we have restored state (user navigated back)
   useEffect(() => {
+    // Skip initialization if we restored from saved state
+    if (hasRestoredState) {
+      console.log('📦 Restored email scan state - skipping initialization');
+      return;
+    }
+    
     let amazonRetryTimeout: ReturnType<typeof setTimeout> | null = null;
     let priorityDelayTimeout: ReturnType<typeof setTimeout> | null = null;
     
@@ -422,6 +447,19 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     const keySuppliersDone = isAmazonComplete && isPriorityComplete;
     onCanProceed?.(keySuppliersDone);
   }, [isAmazonComplete, isPriorityComplete, onCanProceed]);
+
+  // Preserve state for parent (so navigation back doesn't lose progress)
+  useEffect(() => {
+    onStateChange?.({
+      amazonOrders,
+      priorityOrders,
+      otherOrders,
+      isAmazonComplete,
+      isPriorityComplete,
+      discoveredSuppliers,
+      hasDiscovered,
+    });
+  }, [amazonOrders, priorityOrders, otherOrders, isAmazonComplete, isPriorityComplete, discoveredSuppliers, hasDiscovered, onStateChange]);
 
   // Discover suppliers
   const handleDiscoverSuppliers = async () => {
@@ -732,7 +770,13 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
                 : 'Ready to set up your inventory'}
             </p>
           </div>
-          {/* Navigation handled by footer */}
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-sm font-semibold text-arda-accent hover:text-arda-accent/80 transition-colors"
+          >
+            Skip for now
+          </button>
         </div>
       )}
 
