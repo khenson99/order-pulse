@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
+import { buildVelocityProfiles } from '../utils/inventoryLogic';
 import { SupplierSetup, EmailScanState } from './SupplierSetup';
 import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
@@ -215,20 +216,51 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Handle email orders update (does NOT auto-advance - user clicks Continue)
   const handleEmailOrdersUpdate = useCallback((orders: ExtractedOrder[]) => {
     setEmailOrders(orders);
-    // Convert orders to simple email items for master list
+    
+    // Build velocity profiles using ReLoWiSa calculations
+    // This calculates recommended min/order qty based on:
+    // - Pack size (NPK) from Amazon enrichment
+    // - Order frequency (Takt time)
+    // - Assumed lead time with safety factor
+    const velocityProfiles = buildVelocityProfiles(orders);
+    
+    // Convert orders to email items with velocity-based recommendations
     const items: EmailItem[] = orders.flatMap(order => 
-      order.items.map(item => ({
-        id: `email-${order.id}-${item.name}`,
-        name: item.name,
-        supplier: order.supplier,
-        asin: item.asin,
-        lastPrice: item.unitPrice,
-        quantity: item.quantity,
-        recommendedMin: Math.ceil((item.quantity || 1) / 2),
-        recommendedOrderQty: item.quantity || 1,
-      }))
+      order.items.map(item => {
+        // Find velocity profile for this item
+        const normalizedName = item.normalizedName || item.name.toLowerCase().trim();
+        const profile = velocityProfiles.get(normalizedName);
+        
+        // Use Amazon enriched name if available
+        const displayName = item.amazonEnriched?.humanizedName || 
+                           item.amazonEnriched?.itemName || 
+                           item.name;
+        
+        return {
+          id: `email-${order.id}-${item.name}`,
+          name: displayName,
+          supplier: order.supplier,
+          asin: item.asin,
+          imageUrl: item.amazonEnriched?.imageUrl,
+          lastPrice: item.unitPrice,
+          quantity: item.quantity,
+          // Use ReLoWiSa-calculated recommendations from velocity profile
+          recommendedMin: profile?.recommendedMin || Math.ceil((item.quantity || 1) * 1.5),
+          recommendedOrderQty: profile?.recommendedOrderQty || item.quantity || 1,
+        };
+      })
     );
-    setEmailItems(items);
+    
+    // Dedupe by normalized name to avoid duplicate items
+    const uniqueItems = new Map<string, EmailItem>();
+    items.forEach(item => {
+      const key = item.name.toLowerCase().trim();
+      if (!uniqueItems.has(key) || (item.imageUrl && !uniqueItems.get(key)?.imageUrl)) {
+        uniqueItems.set(key, item);
+      }
+    });
+    
+    setEmailItems(Array.from(uniqueItems.values()));
     // Don't auto-advance - user will click Continue when ready
   }, []);
 

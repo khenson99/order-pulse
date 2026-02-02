@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { ScannedBarcode, CapturedPhoto } from './OnboardingFlow';
 import { CSVItem } from './CSVUploadStep';
@@ -38,6 +38,8 @@ export interface MasterListItem {
   unitPrice?: number;
   // Media
   imageUrl?: string;
+  // Color for Arda
+  color?: string;
   // Status
   isEditing?: boolean;
   isVerified: boolean;
@@ -53,6 +55,125 @@ interface MasterListStepProps {
   onComplete: (items: MasterListItem[]) => void;
   onBack: () => void;
 }
+
+// Editable cell component for spreadsheet-like editing
+interface EditableCellProps {
+  value: string | number | undefined;
+  onChange: (value: string) => void;
+  type?: 'text' | 'number';
+  placeholder?: string;
+  className?: string;
+}
+
+const EditableCell: React.FC<EditableCellProps> = ({ 
+  value, 
+  onChange, 
+  type = 'text', 
+  placeholder = '',
+  className = ''
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [localValue, setLocalValue] = useState(String(value ?? ''));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setLocalValue(String(value ?? ''));
+  }, [value]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    if (localValue !== String(value ?? '')) {
+      onChange(localValue);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleBlur();
+    } else if (e.key === 'Escape') {
+      setLocalValue(String(value ?? ''));
+      setIsEditing(false);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type={type}
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className={`w-full px-2 py-1 text-sm border border-arda-accent rounded bg-white focus:outline-none focus:ring-2 focus:ring-arda-accent/30 ${className}`}
+        placeholder={placeholder}
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={() => setIsEditing(true)}
+      className={`px-2 py-1 text-sm cursor-text hover:bg-orange-50 rounded min-h-[28px] ${className} ${!value ? 'text-arda-text-muted italic' : ''}`}
+    >
+      {value !== undefined && value !== '' ? (type === 'number' ? value : value) : placeholder || '—'}
+    </div>
+  );
+};
+
+// Color picker dropdown
+const ColorPicker: React.FC<{ value?: string; onChange: (color: string) => void }> = ({ value, onChange }) => {
+  const colors = [
+    { id: 'BLUE', label: 'Blue', bg: 'bg-blue-500' },
+    { id: 'GREEN', label: 'Green', bg: 'bg-green-500' },
+    { id: 'YELLOW', label: 'Yellow', bg: 'bg-yellow-400' },
+    { id: 'ORANGE', label: 'Orange', bg: 'bg-orange-500' },
+    { id: 'RED', label: 'Red', bg: 'bg-red-500' },
+    { id: 'PINK', label: 'Pink', bg: 'bg-pink-400' },
+    { id: 'PURPLE', label: 'Purple', bg: 'bg-purple-500' },
+    { id: 'GRAY', label: 'Gray', bg: 'bg-gray-400' },
+  ];
+
+  const [isOpen, setIsOpen] = useState(false);
+  const selected = colors.find(c => c.id === value?.toUpperCase());
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-orange-50 rounded min-h-[28px] w-full"
+      >
+        {selected ? (
+          <>
+            <span className={`w-4 h-4 rounded ${selected.bg}`} />
+            <span>{selected.label}</span>
+          </>
+        ) : (
+          <span className="text-arda-text-muted italic">Select color</span>
+        )}
+      </button>
+      {isOpen && (
+        <div className="absolute z-10 mt-1 bg-white border border-arda-border rounded-lg shadow-lg p-2 grid grid-cols-4 gap-1">
+          {colors.map(color => (
+            <button
+              key={color.id}
+              onClick={() => { onChange(color.id); setIsOpen(false); }}
+              className={`w-8 h-8 rounded ${color.bg} hover:ring-2 ring-offset-1 ring-arda-accent ${value?.toUpperCase() === color.id ? 'ring-2' : ''}`}
+              title={color.label}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const MasterListStep: React.FC<MasterListStepProps> = ({
   emailItems,
@@ -86,7 +207,6 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
     
     // Add scanned barcodes (that aren't duplicates of email items)
     scannedBarcodes.forEach(barcode => {
-      // Check if already matched to an email item
       const existingByBarcode = items.find(i => i.barcode === barcode.barcode);
       if (!existingByBarcode) {
         items.push({
@@ -138,81 +258,48 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   }, [emailItems, scannedBarcodes, capturedPhotos, csvItems]);
 
   const [items, setItems] = useState<MasterListItem[]>(initialItems);
-  const [editingItem, setEditingItem] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<MasterListItem>>({});
   const [filter, setFilter] = useState<'all' | 'needs_attention' | 'verified'>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'email' | 'barcode' | 'photo' | 'csv'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Start editing an item
-  const startEditing = (item: MasterListItem) => {
-    setEditingItem(item.id);
-    setEditForm({
-      name: item.name,
-      description: item.description,
-      supplier: item.supplier,
-      location: item.location,
-      barcode: item.barcode,
-      sku: item.sku,
-      minQty: item.minQty,
-      orderQty: item.orderQty,
-      unitPrice: item.unitPrice,
-    });
-  };
-
-  // Save edited item
-  const saveEdit = () => {
-    if (!editingItem) return;
-    
+  // Update a field on an item
+  const updateItem = useCallback((id: string, field: keyof MasterListItem, value: string | number | undefined) => {
     setItems(prev => prev.map(item => {
-      if (item.id === editingItem) {
-        return {
-          ...item,
-          ...editForm,
-          needsAttention: false,
-        };
+      if (item.id === id) {
+        const updated = { ...item, [field]: value };
+        // Clear needsAttention if name is now set
+        if (field === 'name' && value && !String(value).includes('Unknown')) {
+          updated.needsAttention = false;
+        }
+        return updated;
       }
       return item;
     }));
-    
-    setEditingItem(null);
-    setEditForm({});
-  };
-
-  // Cancel editing
-  const cancelEdit = () => {
-    setEditingItem(null);
-    setEditForm({});
-  };
+  }, []);
 
   // Mark item as verified
-  const verifyItem = (id: string) => {
+  const verifyItem = useCallback((id: string) => {
     setItems(prev => prev.map(item => 
       item.id === id ? { ...item, isVerified: true, needsAttention: false } : item
     ));
-  };
+  }, []);
 
   // Remove item from list
-  const removeItem = (id: string) => {
+  const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(item => item.id !== id));
-  };
+  }, []);
 
   // Verify all items
-  const verifyAll = () => {
+  const verifyAll = useCallback(() => {
     setItems(prev => prev.map(item => ({ ...item, isVerified: true, needsAttention: false })));
-  };
+  }, []);
 
   // Filter items
   const filteredItems = useMemo(() => {
     return items.filter(item => {
-      // Filter by status
       if (filter === 'needs_attention' && !item.needsAttention) return false;
       if (filter === 'verified' && !item.isVerified) return false;
-      
-      // Filter by source
       if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
-      
-      // Filter by search
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -242,352 +329,233 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   // Source icon
   const getSourceIcon = (source: MasterListItem['source']) => {
     switch (source) {
-      case 'email': return <Icons.Mail className="w-4 h-4" />;
-      case 'barcode': return <Icons.Barcode className="w-4 h-4" />;
-      case 'photo': return <Icons.Camera className="w-4 h-4" />;
-      case 'csv': return <Icons.FileSpreadsheet className="w-4 h-4" />;
+      case 'email': return <Icons.Mail className="w-3 h-3" />;
+      case 'barcode': return <Icons.Barcode className="w-3 h-3" />;
+      case 'photo': return <Icons.Camera className="w-3 h-3" />;
+      case 'csv': return <Icons.FileSpreadsheet className="w-3 h-3" />;
     }
   };
 
-  // Handle completion
   const handleComplete = useCallback(() => {
     onComplete(items);
   }, [items, onComplete]);
 
   return (
-    <div className="space-y-6">
-      {/* Actions (footer Continue is hidden on this step) */}
-      <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={verifyAll}
-          className="btn-arda-outline"
-        >
-          Verify all
-        </button>
-        <button
-          type="button"
-          onClick={handleComplete}
-          disabled={items.length === 0}
-          className={[
-            'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-            items.length > 0
-              ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
-              : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-          ].join(' ')}
-        >
-          <Icons.ArrowRight className="w-4 h-4" />
-          Continue to Arda Sync ({items.length})
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="card-arda p-4">
-          <div className="text-2xl font-bold text-arda-text-primary">{stats.total}</div>
-          <div className="text-sm text-arda-text-secondary">Total Items</div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4 text-sm">
+          <span className="font-medium">{stats.total} items</span>
+          <span className="text-green-600">{stats.verified} verified</span>
+          {stats.needsAttention > 0 && (
+            <span className="text-orange-600">{stats.needsAttention} need attention</span>
+          )}
         </div>
-        <div className="card-arda p-4">
-          <div className="text-2xl font-bold text-green-600">{stats.verified}</div>
-          <div className="text-sm text-arda-text-secondary">Verified</div>
-        </div>
-        <div className="card-arda p-4">
-          <div className="text-2xl font-bold text-arda-accent">{stats.needsAttention}</div>
-          <div className="text-sm text-arda-text-secondary">Needs Attention</div>
-        </div>
-        <div className="card-arda p-4 col-span-2">
-          <div className="flex items-center gap-4 text-sm">
-            <span className="flex items-center gap-1">
-              <Icons.Mail className="w-4 h-4 text-arda-accent" />
-              {stats.bySource.email}
-            </span>
-            <span className="flex items-center gap-1">
-              <Icons.Barcode className="w-4 h-4 text-arda-accent" />
-              {stats.bySource.barcode}
-            </span>
-            <span className="flex items-center gap-1">
-              <Icons.Camera className="w-4 h-4 text-arda-accent" />
-              {stats.bySource.photo}
-            </span>
-            <span className="flex items-center gap-1">
-              <Icons.FileSpreadsheet className="w-4 h-4 text-arda-accent" />
-              {stats.bySource.csv}
-            </span>
-          </div>
-          <div className="text-sm text-arda-text-secondary mt-1">By Source</div>
+        <div className="flex items-center gap-2">
+          <button onClick={verifyAll} className="btn-arda-outline text-sm py-1.5">
+            Verify All
+          </button>
+          <button
+            onClick={handleComplete}
+            disabled={items.length === 0}
+            className="btn-arda-primary text-sm py-1.5 flex items-center gap-2"
+          >
+            <Icons.ArrowRight className="w-4 h-4" />
+            Sync to Arda ({items.length})
+          </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            {(['all', 'needs_attention', 'verified'] as const).map(f => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={[
-                  'px-3 py-1.5 rounded-arda text-sm font-medium transition-colors border',
-                  filter === f
-                    ? 'bg-arda-accent text-white border-orange-600'
-                    : 'bg-white/70 text-arda-text-secondary border-arda-border hover:bg-arda-bg-tertiary',
-                ].join(' ')}
-              >
-                {f === 'needs_attention' ? 'Needs Attention' : f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
-          </div>
-          <div className="h-6 w-px bg-arda-border" />
-          <div className="flex items-center gap-1">
-            {(['all', 'email', 'barcode', 'photo', 'csv'] as const).map(s => (
-              <button
-                key={s}
-                onClick={() => setSourceFilter(s)}
-                className={[
-                  'px-2 py-1.5 rounded-arda text-sm transition-colors border',
-                  sourceFilter === s
-                    ? 'bg-orange-50 text-arda-accent border-orange-200'
-                    : 'bg-transparent text-arda-text-secondary border-transparent hover:bg-arda-bg-tertiary hover:border-arda-border',
-                ].join(' ')}
-              >
-                {s === 'all' ? 'All Sources' : s.charAt(0).toUpperCase() + s.slice(1)}
-              </button>
-            ))}
-          </div>
+      <div className="flex items-center justify-between bg-white rounded-lg border border-arda-border p-2">
+        <div className="flex items-center gap-2">
+          {(['all', 'needs_attention', 'verified'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded text-sm ${filter === f ? 'bg-arda-accent text-white' : 'hover:bg-gray-100'}`}
+            >
+              {f === 'needs_attention' ? 'Needs Attention' : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Icons.Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-arda-text-muted" />
-            <input
-              type="text"
-              placeholder="Search items..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input-arda pl-9 pr-4 py-2 text-sm bg-white"
-            />
-          </div>
+        <div className="relative">
+          <Icons.Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 pr-3 py-1 text-sm border border-arda-border rounded focus:outline-none focus:ring-1 focus:ring-arda-accent"
+          />
         </div>
       </div>
 
-      {/* Items list */}
-      <div className="space-y-3">
-        {filteredItems.map(item => (
-          <div
-            key={item.id}
-            className={`
-              bg-white rounded-arda-lg border border-arda-border shadow-arda p-4 transition-all
-              ${item.needsAttention ? 'border-orange-300 bg-orange-50' : ''}
-              ${item.isVerified ? 'border-green-300 bg-green-50' : ''}
-            `}
-          >
-            {editingItem === item.id ? (
-              /* Edit form */
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Name *</label>
-                    <input
-                      type="text"
-                      value={editForm.name || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Description</label>
-                    <input
-                      type="text"
-                      value={editForm.description || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Supplier</label>
-                    <input
-                      type="text"
-                      value={editForm.supplier || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, supplier: e.target.value }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Location / Bin</label>
-                    <input
-                      type="text"
-                      value={editForm.location || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, location: e.target.value }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">SKU</label>
-                    <input
-                      type="text"
-                      value={editForm.sku || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, sku: e.target.value }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Barcode</label>
-                    <input
-                      type="text"
-                      value={editForm.barcode || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, barcode: e.target.value }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Min Quantity</label>
-                    <input
-                      type="number"
-                      value={editForm.minQty || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, minQty: parseFloat(e.target.value) || undefined }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Order Quantity</label>
-                    <input
-                      type="number"
-                      value={editForm.orderQty || ''}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, orderQty: parseFloat(e.target.value) || undefined }))}
-                      className="input-arda bg-white"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    onClick={cancelEdit}
-                    className="btn-arda-outline"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={saveEdit}
-                    className="btn-arda-primary"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Display view */
-              <div className="flex items-start gap-4">
-                {/* Image */}
-                {item.imageUrl && (
-                  <div className="w-16 h-16 rounded-2xl overflow-hidden bg-arda-bg-tertiary border border-arda-border flex-shrink-0">
-                    <img 
-                      src={item.imageUrl} 
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-                
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="p-1.5 rounded-lg bg-arda-bg-tertiary border border-arda-border text-arda-accent">
-                          {getSourceIcon(item.source)}
-                        </span>
-                        <h3 className="font-medium text-arda-text-primary">{item.name}</h3>
-                        {item.isVerified && (
-                          <Icons.CheckCircle2 className="w-4 h-4 text-green-500" />
-                        )}
-                        {item.needsAttention && (
-                          <span className="px-2 py-0.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-lg text-xs font-medium">
-                            Needs Review
-                          </span>
-                        )}
+      {/* Spreadsheet table */}
+      <div className="bg-white rounded-lg border border-arda-border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-arda-border">
+              <tr>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 w-8"></th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 w-10">Img</th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[200px]">Name</th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[120px]">Supplier</th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 w-24">Location</th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 w-24">SKU</th>
+                <th className="px-2 py-2 text-right font-medium text-gray-600 w-16">Min</th>
+                <th className="px-2 py-2 text-right font-medium text-gray-600 w-16">Order</th>
+                <th className="px-2 py-2 text-right font-medium text-gray-600 w-20">Price</th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 w-24">Color</th>
+                <th className="px-2 py-2 text-center font-medium text-gray-600 w-20">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredItems.map(item => (
+                <tr 
+                  key={item.id} 
+                  className={`hover:bg-gray-50 ${item.needsAttention ? 'bg-orange-50' : ''} ${item.isVerified ? 'bg-green-50' : ''}`}
+                >
+                  {/* Source icon */}
+                  <td className="px-2 py-1">
+                    <span className="p-1 rounded bg-gray-100 text-gray-500 inline-flex">
+                      {getSourceIcon(item.source)}
+                    </span>
+                  </td>
+                  
+                  {/* Image */}
+                  <td className="px-2 py-1">
+                    {item.imageUrl ? (
+                      <img 
+                        src={item.imageUrl} 
+                        alt="" 
+                        className="w-8 h-8 rounded object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
+                        <Icons.Package className="w-4 h-4 text-gray-400" />
                       </div>
-                      {item.description && (
-                        <p className="text-sm text-arda-text-secondary mt-0.5">{item.description}</p>
+                    )}
+                  </td>
+                  
+                  {/* Name */}
+                  <td className="px-1 py-1">
+                    <EditableCell
+                      value={item.name}
+                      onChange={(v) => updateItem(item.id, 'name', v)}
+                      placeholder="Item name"
+                    />
+                  </td>
+                  
+                  {/* Supplier */}
+                  <td className="px-1 py-1">
+                    <EditableCell
+                      value={item.supplier}
+                      onChange={(v) => updateItem(item.id, 'supplier', v)}
+                      placeholder="Supplier"
+                    />
+                  </td>
+                  
+                  {/* Location */}
+                  <td className="px-1 py-1">
+                    <EditableCell
+                      value={item.location}
+                      onChange={(v) => updateItem(item.id, 'location', v)}
+                      placeholder="Location"
+                    />
+                  </td>
+                  
+                  {/* SKU */}
+                  <td className="px-1 py-1">
+                    <EditableCell
+                      value={item.sku}
+                      onChange={(v) => updateItem(item.id, 'sku', v)}
+                      placeholder="SKU"
+                    />
+                  </td>
+                  
+                  {/* Min Qty */}
+                  <td className="px-1 py-1 text-right">
+                    <EditableCell
+                      value={item.minQty}
+                      onChange={(v) => updateItem(item.id, 'minQty', v ? parseFloat(v) : undefined)}
+                      type="number"
+                      placeholder="0"
+                      className="text-right"
+                    />
+                  </td>
+                  
+                  {/* Order Qty */}
+                  <td className="px-1 py-1 text-right">
+                    <EditableCell
+                      value={item.orderQty}
+                      onChange={(v) => updateItem(item.id, 'orderQty', v ? parseFloat(v) : undefined)}
+                      type="number"
+                      placeholder="0"
+                      className="text-right"
+                    />
+                  </td>
+                  
+                  {/* Price */}
+                  <td className="px-1 py-1 text-right">
+                    <EditableCell
+                      value={item.unitPrice !== undefined ? item.unitPrice.toFixed(2) : ''}
+                      onChange={(v) => updateItem(item.id, 'unitPrice', v ? parseFloat(v) : undefined)}
+                      type="number"
+                      placeholder="0.00"
+                      className="text-right"
+                    />
+                  </td>
+                  
+                  {/* Color */}
+                  <td className="px-1 py-1">
+                    <ColorPicker
+                      value={item.color}
+                      onChange={(v) => updateItem(item.id, 'color', v)}
+                    />
+                  </td>
+                  
+                  {/* Actions */}
+                  <td className="px-2 py-1">
+                    <div className="flex items-center justify-center gap-1">
+                      {!item.isVerified && (
+                        <button
+                          onClick={() => verifyItem(item.id)}
+                          className="p-1 hover:bg-green-100 rounded text-gray-400 hover:text-green-600"
+                          title="Verify"
+                        >
+                          <Icons.Check className="w-4 h-4" />
+                        </button>
                       )}
-                      <div className="flex items-center gap-4 mt-2 text-sm text-arda-text-secondary flex-wrap">
-                        {item.supplier && (
-                          <span className="flex items-center gap-1">
-                            <Icons.Building2 className="w-3 h-3" />
-                            {item.supplier}
-                          </span>
-                        )}
-                        {item.location && (
-                          <span className="flex items-center gap-1">
-                            <Icons.MapPin className="w-3 h-3" />
-                            {item.location}
-                          </span>
-                        )}
-                        {item.sku && (
-                          <span>SKU: {item.sku}</span>
-                        )}
-                        {item.barcode && (
-                          <span>Barcode: {item.barcode}</span>
-                        )}
-                      </div>
+                      {item.isVerified && (
+                        <Icons.CheckCircle2 className="w-4 h-4 text-green-500" />
+                      )}
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-600"
+                        title="Remove"
+                      >
+                        <Icons.Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    
-                    {/* Quantities */}
-                    <div className="text-right text-sm">
-                      {item.minQty !== undefined && (
-                        <div className="text-arda-text-secondary">Min: {item.minQty}</div>
-                      )}
-                      {item.orderQty !== undefined && (
-                        <div className="text-arda-text-secondary">Order: {item.orderQty}</div>
-                      )}
-                      {item.unitPrice !== undefined && (
-                        <div className="font-medium text-arda-text-primary">
-                          ${item.unitPrice.toFixed(2)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Actions */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => startEditing(item)}
-                    className="p-2 text-arda-text-muted hover:text-arda-accent hover:bg-orange-50 rounded-xl transition-colors"
-                    title="Edit"
-                  >
-                    <Icons.Pencil className="w-4 h-4" />
-                  </button>
-                  {!item.isVerified && (
-                    <button
-                      onClick={() => verifyItem(item.id)}
-                      className="p-2 text-arda-text-muted hover:text-green-700 hover:bg-green-50 rounded-xl transition-colors"
-                      title="Verify"
-                    >
-                      <Icons.Check className="w-4 h-4" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => removeItem(item.id)}
-                    className="p-2 text-arda-text-muted hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors"
-                    title="Remove"
-                  >
-                    <Icons.Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         
         {filteredItems.length === 0 && (
-          <div className="card-arda p-12 text-center">
-            <Icons.Package className="w-12 h-12 mx-auto text-arda-text-muted mb-4 opacity-60" />
-            <h3 className="text-lg font-medium text-arda-text-primary mb-2">No Items</h3>
-            <p className="text-arda-text-secondary">
-              {items.length === 0 
-                ? 'Complete the previous steps to add items to your master list.'
-                : 'No items match your current filters.'}
-            </p>
+          <div className="p-8 text-center text-gray-500">
+            <Icons.Package className="w-10 h-10 mx-auto mb-2 opacity-50" />
+            <p>No items to display</p>
           </div>
         )}
+      </div>
+      
+      {/* Keyboard hint */}
+      <div className="text-xs text-gray-400 text-center">
+        Click any cell to edit. Press Enter to save, Escape to cancel.
       </div>
     </div>
   );

@@ -344,12 +344,34 @@ export const buildVelocityProfiles = (
     const effectiveSpan = daySpan === 0 ? 30 : daySpan;
     profile.dailyBurnRate = profile.totalQuantityOrdered / effectiveSpan;
     
-    // Calculate recommendations (two-bin system with pack-size rounding)
-    const coverageDays = Math.max(profile.averageCadenceDays, 1);
-    const packSize = profile.packSize || 1;
-    const binQty = roundUpToMultiple(profile.dailyBurnRate * coverageDays, packSize);
-    profile.recommendedMin = binQty;
-    profile.recommendedOrderQty = binQty;
+    // ==============================================
+    // ReLoWiSa Kanban Calculation (Bosch TPS/Lean)
+    // ==============================================
+    // ReLoWiSa = Reichweite (Range) + Losgroße (Lot) + Wiederbeschaffungszeit (Lead Time) + Sicherheit (Safety)
+    // For one-card, two-bin system:
+    //   - Bin 1 (working stock) = Daily usage × Lead time
+    //   - Bin 2 (safety/reorder stock) = Daily usage × Lead time × Safety factor
+    //   - Order Qty (NPK) = Pack size from supplier
+    //
+    // Takt time = 1 / dailyBurnRate (days per unit)
+    // NPK = Pack size from Amazon enrichment
+    
+    const packSize = profile.packSize || 1; // NPK - Normal Pack Quantity
+    const leadTimeDays = 3; // Default assumed lead time (could be enhanced with actual data)
+    const safetyFactor = 0.5; // 50% safety stock
+    
+    // Calculate minimum quantity (trigger point for reorder)
+    // Min = Usage during lead time + Safety stock
+    const usageDuringLeadTime = profile.dailyBurnRate * leadTimeDays;
+    const safetyStock = usageDuringLeadTime * safetyFactor;
+    const rawMinQty = usageDuringLeadTime + safetyStock;
+    
+    // Round up to pack size for practical ordering
+    profile.recommendedMin = roundUpToMultiple(rawMinQty, packSize);
+    
+    // Order quantity = pack size (for one-card system, order exactly one pack)
+    // For two-bin system, order qty should replenish one bin
+    profile.recommendedOrderQty = Math.max(packSize, profile.recommendedMin);
     
     // Predict next order date
     if (profile.orderCount >= 2) {
@@ -598,12 +620,20 @@ export const processOrdersToInventory = (orders: ExtractedOrder[]): InventoryIte
     const effectiveSpan = daySpan === 0 ? 30 : daySpan;
     item.dailyBurnRate = item.totalQuantityOrdered / effectiveSpan;
 
-    // Calc Recommendations (two-bin system with pack-size rounding)
-    const coverageDays = Math.max(item.averageCadenceDays, 1);
-    const itemPackSize = item.packSize || 1;
-    const binQty = roundUpToMultiple(item.dailyBurnRate * coverageDays, itemPackSize);
-    item.recommendedMin = binQty;
-    item.recommendedOrderQty = binQty;
+    // ==============================================
+    // ReLoWiSa Kanban Calculation (Bosch TPS/Lean)
+    // ==============================================
+    // For one-card, two-bin kanban system
+    const itemPackSize = item.packSize || 1; // NPK from Amazon
+    const leadTimeDays = 3; // Default lead time
+    const safetyFactor = 0.5; // 50% safety stock
+    
+    const usageDuringLeadTime = item.dailyBurnRate * leadTimeDays;
+    const safetyStock = usageDuringLeadTime * safetyFactor;
+    const rawMinQty = usageDuringLeadTime + safetyStock;
+    
+    item.recommendedMin = roundUpToMultiple(rawMinQty, itemPackSize);
+    item.recommendedOrderQty = Math.max(itemPackSize, item.recommendedMin);
 
     // Clean up temp field before returning - destructure to remove internal fields
     const { orderIds: _ids, packSize: _ps, ...cleanItem } = item;
