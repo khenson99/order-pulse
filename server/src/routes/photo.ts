@@ -1,15 +1,28 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import redisClient from '../utils/redisClient.js';
+import { appLogger } from '../middleware/requestLogger.js';
 
 const router = Router();
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// Constants
+const SESSION_TTL = 24 * 60 * 60; // 24 hours in seconds
+const MAX_PHOTOS_PER_SESSION = 100;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const REDIS_PREFIX = 'photo:session:';
+const PHOTO_DATA_PREFIX = 'photo:data:';
 
-// In-memory storage for photo sessions (in production, use Redis + S3)
-interface CapturedPhoto {
+// Initialize Gemini with error handling
+let genAI: GoogleGenerativeAI | null = null;
+if (process.env.GEMINI_API_KEY) {
+  genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+} else {
+  appLogger.warn('GEMINI_API_KEY not set - photo analysis will be disabled');
+}
+
+// Types
+interface PhotoMetadata {
   id: string;
-  imageData: string; // Base64 data URL
   capturedAt: string;
   source: 'desktop' | 'mobile';
   extractedText?: string[];
@@ -17,119 +30,272 @@ interface CapturedPhoto {
   suggestedName?: string;
   suggestedSupplier?: string;
   isInternalItem?: boolean;
+  analyzed: boolean;
+  imageSizeBytes?: number;
+}
+
+interface CapturedPhoto extends PhotoMetadata {
+  imageData: string; // Base64 data URL
 }
 
 interface PhotoSession {
-  photos: CapturedPhoto[];
+  photoIds: string[]; // Just store IDs, actual data stored separately
+  metadata: Record<string, PhotoMetadata>;
   createdAt: string;
   lastActivity: string;
+  userId?: string;
 }
 
-const photoSessions = new Map<string, PhotoSession>();
+// In-memory fallback
+const memoryStore = new Map<string, PhotoSession>();
+const memoryPhotoData = new Map<string, string>();
 
-// Clean up old sessions (older than 24 hours)
-const cleanupOldSessions = () => {
-  const now = Date.now();
-  const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+// Validate session ID format
+const isValidSessionId = (sessionId: string): boolean => {
+  return /^[a-zA-Z0-9-_]{10,64}$/.test(sessionId);
+};
+
+// Validate image data
+const isValidImageData = (data: string): { valid: boolean; sizeBytes: number; error?: string } => {
+  if (!data || typeof data !== 'string') {
+    return { valid: false, sizeBytes: 0, error: 'Image data is required' };
+  }
   
-  for (const [sessionId, session] of photoSessions.entries()) {
-    if (now - new Date(session.lastActivity).getTime() > maxAge) {
-      photoSessions.delete(sessionId);
+  if (!data.startsWith('data:image/')) {
+    return { valid: false, sizeBytes: 0, error: 'Invalid image format - must be data URL' };
+  }
+  
+  // Estimate base64 size
+  const base64Part = data.split(',')[1];
+  if (!base64Part) {
+    return { valid: false, sizeBytes: 0, error: 'Invalid data URL format' };
+  }
+  
+  const sizeBytes = Math.ceil(base64Part.length * 0.75);
+  if (sizeBytes > MAX_IMAGE_SIZE) {
+    return { valid: false, sizeBytes, error: `Image too large (${Math.round(sizeBytes / 1024 / 1024)}MB, max ${MAX_IMAGE_SIZE / 1024 / 1024}MB)` };
+  }
+  
+  return { valid: true, sizeBytes };
+};
+
+// Get session from Redis or memory
+const getSession = async (sessionId: string): Promise<PhotoSession> => {
+  if (redisClient) {
+    try {
+      const data = await redisClient.get(`${REDIS_PREFIX}${sessionId}`);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch (error) {
+      appLogger.error('Redis get session error:', error);
+    }
+  }
+  
+  const session = memoryStore.get(sessionId);
+  if (session) return session;
+  
+  return {
+    photoIds: [],
+    metadata: {},
+    createdAt: new Date().toISOString(),
+    lastActivity: new Date().toISOString(),
+  };
+};
+
+// Save session to Redis or memory
+const saveSession = async (sessionId: string, session: PhotoSession): Promise<void> => {
+  session.lastActivity = new Date().toISOString();
+  
+  if (redisClient) {
+    try {
+      await redisClient.setEx(
+        `${REDIS_PREFIX}${sessionId}`,
+        SESSION_TTL,
+        JSON.stringify(session)
+      );
+      return;
+    } catch (error) {
+      appLogger.error('Redis set session error:', error);
+    }
+  }
+  
+  memoryStore.set(sessionId, session);
+};
+
+// Get photo data from Redis or memory
+const getPhotoData = async (photoId: string): Promise<string | null> => {
+  if (redisClient) {
+    try {
+      return await redisClient.get(`${PHOTO_DATA_PREFIX}${photoId}`);
+    } catch (error) {
+      appLogger.error('Redis get photo error:', error);
+    }
+  }
+  return memoryPhotoData.get(photoId) || null;
+};
+
+// Save photo data to Redis or memory
+const savePhotoData = async (photoId: string, imageData: string): Promise<void> => {
+  if (redisClient) {
+    try {
+      await redisClient.setEx(
+        `${PHOTO_DATA_PREFIX}${photoId}`,
+        SESSION_TTL,
+        imageData
+      );
+      return;
+    } catch (error) {
+      appLogger.error('Redis set photo error:', error);
+    }
+  }
+  
+  memoryPhotoData.set(photoId, imageData);
+  
+  // Cleanup old photos from memory if too many
+  if (memoryPhotoData.size > 500) {
+    const keys = Array.from(memoryPhotoData.keys());
+    for (let i = 0; i < 100; i++) {
+      memoryPhotoData.delete(keys[i]);
     }
   }
 };
 
-// Run cleanup every hour
-setInterval(cleanupOldSessions, 60 * 60 * 1000);
-
-// Get or create session
-const getSession = (sessionId: string): PhotoSession => {
-  let session = photoSessions.get(sessionId);
-  if (!session) {
-    session = {
-      photos: [],
-      createdAt: new Date().toISOString(),
-      lastActivity: new Date().toISOString(),
-    };
-    photoSessions.set(sessionId, session);
+// Session ID validation middleware
+const validateSessionId = (req: Request, res: Response, next: NextFunction) => {
+  const { sessionId } = req.params;
+  if (!isValidSessionId(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID format' });
   }
-  return session;
+  next();
 };
 
 /**
  * GET /api/photo/session/:sessionId/photos
  * Get all photos for a session (used by desktop to poll for mobile captures)
  */
-router.get('/session/:sessionId/photos', (req: Request, res: Response) => {
-  const { sessionId } = req.params;
-  const { since } = req.query;
-  
-  const session = getSession(sessionId);
-  
-  let photos = session.photos;
-  
-  // Filter by timestamp if provided
-  if (since && typeof since === 'string') {
-    const sinceDate = new Date(since);
-    photos = photos.filter(p => new Date(p.capturedAt) > sinceDate);
+router.get('/session/:sessionId/photos', validateSessionId, async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { since } = req.query;
+    
+    const session = await getSession(sessionId);
+    
+    let photoMetadata = Object.values(session.metadata);
+    
+    // Filter by timestamp if provided
+    if (since && typeof since === 'string') {
+      const sinceDate = new Date(since);
+      if (!isNaN(sinceDate.getTime())) {
+        photoMetadata = photoMetadata.filter(p => new Date(p.capturedAt) > sinceDate);
+      }
+    }
+    
+    // Return metadata only (no image data) for listing
+    const photos = photoMetadata.map(p => ({
+      ...p,
+      hasFullImage: true,
+    }));
+    
+    res.json({ 
+      photos,
+      sessionCreatedAt: session.createdAt,
+      totalCount: session.photoIds.length,
+    });
+  } catch (error) {
+    appLogger.error('Get photos error:', error);
+    res.status(500).json({ error: 'Failed to retrieve photos' });
   }
-  
-  // Return photos without full image data for listing (to save bandwidth)
-  const photoSummaries = photos.map(p => ({
-    ...p,
-    imageData: p.imageData.substring(0, 100) + '...', // Truncate for listing
-    hasFullImage: true,
-  }));
-  
-  res.json({ photos: photoSummaries });
 });
 
 /**
  * GET /api/photo/session/:sessionId/photo/:photoId
  * Get full photo data by ID
  */
-router.get('/session/:sessionId/photo/:photoId', (req: Request, res: Response) => {
-  const { sessionId, photoId } = req.params;
-  
-  const session = getSession(sessionId);
-  const photo = session.photos.find(p => p.id === photoId);
-  
-  if (!photo) {
-    return res.status(404).json({ error: 'Photo not found' });
+router.get('/session/:sessionId/photo/:photoId', validateSessionId, async (req: Request, res: Response) => {
+  try {
+    const { sessionId, photoId } = req.params;
+    
+    const session = await getSession(sessionId);
+    const metadata = session.metadata[photoId];
+    
+    if (!metadata) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    
+    const imageData = await getPhotoData(photoId);
+    if (!imageData) {
+      return res.status(404).json({ error: 'Photo data not found' });
+    }
+    
+    res.json({ 
+      photo: {
+        ...metadata,
+        imageData,
+      }
+    });
+  } catch (error) {
+    appLogger.error('Get photo error:', error);
+    res.status(500).json({ error: 'Failed to retrieve photo' });
   }
-  
-  res.json({ photo });
 });
 
 /**
  * POST /api/photo/session/:sessionId/photo
  * Add a photo to a session (used by mobile capture)
  */
-router.post('/session/:sessionId/photo', async (req: Request, res: Response) => {
-  const { sessionId } = req.params;
-  const { id, data, timestamp } = req.body;
-  
-  if (!data) {
-    return res.status(400).json({ error: 'Image data is required' });
+router.post('/session/:sessionId/photo', validateSessionId, async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { id, data, timestamp } = req.body;
+    
+    // Validate image data
+    const validation = isValidImageData(data);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+    
+    const session = await getSession(sessionId);
+    
+    // Check session limits
+    if (session.photoIds.length >= MAX_PHOTOS_PER_SESSION) {
+      return res.status(429).json({ 
+        error: 'Session photo limit reached',
+        limit: MAX_PHOTOS_PER_SESSION,
+      });
+    }
+    
+    const photoId = id || `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create metadata entry
+    const metadata: PhotoMetadata = {
+      id: photoId,
+      capturedAt: timestamp || new Date().toISOString(),
+      source: 'mobile',
+      analyzed: false,
+      imageSizeBytes: validation.sizeBytes,
+    };
+    
+    // Store photo data separately
+    await savePhotoData(photoId, data);
+    
+    // Update session
+    session.photoIds.push(photoId);
+    session.metadata[photoId] = metadata;
+    await saveSession(sessionId, session);
+    
+    appLogger.info(`Photo captured: ${photoId} in session ${sessionId.substring(0, 8)}... (${Math.round(validation.sizeBytes / 1024)}KB)`);
+    
+    // Analyze in background
+    analyzePhotoAsync(sessionId, photoId, data).catch(error => {
+      appLogger.error('Background photo analysis failed:', error);
+    });
+    
+    res.json({ success: true, photoId });
+  } catch (error) {
+    appLogger.error('Add photo error:', error);
+    res.status(500).json({ error: 'Failed to save photo' });
   }
-  
-  const session = getSession(sessionId);
-  session.lastActivity = new Date().toISOString();
-  
-  // Create photo entry
-  const photo: CapturedPhoto = {
-    id: id || `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    imageData: data,
-    capturedAt: timestamp || new Date().toISOString(),
-    source: 'mobile',
-  };
-  
-  // Analyze the image in the background
-  analyzePhotoAsync(photo).catch(console.error);
-  
-  session.photos.push(photo);
-  
-  res.json({ success: true, photoId: photo.id });
 });
 
 /**
@@ -139,79 +305,119 @@ router.post('/session/:sessionId/photo', async (req: Request, res: Response) => 
 router.post('/analyze', async (req: Request, res: Response) => {
   const { imageData } = req.body;
   
-  if (!imageData) {
-    return res.status(400).json({ error: 'Image data is required' });
+  // Validate image data
+  const validation = isValidImageData(imageData);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+  
+  if (!genAI) {
+    return res.status(503).json({ error: 'Image analysis service not configured' });
   }
   
   try {
     const analysis = await analyzeImage(imageData);
     res.json(analysis);
   } catch (error) {
-    console.error('Image analysis error:', error);
+    appLogger.error('Image analysis error:', error);
     res.status(500).json({ error: 'Analysis failed' });
   }
 });
 
 /**
- * Analyze photo asynchronously and update the stored photo
+ * Analyze photo asynchronously and update the stored session metadata
  */
-async function analyzePhotoAsync(photo: CapturedPhoto): Promise<void> {
+async function analyzePhotoAsync(sessionId: string, photoId: string, imageData: string): Promise<void> {
+  if (!genAI) {
+    appLogger.warn('Skipping photo analysis - Gemini not configured');
+    return;
+  }
+  
   try {
-    const analysis = await analyzeImage(photo.imageData);
+    const analysis = await analyzeImage(imageData);
     
-    // Update photo with analysis results
-    photo.extractedText = analysis.extractedText;
-    photo.detectedBarcodes = analysis.detectedBarcodes;
-    photo.suggestedName = analysis.suggestedName;
-    photo.suggestedSupplier = analysis.suggestedSupplier;
-    photo.isInternalItem = analysis.isInternalItem;
+    // Update session metadata with analysis results
+    const session = await getSession(sessionId);
+    if (session.metadata[photoId]) {
+      session.metadata[photoId] = {
+        ...session.metadata[photoId],
+        extractedText: analysis.extractedText,
+        detectedBarcodes: analysis.detectedBarcodes,
+        suggestedName: analysis.suggestedName,
+        suggestedSupplier: analysis.suggestedSupplier,
+        isInternalItem: analysis.isInternalItem,
+        analyzed: true,
+      };
+      await saveSession(sessionId, session);
+      appLogger.info(`Photo analyzed: ${photoId} - "${analysis.suggestedName || 'unknown'}"`);
+    }
   } catch (error) {
-    console.error('Async photo analysis error:', error);
+    appLogger.error('Async photo analysis error:', error);
   }
 }
 
-/**
- * Analyze an image using Gemini Vision
- */
-async function analyzeImage(imageData: string): Promise<{
+// Analysis result type
+interface AnalysisResult {
   extractedText?: string[];
   detectedBarcodes?: string[];
   suggestedName?: string;
   suggestedSupplier?: string;
   isInternalItem?: boolean;
-}> {
+}
+
+// Rate limiting for Gemini API
+let lastAnalysisTime = 0;
+const MIN_ANALYSIS_INTERVAL = 500; // ms between calls
+
+/**
+ * Analyze an image using Gemini Vision
+ */
+async function analyzeImage(imageData: string): Promise<AnalysisResult> {
+  if (!genAI) {
+    throw new Error('Gemini API not configured');
+  }
+  
+  // Simple rate limiting
+  const now = Date.now();
+  const timeSinceLastCall = now - lastAnalysisTime;
+  if (timeSinceLastCall < MIN_ANALYSIS_INTERVAL) {
+    await new Promise(resolve => setTimeout(resolve, MIN_ANALYSIS_INTERVAL - timeSinceLastCall));
+  }
+  lastAnalysisTime = Date.now();
+  
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     // Extract base64 data from data URL
-    const base64Match = imageData.match(/^data:image\/\w+;base64,(.+)$/);
+    const base64Match = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
     if (!base64Match) {
       throw new Error('Invalid image data format');
     }
     
-    const base64Data = base64Match[1];
-    const mimeType = imageData.match(/^data:(image\/\w+);/)?.[1] || 'image/jpeg';
+    const imageType = base64Match[1];
+    const base64Data = base64Match[2];
+    const mimeType = `image/${imageType}`;
     
-    const prompt = `Analyze this image of a product or item. Extract the following information:
+    const prompt = `Analyze this image of a product or item for inventory management. Extract:
 
-1. **Visible Text**: List all readable text on the product, packaging, or label
-2. **Barcodes**: List any visible barcodes (UPC, EAN, QR codes) - provide the numbers if readable
-3. **Product Name**: Suggest a concise, shop-floor friendly name for this item (max 50 chars)
-4. **Supplier/Brand**: Identify the manufacturer, brand, or supplier if visible
-5. **Item Type**: Determine if this is:
-   - An "external" item (commercially purchased with packaging/labels)
-   - An "internal" item (internally produced/manufactured, may have handwritten labels or custom markings)
+1. **Visible Text**: All readable text on packaging, labels, or product
+2. **Barcodes**: Any UPC, EAN, or other barcodes (numbers only if readable)
+3. **Product Name**: A concise, shop-floor friendly name (max 50 chars, no brand)
+4. **Supplier/Brand**: The manufacturer, brand, or supplier name
+5. **Item Type**: Is this:
+   - "external" (commercially purchased with retail packaging)
+   - "internal" (internally produced, handwritten labels, custom markings)
 
-Respond in JSON format:
+Respond ONLY with valid JSON:
 {
-  "extractedText": ["text1", "text2", ...],
-  "detectedBarcodes": ["123456789012", ...],
+  "extractedText": ["text1", "text2"],
+  "detectedBarcodes": ["123456789012"],
   "suggestedName": "Concise Product Name",
-  "suggestedSupplier": "Brand or Supplier Name",
+  "suggestedSupplier": "Brand Name",
   "isInternalItem": false
 }
 
-If any field cannot be determined, omit it or use null.`;
+Omit fields that cannot be determined.`;
 
     const result = await model.generateContent([
       prompt,
@@ -227,22 +433,46 @@ If any field cannot be determined, omit it or use null.`;
     const text = response.text();
     
     // Extract JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        extractedText: parsed.extractedText || [],
-        detectedBarcodes: parsed.detectedBarcodes || [],
-        suggestedName: parsed.suggestedName,
-        suggestedSupplier: parsed.suggestedSupplier,
-        isInternalItem: parsed.isInternalItem,
-      };
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        // Sanitize and validate response
+        return {
+          extractedText: Array.isArray(parsed.extractedText) 
+            ? parsed.extractedText.slice(0, 20).map((t: unknown) => String(t).substring(0, 200))
+            : undefined,
+          detectedBarcodes: Array.isArray(parsed.detectedBarcodes)
+            ? parsed.detectedBarcodes.slice(0, 10).map((b: unknown) => String(b).replace(/\D/g, '').substring(0, 20))
+            : undefined,
+          suggestedName: typeof parsed.suggestedName === 'string' 
+            ? parsed.suggestedName.substring(0, 100) 
+            : undefined,
+          suggestedSupplier: typeof parsed.suggestedSupplier === 'string'
+            ? parsed.suggestedSupplier.substring(0, 100)
+            : undefined,
+          isInternalItem: typeof parsed.isInternalItem === 'boolean' 
+            ? parsed.isInternalItem 
+            : undefined,
+        };
+      } catch (parseError) {
+        appLogger.warn('Failed to parse Gemini response JSON:', text.substring(0, 200));
+        return {};
+      }
     }
     
+    appLogger.warn('No JSON found in Gemini response:', text.substring(0, 200));
     return {};
-  } catch (error) {
-    console.error('Gemini analysis error:', error);
-    return {};
+  } catch (error: any) {
+    // Check for rate limiting
+    if (error?.status === 429 || error?.message?.includes('rate')) {
+      appLogger.warn('Gemini rate limited, will retry later');
+      throw new Error('Analysis rate limited, please try again');
+    }
+    
+    appLogger.error('Gemini analysis error:', error?.message || error);
+    throw new Error('Image analysis failed');
   }
 }
 

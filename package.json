@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <21"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",

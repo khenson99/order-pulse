@@ -211,7 +211,7 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = ({
         {/* Order amount badge */}
         {node.type === 'order' && (node.data as OrderNodeData)?.totalAmount && (
           <span className="text-sm font-medium text-arda-accent">
-            ${((node.data as OrderNodeData).totalAmount || 0).toFixed(2)}
+            ${(node.data as OrderNodeData).totalAmount!.toFixed(2)}
           </span>
         )}
         

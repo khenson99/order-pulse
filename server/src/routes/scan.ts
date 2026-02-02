@@ -1,8 +1,16 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import redisClient from '../utils/redisClient.js';
+import { appLogger } from '../middleware/requestLogger.js';
 
 const router = Router();
 
-// In-memory storage for scan sessions (in production, use Redis)
+// Constants
+const SESSION_TTL = 24 * 60 * 60; // 24 hours in seconds
+const MAX_BARCODES_PER_SESSION = 500;
+const MAX_BARCODE_LENGTH = 50;
+const REDIS_PREFIX = 'scan:session:';
+
+// Types
 interface ScannedBarcode {
   id: string;
   barcode: string;
@@ -19,103 +27,191 @@ interface ScanSession {
   barcodes: ScannedBarcode[];
   createdAt: string;
   lastActivity: string;
+  userId?: string;
 }
 
-const scanSessions = new Map<string, ScanSession>();
+// In-memory fallback when Redis is not available
+const memoryStore = new Map<string, ScanSession>();
 
-// Clean up old sessions (older than 24 hours)
-const cleanupOldSessions = () => {
-  const now = Date.now();
-  const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+// Validate session ID format (alphanumeric with dashes)
+const isValidSessionId = (sessionId: string): boolean => {
+  return /^[a-zA-Z0-9-_]{10,64}$/.test(sessionId);
+};
+
+// Validate barcode format
+const isValidBarcode = (barcode: string): boolean => {
+  if (!barcode || typeof barcode !== 'string') return false;
+  if (barcode.length > MAX_BARCODE_LENGTH) return false;
+  // Allow alphanumeric barcodes
+  return /^[a-zA-Z0-9-]+$/.test(barcode);
+};
+
+// Get session from Redis or memory
+const getSession = async (sessionId: string): Promise<ScanSession> => {
+  if (redisClient) {
+    try {
+      const data = await redisClient.get(`${REDIS_PREFIX}${sessionId}`);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch (error) {
+      appLogger.error('Redis get error:', error);
+    }
+  }
   
-  for (const [sessionId, session] of scanSessions.entries()) {
-    if (now - new Date(session.lastActivity).getTime() > maxAge) {
-      scanSessions.delete(sessionId);
+  // Fallback to memory
+  const session = memoryStore.get(sessionId);
+  if (session) return session;
+  
+  // Create new session
+  const newSession: ScanSession = {
+    barcodes: [],
+    createdAt: new Date().toISOString(),
+    lastActivity: new Date().toISOString(),
+  };
+  
+  return newSession;
+};
+
+// Save session to Redis or memory
+const saveSession = async (sessionId: string, session: ScanSession): Promise<void> => {
+  session.lastActivity = new Date().toISOString();
+  
+  if (redisClient) {
+    try {
+      await redisClient.setEx(
+        `${REDIS_PREFIX}${sessionId}`,
+        SESSION_TTL,
+        JSON.stringify(session)
+      );
+      return;
+    } catch (error) {
+      appLogger.error('Redis set error:', error);
+    }
+  }
+  
+  // Fallback to memory
+  memoryStore.set(sessionId, session);
+  
+  // Clean up old memory sessions periodically
+  if (memoryStore.size > 1000) {
+    const now = Date.now();
+    for (const [id, sess] of memoryStore.entries()) {
+      if (now - new Date(sess.lastActivity).getTime() > SESSION_TTL * 1000) {
+        memoryStore.delete(id);
+      }
     }
   }
 };
 
-// Run cleanup every hour
-setInterval(cleanupOldSessions, 60 * 60 * 1000);
-
-// Get or create session
-const getSession = (sessionId: string): ScanSession => {
-  let session = scanSessions.get(sessionId);
-  if (!session) {
-    session = {
-      barcodes: [],
-      createdAt: new Date().toISOString(),
-      lastActivity: new Date().toISOString(),
-    };
-    scanSessions.set(sessionId, session);
+// Session ID validation middleware
+const validateSessionId = (req: Request, res: Response, next: NextFunction) => {
+  const { sessionId } = req.params;
+  if (!isValidSessionId(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID format' });
   }
-  return session;
+  next();
 };
 
 /**
  * GET /api/scan/session/:sessionId/barcodes
  * Get all barcodes for a session (used by desktop to poll for mobile scans)
  */
-router.get('/session/:sessionId/barcodes', (req: Request, res: Response) => {
-  const { sessionId } = req.params;
-  const { since } = req.query; // Optional: only return barcodes since this timestamp
-  
-  const session = getSession(sessionId);
-  
-  let barcodes = session.barcodes;
-  
-  // Filter by timestamp if provided
-  if (since && typeof since === 'string') {
-    const sinceDate = new Date(since);
-    barcodes = barcodes.filter(b => new Date(b.scannedAt) > sinceDate);
+router.get('/session/:sessionId/barcodes', validateSessionId, async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { since } = req.query;
+    
+    const session = await getSession(sessionId);
+    let barcodes = session.barcodes;
+    
+    // Filter by timestamp if provided
+    if (since && typeof since === 'string') {
+      const sinceDate = new Date(since);
+      if (!isNaN(sinceDate.getTime())) {
+        barcodes = barcodes.filter(b => new Date(b.scannedAt) > sinceDate);
+      }
+    }
+    
+    res.json({ 
+      barcodes,
+      sessionCreatedAt: session.createdAt,
+      totalCount: session.barcodes.length,
+    });
+  } catch (error) {
+    appLogger.error('Get barcodes error:', error);
+    res.status(500).json({ error: 'Failed to retrieve barcodes' });
   }
-  
-  res.json({ barcodes });
 });
 
 /**
  * POST /api/scan/session/:sessionId/barcode
  * Add a barcode to a session (used by mobile scanner)
  */
-router.post('/session/:sessionId/barcode', async (req: Request, res: Response) => {
-  const { sessionId } = req.params;
-  const { id, data, timestamp, barcodeType } = req.body;
-  
-  if (!data) {
-    return res.status(400).json({ error: 'Barcode data is required' });
-  }
-  
-  const session = getSession(sessionId);
-  session.lastActivity = new Date().toISOString();
-  
-  // Check for duplicates
-  if (session.barcodes.some(b => b.barcode === data)) {
-    return res.json({ success: true, duplicate: true });
-  }
-  
-  // Look up product info
-  let productInfo: { name?: string; brand?: string; imageUrl?: string; category?: string } = {};
+router.post('/session/:sessionId/barcode', validateSessionId, async (req: Request, res: Response) => {
   try {
-    productInfo = await lookupBarcode(data);
+    const { sessionId } = req.params;
+    const { id, data, timestamp, barcodeType } = req.body;
+    
+    // Validate input
+    if (!data || typeof data !== 'string') {
+      return res.status(400).json({ error: 'Barcode data is required' });
+    }
+    
+    const cleanBarcode = data.trim();
+    if (!isValidBarcode(cleanBarcode)) {
+      return res.status(400).json({ error: 'Invalid barcode format' });
+    }
+    
+    const session = await getSession(sessionId);
+    
+    // Check session limits
+    if (session.barcodes.length >= MAX_BARCODES_PER_SESSION) {
+      return res.status(429).json({ 
+        error: 'Session barcode limit reached',
+        limit: MAX_BARCODES_PER_SESSION,
+      });
+    }
+    
+    // Check for duplicates
+    if (session.barcodes.some(b => b.barcode === cleanBarcode)) {
+      return res.json({ success: true, duplicate: true });
+    }
+    
+    // Look up product info (with timeout)
+    let productInfo: { name?: string; brand?: string; imageUrl?: string; category?: string } = {};
+    try {
+      const lookupPromise = lookupBarcode(cleanBarcode);
+      const timeoutPromise = new Promise<typeof productInfo>((_, reject) => 
+        setTimeout(() => reject(new Error('Lookup timeout')), 5000)
+      );
+      productInfo = await Promise.race([lookupPromise, timeoutPromise]);
+    } catch (error) {
+      appLogger.warn('Barcode lookup failed or timed out:', cleanBarcode);
+    }
+    
+    const barcode: ScannedBarcode = {
+      id: id || `scan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      barcode: cleanBarcode,
+      barcodeType: barcodeType || detectBarcodeType(cleanBarcode),
+      scannedAt: timestamp || new Date().toISOString(),
+      source: 'mobile',
+      productName: productInfo.name,
+      brand: productInfo.brand,
+      imageUrl: productInfo.imageUrl,
+      category: productInfo.category,
+    };
+    
+    session.barcodes.push(barcode);
+    await saveSession(sessionId, session);
+    
+    appLogger.info(`Barcode scanned: ${cleanBarcode} in session ${sessionId.substring(0, 8)}...`);
+    
+    res.json({ success: true, barcode });
   } catch (error) {
-    console.error('Barcode lookup error:', error);
+    appLogger.error('Add barcode error:', error);
+    res.status(500).json({ error: 'Failed to save barcode' });
   }
-  
-  const barcode: ScannedBarcode = {
-    id: id || `scan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    barcode: data,
-    barcodeType: barcodeType || detectBarcodeType(data),
-    scannedAt: timestamp || new Date().toISOString(),
-    source: 'mobile',
-    productName: productInfo.name,
-    brand: productInfo.brand,
-    imageUrl: productInfo.imageUrl,
-    category: productInfo.category,
-  };
-  
-  session.barcodes.push(barcode);
-  
-  res.json({ success: true, barcode });
 });
 
 /**
@@ -129,16 +225,45 @@ router.get('/lookup', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Barcode code is required' });
   }
   
+  const cleanCode = code.trim();
+  if (!isValidBarcode(cleanCode)) {
+    return res.status(400).json({ error: 'Invalid barcode format' });
+  }
+  
   try {
-    const productInfo = await lookupBarcode(code);
+    // Check Redis cache first
+    if (redisClient) {
+      const cached = await redisClient.get(`barcode:lookup:${cleanCode}`);
+      if (cached) {
+        return res.json(JSON.parse(cached));
+      }
+    }
+    
+    const productInfo = await lookupBarcode(cleanCode);
     
     if (productInfo.name) {
+      // Cache successful lookups for 7 days
+      if (redisClient) {
+        await redisClient.setEx(
+          `barcode:lookup:${cleanCode}`,
+          7 * 24 * 60 * 60,
+          JSON.stringify(productInfo)
+        );
+      }
       res.json(productInfo);
     } else {
+      // Cache not-found for 1 hour to avoid repeated lookups
+      if (redisClient) {
+        await redisClient.setEx(
+          `barcode:lookup:${cleanCode}`,
+          60 * 60,
+          JSON.stringify({ notFound: true })
+        );
+      }
       res.status(404).json({ error: 'Product not found' });
     }
   } catch (error) {
-    console.error('Barcode lookup error:', error);
+    appLogger.error('Barcode lookup error:', error);
     res.status(500).json({ error: 'Lookup failed' });
   }
 });
