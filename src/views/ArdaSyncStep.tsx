@@ -48,9 +48,9 @@ export const ArdaSyncStep: React.FC<ArdaSyncStepProps> = ({
         credentials: 'include',
         body: JSON.stringify({
           name: item.name,
+          primarySupplier: item.supplier || 'Unknown Supplier',
           sku: item.sku,
           barcode: item.barcode,
-          supplier: item.supplier,
           location: item.location,
           minQty: item.minQty || 1,
           orderQty: item.orderQty || item.minQty || 1,

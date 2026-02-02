@@ -1,5 +1,6 @@
 // API client for backend communication
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Default to production API if VITE_API_URL isn't provided at build time
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://order-pulse-api-production.up.railway.app';
 
 interface ApiError {
   error: string;
