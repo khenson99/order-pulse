@@ -166,10 +166,27 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Background email scanning progress
   const [emailProgress, setEmailProgress] = useState<BackgroundEmailProgress | null>(null);
   
+  // Track when user can proceed from email step (Amazon + priority done)
+  const [canProceedFromEmail, setCanProceedFromEmail] = useState(false);
+  
   // Mobile session ID for syncing
   const [mobileSessionId] = useState(() => 
     `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   );
+
+  // Calculate total items across all sources
+  const totalItems = emailItems.length + scannedBarcodes.length + capturedPhotos.filter(p => p.suggestedName).length + csvItems.length;
+
+  // Get current step index
+  const currentStepIndex = ONBOARDING_STEPS.findIndex(s => s.id === currentStep);
+  
+  // Check if can go back
+  const canGoBack = currentStepIndex > 0;
+  
+  // Check if can go forward
+  const canGoForward = currentStep === 'email' 
+    ? canProceedFromEmail 
+    : currentStep !== 'sync'; // Can always continue except on last step
 
   // Handle step completion
   const handleStepComplete = useCallback((step: OnboardingStep) => {
@@ -248,6 +265,25 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const handleEmailProgressUpdate = useCallback((progress: BackgroundEmailProgress | null) => {
     setEmailProgress(progress);
   }, []);
+
+  // Handle when user can proceed from email step (key suppliers done)
+  const handleCanProceedFromEmail = useCallback((canProceed: boolean) => {
+    setCanProceedFromEmail(canProceed);
+  }, []);
+
+  // Go to previous step
+  const goBack = useCallback(() => {
+    if (currentStepIndex > 0) {
+      setCurrentStep(ONBOARDING_STEPS[currentStepIndex - 1].id);
+    }
+  }, [currentStepIndex]);
+
+  // Go to next step
+  const goForward = useCallback(() => {
+    if (currentStepIndex < ONBOARDING_STEPS.length - 1) {
+      handleStepComplete(currentStep);
+    }
+  }, [currentStepIndex, currentStep, handleStepComplete]);
 
   // Get step status
   const getStepStatus = (stepId: OnboardingStep): 'completed' | 'current' | 'upcoming' => {
@@ -338,6 +374,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             onScanComplete={handleEmailComplete}
             onSkip={() => handleStepComplete('email')}
             onProgressUpdate={handleEmailProgressUpdate}
+            onCanProceed={handleCanProceedFromEmail}
           />
         );
       
@@ -398,17 +435,112 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     }
   };
 
+  // Render persistent footer
+  const renderFooter = () => (
+    <div className="sticky bottom-0 bg-white border-t border-gray-200 shadow-lg">
+      <div className="max-w-6xl mx-auto px-6 py-4">
+        <div className="flex items-center justify-between">
+          {/* Left: Back button */}
+          <div className="w-32">
+            {canGoBack && (
+              <button
+                onClick={goBack}
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Icons.ChevronLeft className="w-5 h-5" />
+                Back
+              </button>
+            )}
+          </div>
+
+          {/* Center: Progress info */}
+          <div className="flex-1 flex flex-col items-center">
+            {/* Step progress */}
+            <div className="text-sm font-medium text-gray-700">
+              Step {currentStepIndex + 1} of {ONBOARDING_STEPS.length}
+            </div>
+            
+            {/* Item counts */}
+            <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+              {emailItems.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <Icons.Mail className="w-3 h-3" />
+                  {emailItems.length} from email
+                </span>
+              )}
+              {scannedBarcodes.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <Icons.Barcode className="w-3 h-3" />
+                  {scannedBarcodes.length} scanned
+                </span>
+              )}
+              {capturedPhotos.filter(p => p.suggestedName).length > 0 && (
+                <span className="flex items-center gap-1">
+                  <Icons.Camera className="w-3 h-3" />
+                  {capturedPhotos.filter(p => p.suggestedName).length} captured
+                </span>
+              )}
+              {csvItems.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <Icons.FileSpreadsheet className="w-3 h-3" />
+                  {csvItems.length} from CSV
+                </span>
+              )}
+              {totalItems > 0 && (
+                <span className="font-medium text-gray-700">
+                  ({totalItems} total items)
+                </span>
+              )}
+            </div>
+
+            {/* Email processing progress */}
+            {emailProgress && emailProgress.isActive && (
+              <div className="flex items-center gap-2 mt-2 text-xs text-blue-600 bg-blue-50 rounded-full px-3 py-1">
+                <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                <span>
+                  {emailProgress.supplier}: {emailProgress.processed}/{emailProgress.total}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Forward button */}
+          <div className="w-32 flex justify-end">
+            {currentStep !== 'sync' && (
+              <button
+                onClick={goForward}
+                disabled={!canGoForward}
+                className={`
+                  flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors
+                  ${canGoForward 
+                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
+                `}
+              >
+                Continue
+                <Icons.ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Step indicator */}
       {renderStepIndicator()}
       
       {/* Main content */}
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-6 pb-24">
         <div className="max-w-6xl mx-auto">
           {renderStepContent()}
         </div>
       </div>
+
+      {/* Persistent footer */}
+      {renderFooter()}
     </div>
   );
 };
