@@ -1,42 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './views/Dashboard';
-import { InventoryView } from './views/InventoryView';
-import { CadenceView } from './views/CadenceView';
-import { ComposeEmail } from './views/ComposeEmail';
 import { LoginScreen } from './views/LoginScreen';
-// PipelineView available but not currently used in navigation
-// import { PipelineView } from './views/PipelineView';
-import { JourneyView } from './views/JourneyView';
-import { SupplierSetup } from './views/SupplierSetup';
 import { OnboardingFlow } from './views/OnboardingFlow';
 import { MobileScanner } from './views/MobileScanner';
-import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
-import { processOrdersToInventory } from './utils/inventoryLogic';
-import { useAutoIngestion } from './hooks/useAutoIngestion';
+import { GoogleUserProfile } from './types';
 import { authApi } from './services/api';
+import { Icons } from './components/Icons';
 
 export default function App() {
-  const [activeView, setActiveView] = useState('setup'); // Start with supplier setup
-  
   // Auth State
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userProfile, setUserProfile] = useState<GoogleUserProfile | null>(null);
   
-  // Data State
-  const [orders, setOrders] = useState<ExtractedOrder[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  
-  // Track if user has completed initial setup
-  const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
-  
-  // Email Draft State for integrated reordering
-  const [emailDraft, setEmailDraft] = useState<{ to: string, subject: string, body: string } | null>(null);
-
-  // Auto-ingestion hook
-  const ingestion = useAutoIngestion(userProfile, (newOrders) => {
-    setOrders(newOrders);
-  });
+  // Track if user has completed onboarding
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [importedItemCount, setImportedItemCount] = useState(0);
 
   // Check auth on mount
   useEffect(() => {
@@ -50,14 +27,10 @@ export default function App() {
             name: data.user.name,
             picture: data.user.picture_url,
           });
-          // Check if user has seen setup before (stored in localStorage)
-          const setupComplete = localStorage.getItem('orderPulse_setupComplete');
-          if (setupComplete === 'true') {
-            setHasCompletedSetup(true);
-            setActiveView('dashboard');
-          } else {
-            // New user or returning user who hasn't completed setup
-            setActiveView('setup');
+          // Check if user has completed onboarding before
+          const completed = localStorage.getItem('orderPulse_onboardingComplete');
+          if (completed === 'true') {
+            setHasCompletedOnboarding(true);
           }
         }
       } catch {
@@ -69,63 +42,6 @@ export default function App() {
     checkAuth();
   }, []);
 
-  // Keyboard shortcuts for power users
-  useEffect(() => {
-    if (!userProfile || activeView === 'pipeline') return;
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-      
-      switch (e.key) {
-        case '1':
-          setActiveView('dashboard');
-          break;
-        case '2':
-          setActiveView('inventory');
-          break;
-        case '3':
-          setActiveView('analysis');
-          break;
-        case '4':
-          setActiveView('journey');
-          break;
-        case '5':
-          setActiveView('compose');
-          break;
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [userProfile, activeView]);
-
-  // When orders update, recalculate inventory stats
-  useEffect(() => {
-    if (orders.length > 0) {
-      const inv = processOrdersToInventory(orders);
-      setInventory(inv);
-    }
-  }, [orders]);
-
-  const handleReorder = (item: InventoryItem) => {
-    const draft = {
-      to: `${item.supplier.toLowerCase().replace(/\s+/g, '.')}@example.com`,
-      subject: `Restock Request: ${item.name}`,
-      body: `Hello ${item.supplier} Team,\n\nWe would like to place a restock order for the following item:\n\n- Item: ${item.name}\n- Quantity: ${item.recommendedOrderQty}\n\nPlease confirm availability and send over an updated invoice.\n\nBest regards,\n${userProfile?.name || 'Inventory Management'}`
-    };
-    setEmailDraft(draft);
-    setActiveView('compose');
-  };
-
-  const handleUpdateInventoryItem = (id: string, updates: Partial<InventoryItem>) => {
-    setInventory(prev => prev.map(item => 
-      item.id === id ? { ...item, ...updates } : item
-    ));
-  };
-
   const handleLogout = async () => {
     try {
       await authApi.logout();
@@ -133,44 +49,24 @@ export default function App() {
       // Ignore logout errors
     }
     setUserProfile(null);
-    setOrders([]);
-    setInventory([]);
-    setHasCompletedSetup(false);
-    localStorage.removeItem('orderPulse_setupComplete');
-    setActiveView('setup');
+    setHasCompletedOnboarding(false);
+    localStorage.removeItem('orderPulse_onboardingComplete');
   };
 
-  const handleSetupComplete = (newOrders: ExtractedOrder[]) => {
-    setOrders(prev => [...prev, ...newOrders]);
-    setHasCompletedSetup(true);
-    localStorage.setItem('orderPulse_setupComplete', 'true');
-    setActiveView('journey'); // Go to journey view to see results
+  const handleOnboardingComplete = (items: unknown[]) => {
+    setImportedItemCount(items.length);
+    setHasCompletedOnboarding(true);
+    localStorage.setItem('orderPulse_onboardingComplete', 'true');
   };
 
-  const handleOnboardingComplete = () => {
-    // Convert reconciliation items to inventory items format
-    // Sync to Arda is handled by OnboardingFlow, _items available for future use
-    setHasCompletedSetup(true);
-    localStorage.setItem('orderPulse_setupComplete', 'true');
-    setActiveView('dashboard');
+  const handleStartOver = () => {
+    setHasCompletedOnboarding(false);
+    setImportedItemCount(0);
+    localStorage.removeItem('orderPulse_onboardingComplete');
   };
 
-  const handleSkipSetup = () => {
-    setHasCompletedSetup(true);
-    localStorage.setItem('orderPulse_setupComplete', 'true');
-    setActiveView('dashboard');
-  };
-
-  const handleReset = async () => {
-    // Clear local state
-    setOrders([]);
-    setInventory([]);
-    setHasCompletedSetup(false);
-    localStorage.removeItem('orderPulse_setupComplete');
-    setActiveView('setup');
-    
-    // Trigger the ingestion hook to reset and restart
-    await ingestion.resetAndRestart();
+  const handleOpenArda = () => {
+    window.open('https://app.arda.cards', '_blank');
   };
 
   // Check for mobile scanner routes (no auth required for scanning)
@@ -195,83 +91,75 @@ export default function App() {
     return <LoginScreen />;
   }
 
-  // Show full onboarding flow if user hasn't completed setup yet
-  if (!hasCompletedSetup && activeView === 'setup') {
+  // Show completion screen if onboarding is done
+  if (hasCompletedOnboarding) {
     return (
-      <OnboardingFlow
-        onComplete={handleOnboardingComplete}
-        onSkip={handleSkipSetup}
-        userProfile={{ name: userProfile.name, email: userProfile.email }}
-      />
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <Icons.Package className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold text-gray-900">Order Pulse</h1>
+                <p className="text-xs text-gray-500">Inventory Import Complete</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-500">{userProfile.email}</span>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Success content */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="max-w-md text-center">
+            <div className="w-20 h-20 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-6">
+              <Icons.CheckCircle2 className="w-10 h-10 text-green-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">
+              Setup Complete!
+            </h2>
+            <p className="text-gray-600 mb-6">
+              {importedItemCount > 0 
+                ? `You've successfully imported ${importedItemCount} items to Arda.`
+                : "Your inventory setup is complete."}
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleOpenArda}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <Icons.ExternalLink className="w-5 h-5" />
+                Open Arda
+              </button>
+              <button
+                onClick={handleStartOver}
+                className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+              >
+                Import More Items
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
-  const renderView = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return (
-          <Dashboard 
-            orders={orders} 
-            inventory={inventory} 
-            onReorder={handleReorder}
-          />
-        );
-      case 'inventory':
-        return (
-          <InventoryView 
-            inventory={inventory} 
-            onReorder={handleReorder}
-            onUpdateItem={handleUpdateInventoryItem}
-          />
-        );
-      case 'analysis':
-        return <CadenceView inventory={inventory} />;
-      case 'journey':
-        return (
-          <JourneyView
-            orders={orders}
-            inventory={inventory}
-            onReorder={handleReorder}
-          />
-        );
-      case 'compose':
-        return (
-          <ComposeEmail 
-            gmailToken="" 
-            isMockConnected={false} 
-            prefill={emailDraft}
-            onClearDraft={() => setEmailDraft(null)}
-            apiKey=""
-          />
-        );
-      case 'setup':
-        return (
-          <SupplierSetup
-            onScanComplete={handleSetupComplete}
-            onSkip={handleSkipSetup}
-          />
-        );
-      default:
-        return <Dashboard orders={orders} inventory={inventory} onReorder={handleReorder} />;
-    }
-  };
-
+  // Show onboarding flow
   return (
-    <div className="min-h-screen bg-arda-bg-secondary text-arda-text-primary font-sans">
-      <Sidebar 
-        activeView={activeView} 
-        onChangeView={setActiveView}
-        userProfile={userProfile}
-        onLogout={handleLogout}
-        onReset={handleReset}
-        isIngesting={ingestion.isIngesting}
-        ingestionProgress={ingestion.progress}
-      />
-      <main className="pl-64">
-        <div className="max-w-7xl mx-auto p-8">
-          {renderView()}
-        </div>
-      </main>
-    </div>
+    <OnboardingFlow
+      onComplete={handleOnboardingComplete}
+      onSkip={() => setHasCompletedOnboarding(true)}
+      userProfile={{ name: userProfile.name, email: userProfile.email }}
+    />
   );
 }

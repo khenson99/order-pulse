@@ -4,10 +4,12 @@ import { ExtractedOrder, InventoryItem } from '../types';
 import { SupplierSetup } from './SupplierSetup';
 import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
-import { CSVReconcileStep } from './CSVReconcileStep';
+import { CSVUploadStep, CSVItem } from './CSVUploadStep';
+import { MasterListStep, MasterListItem } from './MasterListStep';
+import { ArdaSyncStep } from './ArdaSyncStep';
 
 // Onboarding step definitions
-export type OnboardingStep = 'email' | 'barcode' | 'photo' | 'reconcile';
+export type OnboardingStep = 'email' | 'barcode' | 'photo' | 'csv' | 'masterlist' | 'sync';
 
 interface StepConfig {
   id: OnboardingStep;
@@ -40,11 +42,25 @@ const ONBOARDING_STEPS: StepConfig[] = [
     icon: 'Camera',
   },
   {
-    id: 'reconcile',
+    id: 'csv',
     number: 4,
-    title: 'Review & Push',
-    description: 'Dedupe, reconcile, and sync to Arda',
-    icon: 'CheckCircle2',
+    title: 'Upload CSV',
+    description: 'Import from spreadsheet',
+    icon: 'FileSpreadsheet',
+  },
+  {
+    id: 'masterlist',
+    number: 5,
+    title: 'Review Items',
+    description: 'Verify and enrich data',
+    icon: 'ListChecks',
+  },
+  {
+    id: 'sync',
+    number: 6,
+    title: 'Sync to Arda',
+    description: 'Push items to inventory',
+    icon: 'Upload',
   },
 ];
 
@@ -61,13 +77,13 @@ export interface ScannedBarcode {
   imageUrl?: string;
   category?: string;
   // Match status
-  matchedToEmailItem?: string; // ID of matched email item
+  matchedToEmailItem?: string;
 }
 
 // Captured item photo
 export interface CapturedPhoto {
   id: string;
-  imageData: string; // Base64 or URL
+  imageData: string;
   capturedAt: string;
   source: 'desktop' | 'mobile';
   // Extracted data from image analysis
@@ -75,43 +91,36 @@ export interface CapturedPhoto {
   detectedBarcodes?: string[];
   suggestedName?: string;
   suggestedSupplier?: string;
-  isInternalItem?: boolean; // vs externally procured
+  isInternalItem?: boolean;
 }
 
-// Unified item for reconciliation
+// Unified item for reconciliation (kept for backwards compatibility)
 export interface ReconciliationItem {
   id: string;
   source: 'email' | 'barcode' | 'photo' | 'csv';
-  // Core fields
   name: string;
   normalizedName?: string;
   supplier?: string;
   location?: string;
-  // Identifiers
   barcode?: string;
   sku?: string;
   asin?: string;
-  // Quantities
   quantity?: number;
   minQty?: number;
   orderQty?: number;
-  // Pricing
   unitPrice?: number;
-  // Media
   imageUrl?: string;
   productUrl?: string;
-  // Matching
-  duplicateOf?: string; // ID of item this is a duplicate of
+  duplicateOf?: string;
   isDuplicate?: boolean;
   matchConfidence?: number;
-  // Status
   isApproved?: boolean;
   isExcluded?: boolean;
   needsReview?: boolean;
 }
 
 interface OnboardingFlowProps {
-  onComplete: (items: ReconciliationItem[]) => void;
+  onComplete: (items: MasterListItem[]) => void;
   onSkip: () => void;
   userProfile?: { name?: string; email?: string };
 }
@@ -127,16 +136,18 @@ interface BackgroundEmailProgress {
 
 export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onComplete,
+  userProfile,
 }) => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('email');
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
   
   // Data from each step
   const [, setEmailOrders] = useState<ExtractedOrder[]>([]);
-  const [emailInventory] = useState<InventoryItem[]>([]);
+  const [emailInventory, setEmailInventory] = useState<InventoryItem[]>([]);
   const [scannedBarcodes, setScannedBarcodes] = useState<ScannedBarcode[]>([]);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
-  const [, setReconciliationItems] = useState<ReconciliationItem[]>([]);
+  const [csvItems, setCsvItems] = useState<CSVItem[]>([]);
+  const [masterListItems, setMasterListItems] = useState<MasterListItem[]>([]);
   
   // Background email scanning progress
   const [emailProgress, setEmailProgress] = useState<BackgroundEmailProgress | null>(null);
@@ -160,13 +171,27 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Handle email step completion
   const handleEmailComplete = useCallback((orders: ExtractedOrder[]) => {
     setEmailOrders(orders);
+    // Convert orders to inventory items
+    const inventoryItems: InventoryItem[] = orders.flatMap(order => 
+      order.lineItems.map(item => ({
+        id: `${order.orderId}-${item.name}`,
+        name: item.name,
+        supplier: order.supplierName,
+        asin: item.asin,
+        imageUrl: item.imageUrl,
+        lastPrice: item.unitPrice,
+        totalQuantityOrdered: item.quantity,
+        recommendedMin: Math.ceil((item.quantity || 1) / 2),
+        recommendedOrderQty: item.quantity || 1,
+      }))
+    );
+    setEmailInventory(inventoryItems);
     handleStepComplete('email');
   }, [handleStepComplete]);
 
   // Handle barcode scan
   const handleBarcodeScanned = useCallback((barcode: ScannedBarcode) => {
     setScannedBarcodes(prev => {
-      // Avoid duplicates
       if (prev.some(b => b.barcode === barcode.barcode)) {
         return prev;
       }
@@ -176,15 +201,35 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   // Handle photo capture
   const handlePhotoCaptured = useCallback((photo: CapturedPhoto) => {
-    setCapturedPhotos(prev => [...prev, photo]);
+    setCapturedPhotos(prev => {
+      // Update existing photo or add new
+      const existingIndex = prev.findIndex(p => p.id === photo.id);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = photo;
+        return updated;
+      }
+      return [...prev, photo];
+    });
   }, []);
 
-  // Handle final reconciliation complete
-  const handleReconcileComplete = useCallback((items: ReconciliationItem[]) => {
-    setReconciliationItems(items);
-    handleStepComplete('reconcile');
-    onComplete(items);
-  }, [handleStepComplete, onComplete]);
+  // Handle CSV upload completion
+  const handleCSVComplete = useCallback((approvedItems: CSVItem[]) => {
+    setCsvItems(approvedItems);
+    handleStepComplete('csv');
+  }, [handleStepComplete]);
+
+  // Handle master list completion
+  const handleMasterListComplete = useCallback((items: MasterListItem[]) => {
+    setMasterListItems(items);
+    handleStepComplete('masterlist');
+  }, [handleStepComplete]);
+
+  // Handle final sync complete
+  const handleSyncComplete = useCallback(() => {
+    handleStepComplete('sync');
+    onComplete(masterListItems);
+  }, [handleStepComplete, onComplete, masterListItems]);
 
   // Update email progress from child component
   const handleEmailProgressUpdate = useCallback((progress: BackgroundEmailProgress | null) => {
@@ -201,8 +246,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Render step indicator
   const renderStepIndicator = () => (
     <div className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between overflow-x-auto">
           {ONBOARDING_STEPS.map((step, index) => {
             const status = getStepStatus(step.id);
             const Icon = Icons[step.icon] || Icons.Circle;
@@ -212,89 +257,64 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 {/* Step circle */}
                 <button
                   onClick={() => {
-                    // Allow navigation to completed steps or current step
                     if (status === 'completed' || status === 'current') {
                       setCurrentStep(step.id);
                     }
                   }}
                   disabled={status === 'upcoming'}
                   className={`
-                    flex items-center gap-3 p-2 rounded-lg transition-all
+                    flex items-center gap-2 p-2 rounded-lg transition-all whitespace-nowrap
                     ${status === 'current' ? 'bg-blue-50' : ''}
                     ${status === 'completed' ? 'cursor-pointer hover:bg-gray-50' : ''}
                     ${status === 'upcoming' ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >
                   <div className={`
-                    w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm
+                    w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
                     ${status === 'completed' ? 'bg-green-500 text-white' : ''}
                     ${status === 'current' ? 'bg-blue-500 text-white' : ''}
-                    ${status === 'upcoming' ? 'bg-gray-200 text-gray-500' : ''}
+                    ${status === 'upcoming' ? 'bg-gray-200 text-gray-400' : ''}
                   `}>
                     {status === 'completed' ? (
-                      <Icons.Check className="w-5 h-5" />
+                      <Icons.Check className="w-4 h-4" />
                     ) : (
-                      <Icon className="w-5 h-5" />
+                      <Icon className="w-4 h-4" />
                     )}
                   </div>
-                  <div className="text-left">
-                    <p className={`text-sm font-medium ${
-                      status === 'current' ? 'text-blue-600' : 
-                      status === 'completed' ? 'text-green-600' : 'text-gray-500'
+                  <div className="text-left hidden md:block">
+                    <div className={`text-sm font-medium ${
+                      status === 'upcoming' ? 'text-gray-400' : 'text-gray-900'
                     }`}>
                       {step.title}
-                    </p>
-                    <p className="text-xs text-gray-400">{step.description}</p>
+                    </div>
                   </div>
                 </button>
                 
                 {/* Connector line */}
                 {index < ONBOARDING_STEPS.length - 1 && (
                   <div className={`
-                    h-0.5 w-12 mx-2
-                    ${completedSteps.has(step.id) ? 'bg-green-300' : 'bg-gray-200'}
+                    w-8 h-0.5 mx-1
+                    ${completedSteps.has(step.id) ? 'bg-green-500' : 'bg-gray-200'}
                   `} />
                 )}
               </div>
             );
           })}
         </div>
+        
+        {/* Background email progress indicator */}
+        {emailProgress && emailProgress.isActive && currentStep !== 'email' && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+            <Icons.Loader2 className="w-4 h-4 animate-spin" />
+            <span>
+              Scanning emails in background: {emailProgress.supplier} 
+              ({emailProgress.processed}/{emailProgress.total})
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
-
-  // Render background progress bar
-  const renderBackgroundProgress = () => {
-    if (!emailProgress?.isActive) return null;
-    
-    const percent = emailProgress.total > 0 
-      ? Math.round((emailProgress.processed / emailProgress.total) * 100) 
-      : 0;
-    
-    return (
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-3 shadow-lg z-50">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-4">
-            <Icons.Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-gray-600">
-                  {emailProgress.currentTask || `Scanning ${emailProgress.supplier}...`}
-                </span>
-                <span className="text-sm font-medium text-blue-600">{percent}%</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-blue-500 transition-all duration-300"
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // Render current step content
   const renderStepContent = () => {
@@ -329,15 +349,34 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             onBack={() => setCurrentStep('barcode')}
           />
         );
-      
-      case 'reconcile':
+
+      case 'csv':
         return (
-          <CSVReconcileStep
+          <CSVUploadStep
+            onComplete={handleCSVComplete}
+            onBack={() => setCurrentStep('photo')}
+          />
+        );
+
+      case 'masterlist':
+        return (
+          <MasterListStep
             emailItems={emailInventory}
             scannedBarcodes={scannedBarcodes}
             capturedPhotos={capturedPhotos}
-            onComplete={handleReconcileComplete}
-            onBack={() => setCurrentStep('photo')}
+            csvItems={csvItems}
+            onComplete={handleMasterListComplete}
+            onBack={() => setCurrentStep('csv')}
+          />
+        );
+
+      case 'sync':
+        return (
+          <ArdaSyncStep
+            items={masterListItems}
+            userEmail={userProfile?.email}
+            onComplete={handleSyncComplete}
+            onBack={() => setCurrentStep('masterlist')}
           />
         );
       
@@ -348,18 +387,15 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Step indicator at top */}
+      {/* Step indicator */}
       {renderStepIndicator()}
       
-      {/* Main content area */}
-      <div className="flex-1 overflow-auto pb-20">
-        <div className="max-w-4xl mx-auto p-6">
+      {/* Main content */}
+      <div className="flex-1 p-6">
+        <div className="max-w-6xl mx-auto">
           {renderStepContent()}
         </div>
       </div>
-      
-      {/* Background email progress at bottom */}
-      {currentStep !== 'email' && renderBackgroundProgress()}
     </div>
   );
 };
