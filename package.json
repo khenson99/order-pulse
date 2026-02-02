@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=20 <21"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
@@ -20,7 +20,6 @@
     "compression": "^1.8.1",
     "express-rate-limit": "^8.2.1",
     "lucide-react": "^0.563.0",
-    "papaparse": "^5.5.3",
     "pino": "^10.3.0",
     "pino-http": "^11.0.0",
     "react": "^19.2.0",

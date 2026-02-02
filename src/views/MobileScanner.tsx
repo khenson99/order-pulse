@@ -25,9 +25,6 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
   const [flashEnabled, setFlashEnabled] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -44,8 +41,6 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
   // Sync item to desktop session
   const syncToDesktop = useCallback(async (item: ScannedItem) => {
     try {
-      setIsSyncing(true);
-      setSyncError(null);
       const endpoint = item.type === 'barcode' 
         ? `/api/scan/session/${sessionId}/barcode`
         : `/api/photo/session/${sessionId}/photo`;
@@ -65,14 +60,9 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
         setScannedItems(prev => 
           prev.map(i => i.id === item.id ? { ...i, synced: true } : i)
         );
-      } else {
-        setSyncError(`Sync failed (${response.status})`);
       }
     } catch (err) {
       console.error('Sync error:', err);
-      setSyncError('Network error while syncing. Will retry on next scan.');
-    } finally {
-      setIsSyncing(false);
     }
   }, [sessionId]);
 
@@ -166,8 +156,6 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
   const startCamera = useCallback(async () => {
     try {
       setError(null);
-      setSyncError(null);
-      setIsSyncing(false);
       
       // Check if we're in a secure context (HTTPS or localhost)
       if (!window.isSecureContext) {
@@ -200,10 +188,6 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
         setIsScanning(true);
-        // update available cameras list (non-blocking)
-        navigator.mediaDevices.enumerateDevices()
-          .then(devices => setAvailableCameras(devices.filter(d => d.kind === 'videoinput')))
-          .catch(() => {});
         
         // Start continuous scanning for barcodes
         if (mode === 'barcode') {
@@ -285,11 +269,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
 
   // Toggle camera facing
   const toggleCamera = () => {
-    if (availableCameras.length > 1) {
-      setCameraFacing(prev => prev === 'environment' ? 'user' : 'environment');
-    } else {
-      setCameraFacing(prev => prev === 'environment' ? 'user' : 'environment');
-    }
+    setCameraFacing(prev => prev === 'environment' ? 'user' : 'environment');
   };
 
   // Restart camera when facing changes
@@ -329,14 +309,9 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
           <span className="text-white/80 text-sm">
             {scannedItems.length} scanned
           </span>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${
-              scannedItems.some(i => !i.synced) ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'
-            }`} />
-            {scannedItems.some(i => !i.synced) && (
-              <span className="text-xs text-yellow-200">Waiting to sync</span>
-            )}
-          </div>
+          <div className={`w-2 h-2 rounded-full ${
+            scannedItems.some(i => !i.synced) ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'
+          }`} />
         </div>
       </div>
 
@@ -438,20 +413,9 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
             </div>
           )}
           
-          {/* Flash toggle */}
+          {/* Flash toggle (placeholder) */}
           <button
-            onClick={() => {
-              const next = !flashEnabled;
-              setFlashEnabled(next);
-              const track = streamRef.current?.getVideoTracks()?.[0];
-              if (track?.getCapabilities && track.getCapabilities().torch) {
-                track.applyConstraints({ advanced: [{ torch: next }] }).catch(() => {
-                  setSyncError('Flash control not supported in this browser.');
-                });
-              } else if (next) {
-                setSyncError('Flash not available on this device.');
-              }
-            }}
+            onClick={() => setFlashEnabled(!flashEnabled)}
             aria-label={flashEnabled ? 'Disable flash' : 'Enable flash'}
             title={flashEnabled ? 'Disable flash' : 'Enable flash'}
             className={`w-12 h-12 rounded-full flex items-center justify-center ${
@@ -488,19 +452,6 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
                 )}
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sync + error toasts */}
-      {(syncError || isSyncing) && (
-        <div className="absolute top-20 right-4 max-w-xs">
-          <div
-            className={`rounded-lg px-4 py-3 text-sm shadow-arda ${
-              syncError ? 'bg-red-600 text-white' : 'bg-white/90 text-black'
-            }`}
-          >
-            {isSyncing ? 'Syncing scans…' : syncError}
           </div>
         </div>
       )}

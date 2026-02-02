@@ -1,46 +1,11 @@
-import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { API_BASE_URL } from '../services/api';
 
-// Snarky lean manufacturing quotes for loading states
-const LEAN_QUOTES = [
-  { quote: "Inventory is the root of all evil.", author: "Taiichi Ohno" },
-  { quote: "The most dangerous kind of waste is the waste we do not recognize.", author: "Shigeo Shingo" },
-  { quote: "Where there is no standard, there can be no kaizen.", author: "Taiichi Ohno" },
-  { quote: "All we are doing is looking at the timeline from order to cash and reducing it.", author: "Taiichi Ohno" },
-  { quote: "Having no problems is the biggest problem of all.", author: "Taiichi Ohno" },
-  { quote: "Costs do not exist to be calculated. Costs exist to be reduced.", author: "Taiichi Ohno" },
-  { quote: "The Toyota style is not to create results by working hard. It is a system that says there is no limit to people's creativity.", author: "Taiichi Ohno" },
-  { quote: "Progress cannot be generated when we are satisfied with existing situations.", author: "Taiichi Ohno" },
-  { quote: "Without standards, there can be no improvement.", author: "Taiichi Ohno" },
-  { quote: "Make your workplace into a showcase that can be understood by everyone at a glance.", author: "Taiichi Ohno" },
-  { quote: "If you're going to do kaizen continuously, you've got to assume that things are a mess.", author: "Masaaki Imai" },
-  { quote: "The key to the Toyota Way is not any of the individual elements... It is having all the elements together as a system.", author: "Jeffrey Liker" },
-  { quote: "Build a culture of stopping to fix problems, to get quality right the first time.", author: "Toyota Principle" },
-  { quote: "Waste is any human activity which absorbs resources but creates no value.", author: "James Womack" },
-  { quote: "Your customers do not care about your systems, they care about their problems.", author: "Lean Wisdom" },
-];
-
-function useRotatingQuote(intervalMs = 4000) {
-  const [index, setIndex] = useState(() => Math.floor(Math.random() * LEAN_QUOTES.length));
-  
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setIndex(prev => (prev + 1) % LEAN_QUOTES.length);
-    }, intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  
-  return LEAN_QUOTES[index];
-}
-
 interface LoginScreenProps {
   onCheckingAuth?: boolean;
-  authError?: string | null;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onCheckingAuth, authError }) => {
-  const quote = useRotatingQuote();
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onCheckingAuth }) => {
   const handleGoogleLogin = () => {
     window.location.href = `${API_BASE_URL}/auth/google`;
   };
@@ -95,23 +60,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onCheckingAuth, authEr
           </div>
 
           <div className="space-y-4">
-            {authError && (
-              <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
-                <div className="flex items-center gap-2 mb-1 font-semibold">
-                  <Icons.AlertTriangle className="w-4 h-4" />
-                  Authentication error
-                </div>
-                <div className="text-red-700/90">{authError}</div>
-              </div>
-            )}
             {onCheckingAuth ? (
               <div className="flex flex-col items-center py-6">
                 <div className="animate-spin w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full mb-4" />
-                <span className="text-arda-text-muted mb-4">Checking authentication...</span>
-                <blockquote className="text-center px-4 transition-opacity duration-500">
-                  <p className="text-sm italic text-arda-text-secondary">"{quote.quote}"</p>
-                  <footer className="text-xs text-arda-text-muted mt-1">— {quote.author}</footer>
-                </blockquote>
+                <span className="text-arda-text-muted">Checking authentication...</span>
               </div>
             ) : (
               <button

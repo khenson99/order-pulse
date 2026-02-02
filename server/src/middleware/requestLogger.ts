@@ -14,8 +14,7 @@ export const requestLogger = pinoHttp({
   logger,
   redact: ['req.headers.authorization', 'req.headers.cookie'],
   autoLogging: {
-    // Skip noisy or latency-sensitive endpoints
-    ignorePaths: ['/health', '/ready', '/auth/google', '/auth/google/callback', '/auth/me'],
+    ignorePaths: ['/health', '/ready'],
   },
 });
 

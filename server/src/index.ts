@@ -5,7 +5,7 @@ import session from 'express-session';
 import RedisStore from 'connect-redis';
 import * as Sentry from '@sentry/node';
 import compression from 'compression';
-import redisClient, { closeRedisClient, isRedisReady } from './utils/redisClient.js';
+import redisClient, { closeRedisClient } from './utils/redisClient.js';
 import { authRouter } from './routes/auth.js';
 import { gmailRouter } from './routes/gmail.js';
 import { analysisRouter } from './routes/analysis.js';
@@ -13,7 +13,6 @@ import { ordersRouter } from './routes/orders.js';
 import { jobsRouter } from './routes/jobs.js';
 import { discoverRouter } from './routes/discover.js';
 import { amazonRouter } from './routes/amazon.js';
-import { productRouter } from './routes/product.js';
 import ardaRouter from './routes/arda.js';
 import cognitoRouter from './routes/cognito.js';
 import scanRouter from './routes/scan.js';
@@ -73,7 +72,7 @@ if (isProduction && !process.env.REDIS_URL) {
 }
 
 if (requireRedis && !redisClient) {
-  console.warn('⚠️ REDIS_URL not set in production - sessions will use memory store (not recommended for multi-instance deployments)');
+  throw new Error('REDIS_URL is required in production; in-memory storage is disabled');
 }
 
 // Trust proxy for Railway (required for secure cookies behind reverse proxy)
@@ -82,20 +81,8 @@ if (isProduction) {
 }
 
 const sessionSecret = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
-
-// Create Redis store only if Redis is available - otherwise use memory store (faster)
-let sessionStore: session.Store | undefined;
-if (redisClient) {
-  try {
-    // @ts-expect-error connect-redis types are slightly out of sync with express-session
-    sessionStore = new RedisStore({ client: redisClient }) as session.Store;
-    console.log('📦 Using Redis session store');
-  } catch (err) {
-    console.warn('⚠️ Failed to create Redis store, using memory sessions:', err);
-  }
-} else {
-  console.log('📦 Using in-memory session store (sessions won\'t persist across restarts)');
-}
+// @ts-expect-error connect-redis types are slightly out of sync with express-session
+const sessionStore = redisClient ? new RedisStore({ client: redisClient }) : undefined;
 
 // Core middleware
 app.use(requestLogger);
@@ -129,8 +116,7 @@ app.get('/health', (req, res) => {
 });
 
 // API routes (rate-limited where appropriate)
-// Note: Don't rate limit /auth/me - it's called on every page load
-app.use('/auth', authRouter);
+app.use('/auth', authLimiter, authRouter);
 app.use('/api/gmail', gmailRouter);
 app.use('/api/analyze', analysisRouter);
 app.use('/api/orders', ordersRouter);
@@ -139,7 +125,6 @@ app.use('/api/jobs', defaultLimiter, jobsRouter);
 app.use('/api/cognito', cognitoRouter);
 app.use('/api/discover', defaultLimiter, discoverRouter);
 app.use('/api/amazon', amazonRouter);
-app.use('/api/product', defaultLimiter, productRouter);
 app.use('/api/scan', scanRouter);
 app.use('/api/barcode', scanRouter); // Also mount at /api/barcode for lookup endpoint
 app.use('/api/photo', photoRouter);

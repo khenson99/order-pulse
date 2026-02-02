@@ -7,8 +7,6 @@ interface PhotoCaptureStepProps {
   sessionId: string;
   capturedPhotos: CapturedPhoto[];
   onPhotoCaptured: (photo: CapturedPhoto) => void;
-  onComplete?: () => void;
-  onBack?: () => void;
 }
 
 // Generate QR code URL for mobile photo capture page
@@ -262,8 +260,6 @@ export const PhotoCaptureStep: React.FC<PhotoCaptureStepProps> = ({
             accept="image/*"
             multiple
             onChange={handleFileSelect}
-            aria-label="Upload photos"
-            title="Upload photos"
             className="hidden"
           />
         </div>

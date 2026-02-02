@@ -10,7 +10,6 @@ export default function App() {
   // Auth State
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userProfile, setUserProfile] = useState<GoogleUserProfile | null>(null);
-  const [authError, setAuthError] = useState<string | null>(null);
   
   // Track if user has completed onboarding
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
@@ -19,27 +18,6 @@ export default function App() {
   // Check auth on mount
   useEffect(() => {
     const checkAuth = async () => {
-      // Surface OAuth errors (from backend redirect) to the user.
-      const params = new URLSearchParams(window.location.search);
-      const error = params.get('error');
-      const errorDescription = params.get('error_description') || params.get('message');
-      const authSuccess = params.get('auth') === 'success';
-
-      if (error) {
-        const pretty =
-          error === 'no_code'
-            ? 'Google did not return an authorization code. Check your OAuth redirect URI configuration.'
-            : error === 'auth_failed'
-              ? (errorDescription ? `OAuth failed: ${errorDescription}` : 'OAuth failed. Check the server logs for details.')
-              : (errorDescription ? `${error}: ${errorDescription}` : `OAuth error: ${error}`);
-        setAuthError(pretty);
-      }
-
-      // Clear query params so refresh doesn't keep showing the same banner.
-      if (error || authSuccess) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-
       try {
         const data = await authApi.getCurrentUser();
         if (data.user) {
@@ -49,7 +27,6 @@ export default function App() {
             name: data.user.name,
             picture: data.user.picture_url,
           });
-          setAuthError(null);
           // Check if user has completed onboarding before
           const completed = localStorage.getItem('orderPulse_onboardingComplete');
           if (completed === 'true') {
@@ -89,7 +66,7 @@ export default function App() {
   };
 
   const handleOpenArda = () => {
-    window.open('https://www.live.app.cards', '_blank');
+    window.open('https://app.arda.cards', '_blank');
   };
 
   // Check for mobile scanner routes (no auth required for scanning)
@@ -107,11 +84,11 @@ export default function App() {
 
   // Show login screen if not authenticated
   if (isCheckingAuth) {
-    return <LoginScreen onCheckingAuth={true} authError={authError} />;
+    return <LoginScreen onCheckingAuth={true} />;
   }
   
   if (!userProfile) {
-    return <LoginScreen authError={authError} />;
+    return <LoginScreen />;
   }
 
   // Show completion screen if onboarding is done

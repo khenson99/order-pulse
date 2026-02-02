@@ -1,16 +1,13 @@
 // Arda API Routes - Proxy endpoints for frontend
 import { Router, Request, Response, NextFunction } from 'express';
-import { ardaService, createItemFromVelocity, syncVelocityToArda } from '../services/arda.js';
-import type {
-  ItemInput,
-  ItemSupplyValue,
-  MoneyValue,
-  OrderMethod,
-  PhysicalLocatorValue,
-  QuantityValue,
-  KanbanCardInput,
+import { 
+  ardaService, 
+  ItemInput, 
+  KanbanCardInput, 
   OrderHeaderInput,
-  ItemVelocityProfileInput,
+  createItemFromVelocity,
+  syncVelocityToArda,
+  ItemVelocityProfileInput
 } from '../services/arda.js';
 import { cognitoService } from '../services/cognito.js';
 import { getUserEmail } from './auth.js';
@@ -62,142 +59,6 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   }
   next();
 };
-
-function asTrimmedString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function asNumber(value: unknown): number | undefined {
-  const num = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-  return Number.isFinite(num) ? num : undefined;
-}
-
-function toOrderMethod(value: unknown): OrderMethod | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim().toUpperCase();
-  if (!normalized) return undefined;
-
-  // Map legacy OrderPulse values to Arda enum
-  if (normalized === 'EMAIL') return 'EMAIL';
-  if (normalized === 'ONLINE') return 'ONLINE';
-  if (normalized === 'PHONE') return 'PHONE';
-  if (normalized === 'IN_STORE' || normalized === 'IN-STORE') return 'IN_STORE';
-  if (normalized === 'PURCHASE_ORDER' || normalized === 'PO') return 'PURCHASE_ORDER';
-  if (normalized === 'RFQ') return 'RFQ';
-  if (normalized === 'THIRD_PARTY' || normalized === 'THIRDPARTY') return 'THIRD_PARTY';
-  if (normalized === 'PRODUCTION') return 'PRODUCTION';
-  if (normalized === 'TASK') return 'TASK';
-
-  // Backward compat from older code paths
-  if (normalized === 'ORDERMECHANISM' || normalized === 'ORDER_MECHANISM') return 'OTHER';
-  if (normalized === 'AUTO' || normalized === 'MANUAL') return 'OTHER';
-
-  if ((['UNKNOWN','PURCHASE_ORDER','EMAIL','PHONE','IN_STORE','ONLINE','RFQ','PRODUCTION','TASK','THIRD_PARTY','OTHER'] as const).includes(normalized as OrderMethod)) {
-    return normalized as OrderMethod;
-  }
-  return 'OTHER';
-}
-
-function toQuantity(amount: unknown, unit: unknown): QuantityValue | undefined {
-  const a = asNumber(amount);
-  const u = asTrimmedString(unit) || 'EA';
-  if (a === undefined) return undefined;
-  return { amount: a, unit: u };
-}
-
-function toUnitCost(value: unknown, currency: unknown): MoneyValue | undefined {
-  const v = asNumber(value);
-  if (v === undefined) return undefined;
-  // Currency is optional in OrderPulse; Arda supports a fixed enum.
-  const c = (asTrimmedString(currency) || 'USD').toUpperCase();
-  const allowed = new Set([
-    'USD','CAD','EUR','GBP','JPY','AUD','CNY','INR','RUB','BRL','ZAR','MXN','KRW','SGD','HKD','NZD','CHF',
-  ]);
-  return {
-    value: v,
-    currency: (allowed.has(c) ? c : 'USD') as MoneyValue['currency'],
-  };
-}
-
-function normalizePrimarySupply(body: Record<string, unknown>): ItemSupplyValue {
-  // If caller already provides a primarySupply object in the Arda shape, preserve it (best-effort)
-  const maybePrimarySupply = body.primarySupply as unknown;
-  if (maybePrimarySupply && typeof maybePrimarySupply === 'object') {
-    const supplyObj = maybePrimarySupply as Record<string, unknown>;
-    const supplier = asTrimmedString(supplyObj.supplier) || asTrimmedString(body.primarySupplier) || 'Unknown';
-    const supply: ItemSupplyValue = {
-      supplier,
-      name: asTrimmedString(supplyObj.name) ?? null,
-      sku: asTrimmedString(supplyObj.sku) ?? null,
-      url: asTrimmedString(supplyObj.url) ?? asTrimmedString(body.primarySupplierLink) ?? null,
-      orderMethod: toOrderMethod(supplyObj.orderMethod ?? body.orderMechanism) ?? null,
-      orderQuantity: (supplyObj.orderQuantity && typeof supplyObj.orderQuantity === 'object')
-        ? (supplyObj.orderQuantity as QuantityValue)
-        : (toQuantity(body.orderQty, body.orderQtyUnit ?? body.minQtyUnit) ?? null),
-      unitCost: (supplyObj.unitCost && typeof supplyObj.unitCost === 'object')
-        ? (supplyObj.unitCost as MoneyValue)
-        : (toUnitCost(body.unitPrice, body.currency) ?? null),
-    };
-    return supply;
-  }
-
-  const supplier =
-    asTrimmedString(body.primarySupplier) ||
-    asTrimmedString(body.supplier) ||
-    asTrimmedString(body.primarySupply) || // sometimes sent as string by clients
-    'Unknown';
-
-  const supply: ItemSupplyValue = {
-    supplier,
-    sku: asTrimmedString(body.sku) ?? null,
-    url: asTrimmedString(body.primarySupplierLink) ?? asTrimmedString(body.productUrl) ?? null,
-    orderMethod: toOrderMethod(body.orderMechanism) ?? null,
-    orderQuantity: toQuantity(body.orderQty, body.orderQtyUnit ?? body.minQtyUnit) ?? null,
-    unitCost: toUnitCost(body.unitPrice, body.currency) ?? null,
-  };
-
-  return supply;
-}
-
-function normalizeLocator(body: Record<string, unknown>): PhysicalLocatorValue | undefined {
-  const maybeLocator = body.locator as unknown;
-  if (maybeLocator && typeof maybeLocator === 'object') {
-    const loc = maybeLocator as Record<string, unknown>;
-    const facility = asTrimmedString(loc.facility);
-    if (facility) {
-      return {
-        facility,
-        department: asTrimmedString(loc.department) ?? null,
-        location: asTrimmedString(loc.location) ?? null,
-        subLocation: asTrimmedString(loc.subLocation) ?? null,
-      };
-    }
-  }
-
-  const location = asTrimmedString(body.location);
-  if (!location) return undefined;
-  const facility = process.env.ARDA_FACILITY || 'Default';
-  return { facility, location };
-}
-
-function normalizeItemInput(body: Record<string, unknown>): ItemInput {
-  const name = asTrimmedString(body.name) || asTrimmedString(body.itemName) || '';
-  const internalSKU = asTrimmedString(body.internalSKU) || asTrimmedString(body.sku) || undefined;
-  const imageUrl = asTrimmedString(body.imageUrl) || undefined;
-  const minQuantity =
-    (body.minQuantity && typeof body.minQuantity === 'object')
-      ? (body.minQuantity as QuantityValue)
-      : toQuantity(body.minQty, body.minQtyUnit);
-
-  return {
-    name,
-    internalSKU,
-    imageUrl,
-    minQuantity: minQuantity ?? null,
-    locator: normalizeLocator(body) ?? null,
-    primarySupply: normalizePrimarySupply(body),
-  };
-}
 
 // Check if Arda is configured
 router.get('/status', (req: Request, res: Response) => {
@@ -253,23 +114,35 @@ router.get('/lookup-tenant', async (req: Request, res: Response) => {
   }
 });
 
-// Create item in Arda (no auth required - uses fallback user for demo mode)
-router.post('/items', async (req: Request, res: Response) => {
+// Create item in Arda
+router.post('/items', requireAuth, async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
     if (!credentials.author) {
       return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
     }
-    const body = (req.body || {}) as Record<string, unknown>;
-    const item = normalizeItemInput(body);
+    const itemData: Omit<ItemInput, 'externalGuid'> = req.body;
 
-    // Validate required fields (Arda requires at least a name; primarySupply.supplier is required by schema)
-    if (!item.name) {
-      return res.status(400).json({ error: 'Missing required field: name' });
+    // Validate required fields
+    if (!itemData.name || !itemData.primarySupplier) {
+      return res.status(400).json({
+        error: 'Missing required fields: name and primarySupplier are required',
+      });
     }
-    if (!item.primarySupply?.supplier) {
-      return res.status(400).json({ error: 'Missing required field: primarySupply.supplier' });
-    }
+
+    // Set defaults for required fields
+    const item: Omit<ItemInput, 'externalGuid'> = {
+      name: itemData.name,
+      orderMechanism: itemData.orderMechanism || 'email',
+      minQty: itemData.minQty || 1,
+      minQtyUnit: itemData.minQtyUnit || 'each',
+      primarySupplier: itemData.primarySupplier,
+      location: itemData.location,
+      orderQty: itemData.orderQty,
+      orderQtyUnit: itemData.orderQtyUnit,
+      primarySupplierLink: itemData.primarySupplierLink,
+      imageUrl: itemData.imageUrl,
+    };
 
     const result = await ardaService.createItem(item, credentials.author!);
     res.json({ success: true, record: result });
@@ -348,43 +221,13 @@ router.post('/orders', requireAuth, async (req: Request, res: Response) => {
 router.post('/items/bulk', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
-    const rawItems = (req.body as { items?: unknown })?.items;
+    const items: Array<Omit<ItemInput, 'externalGuid'>> = req.body.items;
 
-    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ 
         success: false,
         error: 'items array is required',
         debug: { email: credentials.email }
-      });
-    }
-
-    const invalid: Array<{ index: number; reason: string }> = [];
-    const items: ItemInput[] = [];
-
-    for (let i = 0; i < rawItems.length; i++) {
-      const raw = rawItems[i];
-      if (!raw || typeof raw !== 'object') {
-        invalid.push({ index: i, reason: 'item must be an object' });
-        continue;
-      }
-
-      const normalized = normalizeItemInput(raw as Record<string, unknown>);
-      if (!normalized.name) {
-        invalid.push({ index: i, reason: 'Missing required field: name' });
-        continue;
-      }
-      if (!normalized.primarySupply?.supplier) {
-        invalid.push({ index: i, reason: 'Missing required field: primarySupply.supplier' });
-        continue;
-      }
-      items.push(normalized);
-    }
-
-    if (invalid.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'One or more items are invalid',
-        invalid,
       });
     }
 

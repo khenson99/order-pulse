@@ -1141,9 +1141,6 @@ async function processEmailsInBackground(
         id: consolidated.id,
         supplier: consolidated.supplier,
         orderDate: consolidated.orderDate,
-        shippedDate: consolidated.shippedDate,
-        deliveredDate: consolidated.deliveredDate,
-        leadTimeDays: consolidated.leadTimeDays,
         totalAmount: consolidated.totalAmount || 0,
         items: consolidated.items.map(item => ({
           id: item.id,
@@ -1556,9 +1553,6 @@ async function processAmazonEmailsInBackground(
           id: consolidated.id,
           supplier: 'Amazon',
           orderDate: consolidated.orderDate,
-          shippedDate: consolidated.shippedDate,
-          deliveredDate: consolidated.deliveredDate,
-          leadTimeDays: consolidated.leadTimeDays,
           totalAmount: consolidated.totalAmount || 0,
           items: consolidated.items.map(item => ({
             id: item.id,

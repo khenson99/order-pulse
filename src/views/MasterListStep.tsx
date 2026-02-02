@@ -1,25 +1,7 @@
-import { useState, useMemo, useCallback, useDeferredValue } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { ScannedBarcode, CapturedPhoto } from './OnboardingFlow';
-import { CSVItem, CSVItemColor } from './csvUploadUtils';
-import { productApi } from '../services/api';
-
-function trimOrUndefined(value: string | undefined): string | undefined {
-  const v = (value ?? '').trim();
-  return v ? v : undefined;
-}
-
-function parseOptionalNumber(value: string): number | undefined {
-  const v = (value ?? '').trim();
-  if (!v) return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function _formatPrice(value: number | undefined): string {
-  if (typeof value !== 'number') return '';
-  return `$${value.toFixed(2)}`;
-}
+import { CSVItem } from './CSVUploadStep';
 
 // Simple email item from onboarding
 interface EmailItem {
@@ -27,9 +9,7 @@ interface EmailItem {
   name: string;
   supplier: string;
   asin?: string;
-  sku?: string;
   imageUrl?: string;
-  productUrl?: string;
   lastPrice?: number;
   quantity?: number;
   location?: string;
@@ -56,10 +36,8 @@ export interface MasterListItem {
   currentQty?: number;
   // Pricing
   unitPrice?: number;
-  // Media / Links
+  // Media
   imageUrl?: string;
-  productUrl?: string;
-  color?: CSVItemColor;
   // Status
   isEditing?: boolean;
   isVerified: boolean;
@@ -73,6 +51,7 @@ interface MasterListStepProps {
   capturedPhotos: CapturedPhoto[];
   csvItems: CSVItem[];
   onComplete: (items: MasterListItem[]) => void;
+  onBack: () => void;
 }
 
 export const MasterListStep: React.FC<MasterListStepProps> = ({
@@ -81,6 +60,7 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   capturedPhotos,
   csvItems,
   onComplete,
+  onBack,
 }) => {
   // Build initial master list from all sources
   const initialItems = useMemo(() => {
@@ -95,12 +75,10 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
         supplier: item.supplier,
         location: item.location,
         asin: item.asin,
-        sku: item.sku,
         minQty: item.recommendedMin,
         orderQty: item.recommendedOrderQty,
         unitPrice: item.lastPrice,
         imageUrl: item.imageUrl,
-        productUrl: item.productUrl,
         isVerified: false,
         needsAttention: !item.name || item.name.includes('Unknown'),
       });
@@ -151,9 +129,6 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
         minQty: csvItem.minQty,
         orderQty: csvItem.orderQty,
         unitPrice: csvItem.unitPrice,
-        imageUrl: csvItem.imageUrl,
-        productUrl: csvItem.productUrl,
-        color: csvItem.color,
         isVerified: false,
         needsAttention: false,
       });
@@ -163,26 +138,58 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   }, [emailItems, scannedBarcodes, capturedPhotos, csvItems]);
 
   const [items, setItems] = useState<MasterListItem[]>(initialItems);
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<MasterListItem>>({});
   const [filter, setFilter] = useState<'all' | 'needs_attention' | 'verified'>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'email' | 'barcode' | 'photo' | 'csv'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const deferredSearch = useDeferredValue(searchQuery);
-  const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
-  const [enrichErrorById, setEnrichErrorById] = useState<Record<string, string>>({});
 
-  const updateItemFields = (id: string, updates: Partial<MasterListItem>) => {
+  // Start editing an item
+  const startEditing = (item: MasterListItem) => {
+    setEditingItem(item.id);
+    setEditForm({
+      name: item.name,
+      description: item.description,
+      supplier: item.supplier,
+      location: item.location,
+      barcode: item.barcode,
+      sku: item.sku,
+      minQty: item.minQty,
+      orderQty: item.orderQty,
+      unitPrice: item.unitPrice,
+    });
+  };
+
+  // Save edited item
+  const saveEdit = () => {
+    if (!editingItem) return;
+    
     setItems(prev => prev.map(item => {
-      if (item.id !== id) return item;
-      const next: MasterListItem = { ...item, ...updates };
-      if (typeof updates.name === 'string') {
-        const trimmed = updates.name.trim();
-        next.needsAttention = !trimmed || trimmed.toLowerCase().includes('unknown');
+      if (item.id === editingItem) {
+        return {
+          ...item,
+          ...editForm,
+          needsAttention: false,
+        };
       }
-      if (updates.isVerified === true) {
-        next.needsAttention = false;
-      }
-      return next;
+      return item;
     }));
+    
+    setEditingItem(null);
+    setEditForm({});
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditForm({});
+  };
+
+  // Mark item as verified
+  const verifyItem = (id: string) => {
+    setItems(prev => prev.map(item => 
+      item.id === id ? { ...item, isVerified: true, needsAttention: false } : item
+    ));
   };
 
   // Remove item from list
@@ -195,81 +202,29 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
     setItems(prev => prev.map(item => ({ ...item, isVerified: true, needsAttention: false })));
   };
 
-  const enrichFromProductUrl = useCallback(async (item: MasterListItem) => {
-    const url = item.productUrl || (item.asin ? `https://www.amazon.com/dp/${item.asin}` : undefined);
-    if (!url) return;
-
-    setEnrichingIds(prev => new Set(prev).add(item.id));
-    setEnrichErrorById(prev => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
-
-    try {
-      const result = await productApi.enrichUrl(url);
-      const data = result.data || {};
-      setItems(prev => prev.map(existing => {
-        if (existing.id !== item.id) return existing;
-
-        const next: MasterListItem = { ...existing };
-
-        if (data.productUrl) next.productUrl = data.productUrl;
-        if (data.imageUrl) next.imageUrl = data.imageUrl;
-        if (typeof data.unitPrice === 'number') next.unitPrice = data.unitPrice;
-        
-        // Pull ASIN and SKU from Amazon API response
-        if (data.asin) next.asin = data.asin;
-        if (data.sku) next.sku = data.sku;
-
-        // If we learned a pack size / unit count, use it as a reasonable default orderQty
-        if (typeof data.unitCount === 'number' && data.unitCount > 0) {
-          if (!next.orderQty || next.orderQty <= 1) {
-            next.orderQty = data.unitCount;
-          }
-          if (!next.minQty || next.minQty <= 0) {
-            next.minQty = Math.max(1, Math.ceil(data.unitCount / 2));
-          }
-        }
-
-        // Only override name when it's clearly missing/placeholder
-        if (data.name && (!next.name || next.name.includes('Unknown'))) {
-          next.name = data.name;
-        }
-
-        return next;
-      }));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to enrich from URL';
-      setEnrichErrorById(prev => ({ ...prev, [item.id]: message }));
-    } finally {
-      setEnrichingIds(prev => {
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
-      });
-    }
-  }, []);
-
   // Filter items
   const filteredItems = useMemo(() => {
     return items.filter(item => {
+      // Filter by status
       if (filter === 'needs_attention' && !item.needsAttention) return false;
       if (filter === 'verified' && !item.isVerified) return false;
+      
+      // Filter by source
       if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
-      if (deferredSearch) {
-        const query = deferredSearch.toLowerCase();
+      
+      // Filter by search
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
         return (
           item.name.toLowerCase().includes(query) ||
           item.sku?.toLowerCase().includes(query) ||
           item.barcode?.toLowerCase().includes(query) ||
-          item.asin?.toLowerCase().includes(query) ||
           item.supplier?.toLowerCase().includes(query)
         );
       }
       return true;
     });
-  }, [items, filter, sourceFilter, deferredSearch]);
+  }, [items, filter, sourceFilter, searchQuery]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -285,14 +240,14 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   }), [items]);
 
   // Source icon
-  const getSourceIcon = useCallback((source: MasterListItem['source']) => {
+  const getSourceIcon = (source: MasterListItem['source']) => {
     switch (source) {
-      case 'email': return <Icons.Mail className="w-3.5 h-3.5" />;
-      case 'barcode': return <Icons.Barcode className="w-3.5 h-3.5" />;
-      case 'photo': return <Icons.Camera className="w-3.5 h-3.5" />;
-      case 'csv': return <Icons.FileSpreadsheet className="w-3.5 h-3.5" />;
+      case 'email': return <Icons.Mail className="w-4 h-4" />;
+      case 'barcode': return <Icons.Barcode className="w-4 h-4" />;
+      case 'photo': return <Icons.Camera className="w-4 h-4" />;
+      case 'csv': return <Icons.FileSpreadsheet className="w-4 h-4" />;
     }
-  }, []);
+  };
 
   // Handle completion
   const handleComplete = useCallback(() => {
@@ -300,344 +255,339 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   }, [items, onComplete]);
 
   return (
-    <div className="space-y-4">
-      {/* Header Actions */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-arda-text-secondary">
-          {stats.total} items • {stats.verified} verified
-        </div>
+    <div className="space-y-6">
+      {/* Actions (footer Continue is hidden on this step) */}
+      <div className="flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={verifyAll}
-          className="btn-arda-outline text-sm"
+          className="btn-arda-outline"
         >
-          <Icons.CheckCircle2 className="w-4 h-4 mr-1.5" />
           Verify all
+        </button>
+        <button
+          type="button"
+          onClick={handleComplete}
+          disabled={items.length === 0}
+          className={[
+            'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
+            items.length > 0
+              ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
+              : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
+          ].join(' ')}
+        >
+          <Icons.ArrowRight className="w-4 h-4" />
+          Continue to Arda Sync ({items.length})
         </button>
       </div>
 
-      {/* Compact Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1 bg-white/70 rounded-lg border border-arda-border p-1">
-          {(['all', 'needs_attention', 'verified'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={[
-                'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
-                filter === f
-                  ? 'bg-arda-accent text-white'
-                  : 'text-arda-text-secondary hover:bg-arda-bg-tertiary',
-              ].join(' ')}
-            >
-              {f === 'needs_attention' ? `Attention (${stats.needsAttention})` : f === 'verified' ? `Verified (${stats.verified})` : 'All'}
-            </button>
-          ))}
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="card-arda p-4">
+          <div className="text-2xl font-bold text-arda-text-primary">{stats.total}</div>
+          <div className="text-sm text-arda-text-secondary">Total Items</div>
         </div>
-        
-        <div className="flex items-center gap-1 bg-white/70 rounded-lg border border-arda-border p-1">
-          {(['all', 'email', 'barcode', 'photo', 'csv'] as const).map(s => (
-            <button
-              key={s}
-              onClick={() => setSourceFilter(s)}
-              className={[
-                'px-2 py-1 rounded-md text-xs transition-colors flex items-center gap-1',
-                sourceFilter === s
-                  ? 'bg-orange-50 text-arda-accent'
-                  : 'text-arda-text-muted hover:bg-arda-bg-tertiary',
-              ].join(' ')}
-              title={s === 'all' ? 'All Sources' : s}
-            >
-              {s === 'all' ? 'All' : (
-                <>
-                  {s === 'email' && <Icons.Mail className="w-3 h-3" />}
-                  {s === 'barcode' && <Icons.Barcode className="w-3 h-3" />}
-                  {s === 'photo' && <Icons.Camera className="w-3 h-3" />}
-                  {s === 'csv' && <Icons.FileSpreadsheet className="w-3 h-3" />}
-                  <span className="text-xs">{stats.bySource[s]}</span>
-                </>
-              )}
-            </button>
-          ))}
+        <div className="card-arda p-4">
+          <div className="text-2xl font-bold text-green-600">{stats.verified}</div>
+          <div className="text-sm text-arda-text-secondary">Verified</div>
         </div>
-        
-        <div className="flex-1" />
-        
-        <div className="relative">
-          <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-arda-text-muted" />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-arda pl-8 pr-3 py-1.5 text-sm bg-white w-48"
-          />
+        <div className="card-arda p-4">
+          <div className="text-2xl font-bold text-arda-accent">{stats.needsAttention}</div>
+          <div className="text-sm text-arda-text-secondary">Needs Attention</div>
+        </div>
+        <div className="card-arda p-4 col-span-2">
+          <div className="flex items-center gap-4 text-sm">
+            <span className="flex items-center gap-1">
+              <Icons.Mail className="w-4 h-4 text-arda-accent" />
+              {stats.bySource.email}
+            </span>
+            <span className="flex items-center gap-1">
+              <Icons.Barcode className="w-4 h-4 text-arda-accent" />
+              {stats.bySource.barcode}
+            </span>
+            <span className="flex items-center gap-1">
+              <Icons.Camera className="w-4 h-4 text-arda-accent" />
+              {stats.bySource.photo}
+            </span>
+            <span className="flex items-center gap-1">
+              <Icons.FileSpreadsheet className="w-4 h-4 text-arda-accent" />
+              {stats.bySource.csv}
+            </span>
+          </div>
+          <div className="text-sm text-arda-text-secondary mt-1">By Source</div>
         </div>
       </div>
 
-      {/* Items Grid */}
-      <div className="space-y-2">
+      {/* Filters */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {(['all', 'needs_attention', 'verified'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={[
+                  'px-3 py-1.5 rounded-arda text-sm font-medium transition-colors border',
+                  filter === f
+                    ? 'bg-arda-accent text-white border-orange-600'
+                    : 'bg-white/70 text-arda-text-secondary border-arda-border hover:bg-arda-bg-tertiary',
+                ].join(' ')}
+              >
+                {f === 'needs_attention' ? 'Needs Attention' : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="h-6 w-px bg-arda-border" />
+          <div className="flex items-center gap-1">
+            {(['all', 'email', 'barcode', 'photo', 'csv'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setSourceFilter(s)}
+                className={[
+                  'px-2 py-1.5 rounded-arda text-sm transition-colors border',
+                  sourceFilter === s
+                    ? 'bg-orange-50 text-arda-accent border-orange-200'
+                    : 'bg-transparent text-arda-text-secondary border-transparent hover:bg-arda-bg-tertiary hover:border-arda-border',
+                ].join(' ')}
+              >
+                {s === 'all' ? 'All Sources' : s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Icons.Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-arda-text-muted" />
+            <input
+              type="text"
+              placeholder="Search items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-arda pl-9 pr-4 py-2 text-sm bg-white"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Items list */}
+      <div className="space-y-3">
         {filteredItems.map(item => (
           <div
             key={item.id}
-            className={[
-              'card-arda p-3 transition-all',
-              item.needsAttention ? 'ring-1 ring-orange-300 bg-orange-50/50' : '',
-              item.isVerified ? 'ring-1 ring-green-300 bg-green-50/30' : '',
-            ].join(' ')}
+            className={`
+              bg-white rounded-arda-lg border border-arda-border shadow-arda p-4 transition-all
+              ${item.needsAttention ? 'border-orange-300 bg-orange-50' : ''}
+              ${item.isVerified ? 'border-green-300 bg-green-50' : ''}
+            `}
           >
-            <div className="flex gap-3">
-              {/* Left: Image + Actions Stack */}
-              <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                {/* Product Image */}
-                <div className="w-16 h-16 rounded-xl bg-arda-bg-tertiary border border-arda-border overflow-hidden flex items-center justify-center">
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt=""
+            {editingItem === item.id ? (
+              /* Edit form */
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Name *</label>
+                    <input
+                      type="text"
+                      value={editForm.name || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Description</label>
+                    <input
+                      type="text"
+                      value={editForm.description || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Supplier</label>
+                    <input
+                      type="text"
+                      value={editForm.supplier || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, supplier: e.target.value }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Location / Bin</label>
+                    <input
+                      type="text"
+                      value={editForm.location || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, location: e.target.value }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">SKU</label>
+                    <input
+                      type="text"
+                      value={editForm.sku || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, sku: e.target.value }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Barcode</label>
+                    <input
+                      type="text"
+                      value={editForm.barcode || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, barcode: e.target.value }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Min Quantity</label>
+                    <input
+                      type="number"
+                      value={editForm.minQty || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, minQty: parseFloat(e.target.value) || undefined }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-arda-text-secondary mb-1">Order Quantity</label>
+                    <input
+                      type="number"
+                      value={editForm.orderQty || ''}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, orderQty: parseFloat(e.target.value) || undefined }))}
+                      className="input-arda bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={cancelEdit}
+                    className="btn-arda-outline"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    className="btn-arda-primary"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Display view */
+              <div className="flex items-start gap-4">
+                {/* Image */}
+                {item.imageUrl && (
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden bg-arda-bg-tertiary border border-arda-border flex-shrink-0">
+                    <img 
+                      src={item.imageUrl} 
+                      alt={item.name}
                       className="w-full h-full object-cover"
                     />
-                  ) : (
-                    <Icons.Package className="w-6 h-6 text-arda-text-muted" />
-                  )}
+                  </div>
+                )}
+                
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 rounded-lg bg-arda-bg-tertiary border border-arda-border text-arda-accent">
+                          {getSourceIcon(item.source)}
+                        </span>
+                        <h3 className="font-medium text-arda-text-primary">{item.name}</h3>
+                        {item.isVerified && (
+                          <Icons.CheckCircle2 className="w-4 h-4 text-green-500" />
+                        )}
+                        {item.needsAttention && (
+                          <span className="px-2 py-0.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-lg text-xs font-medium">
+                            Needs Review
+                          </span>
+                        )}
+                      </div>
+                      {item.description && (
+                        <p className="text-sm text-arda-text-secondary mt-0.5">{item.description}</p>
+                      )}
+                      <div className="flex items-center gap-4 mt-2 text-sm text-arda-text-secondary flex-wrap">
+                        {item.supplier && (
+                          <span className="flex items-center gap-1">
+                            <Icons.Building2 className="w-3 h-3" />
+                            {item.supplier}
+                          </span>
+                        )}
+                        {item.location && (
+                          <span className="flex items-center gap-1">
+                            <Icons.MapPin className="w-3 h-3" />
+                            {item.location}
+                          </span>
+                        )}
+                        {item.sku && (
+                          <span>SKU: {item.sku}</span>
+                        )}
+                        {item.barcode && (
+                          <span>Barcode: {item.barcode}</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Quantities */}
+                    <div className="text-right text-sm">
+                      {item.minQty !== undefined && (
+                        <div className="text-arda-text-secondary">Min: {item.minQty}</div>
+                      )}
+                      {item.orderQty !== undefined && (
+                        <div className="text-arda-text-secondary">Order: {item.orderQty}</div>
+                      )}
+                      {item.unitPrice !== undefined && (
+                        <div className="font-medium text-arda-text-primary">
+                          ${item.unitPrice.toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 
-                {/* Action Icons */}
-                <div className="flex items-center gap-0.5">
-                  {(item.productUrl || item.asin) && (
+                {/* Actions */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => startEditing(item)}
+                    className="p-2 text-arda-text-muted hover:text-arda-accent hover:bg-orange-50 rounded-xl transition-colors"
+                    title="Edit"
+                  >
+                    <Icons.Pencil className="w-4 h-4" />
+                  </button>
+                  {!item.isVerified && (
                     <button
-                      type="button"
-                      onClick={() => enrichFromProductUrl(item)}
-                      className="p-1.5 text-arda-text-muted hover:text-arda-accent hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
-                      title={enrichingIds.has(item.id) ? 'Enriching…' : 'Auto-fill from Amazon'}
-                      disabled={enrichingIds.has(item.id)}
+                      onClick={() => verifyItem(item.id)}
+                      className="p-2 text-arda-text-muted hover:text-green-700 hover:bg-green-50 rounded-xl transition-colors"
+                      title="Verify"
                     >
-                      {enrichingIds.has(item.id) ? (
-                        <Icons.Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Icons.Sparkles className="w-4 h-4" />
-                      )}
+                      <Icons.Check className="w-4 h-4" />
                     </button>
                   )}
-                  {item.productUrl && (
-                    <a
-                      href={item.productUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 text-arda-text-muted hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Open product page"
-                    >
-                      <Icons.ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
                   <button
-                    type="button"
                     onClick={() => removeItem(item.id)}
-                    className="p-1.5 text-arda-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    className="p-2 text-arda-text-muted hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors"
                     title="Remove"
                   >
                     <Icons.Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-              
-              {/* Middle: Main Content */}
-              <div className="flex-1 min-w-0 space-y-2">
-                {/* Name Row */}
-                <div className="flex items-start gap-2">
-                  <span className="p-1 rounded bg-arda-bg-tertiary text-arda-accent flex-shrink-0" title={item.source}>
-                    {getSourceIcon(item.source)}
-                  </span>
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) => updateItemFields(item.id, { name: e.target.value })}
-                    className="flex-1 bg-transparent border-0 border-b border-transparent hover:border-arda-border focus:border-arda-accent px-1 py-0.5 text-sm font-semibold text-arda-text-primary focus:outline-none focus:ring-0"
-                    placeholder="Item name"
-                  />
-                  {item.needsAttention && (
-                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full flex-shrink-0">
-                      Review
-                    </span>
-                  )}
-                </div>
-                
-                {/* Fields Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                  {/* Supplier */}
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted block mb-0.5">Supplier</label>
-                    <input
-                      type="text"
-                      value={item.supplier ?? ''}
-                      onChange={(e) => updateItemFields(item.id, { supplier: trimOrUndefined(e.target.value) })}
-                      className="w-full bg-white/70 border border-arda-border rounded-md px-2 py-1 text-xs text-arda-text-primary focus:ring-1 focus:ring-arda-accent"
-                      placeholder="—"
-                    />
-                  </div>
-                  
-                  {/* Location */}
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted block mb-0.5">Location</label>
-                    <input
-                      type="text"
-                      value={item.location ?? ''}
-                      onChange={(e) => updateItemFields(item.id, { location: trimOrUndefined(e.target.value) })}
-                      className="w-full bg-white/70 border border-arda-border rounded-md px-2 py-1 text-xs text-arda-text-primary focus:ring-1 focus:ring-arda-accent"
-                      placeholder="—"
-                    />
-                  </div>
-                  
-                  {/* SKU */}
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted block mb-0.5">SKU</label>
-                    <input
-                      type="text"
-                      value={item.sku ?? ''}
-                      onChange={(e) => updateItemFields(item.id, { sku: trimOrUndefined(e.target.value) })}
-                      className="w-full bg-white/70 border border-arda-border rounded-md px-2 py-1 text-xs text-arda-text-primary font-mono focus:ring-1 focus:ring-arda-accent"
-                      placeholder="—"
-                    />
-                  </div>
-                  
-                  {/* ASIN */}
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted block mb-0.5">ASIN</label>
-                    <input
-                      type="text"
-                      value={item.asin ?? ''}
-                      onChange={(e) => updateItemFields(item.id, { asin: trimOrUndefined(e.target.value) })}
-                      className="w-full bg-white/70 border border-arda-border rounded-md px-2 py-1 text-xs text-arda-text-primary font-mono focus:ring-1 focus:ring-arda-accent"
-                      placeholder="—"
-                    />
-                  </div>
-                  
-                  {/* Barcode */}
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted block mb-0.5">Barcode</label>
-                    <input
-                      type="text"
-                      value={item.barcode ?? ''}
-                      onChange={(e) => updateItemFields(item.id, { barcode: trimOrUndefined(e.target.value) })}
-                      className="w-full bg-white/70 border border-arda-border rounded-md px-2 py-1 text-xs text-arda-text-primary font-mono focus:ring-1 focus:ring-arda-accent"
-                      placeholder="—"
-                    />
-                  </div>
-                  
-                  {/* Color */}
-                  {item.color && (
-                    <div>
-                      <label className="text-[10px] uppercase tracking-wide text-arda-text-muted block mb-0.5">Color</label>
-                      <div className="flex items-center gap-1.5 bg-white/70 border border-arda-border rounded-md px-2 py-1">
-                        <span className="w-2.5 h-2.5 rounded-full bg-arda-accent" />
-                        <span className="text-xs text-arda-text-primary">{item.color}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Quantities Row - Separate columns */}
-                <div className="flex items-center gap-3 pt-1">
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted">Min</label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={item.minQty ?? ''}
-                      onChange={(e) => updateItemFields(item.id, { minQty: parseOptionalNumber(e.target.value) })}
-                      className="w-14 bg-white/70 border border-arda-border rounded-md px-2 py-1 text-xs text-center text-arda-text-primary focus:ring-1 focus:ring-arda-accent"
-                      placeholder="—"
-                    />
-                  </div>
-                  
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted">Order</label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={item.orderQty ?? ''}
-                      onChange={(e) => updateItemFields(item.id, { orderQty: parseOptionalNumber(e.target.value) })}
-                      className="w-14 bg-white/70 border border-arda-border rounded-md px-2 py-1 text-xs text-center text-arda-text-primary focus:ring-1 focus:ring-arda-accent"
-                      placeholder="—"
-                    />
-                  </div>
-                  
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[10px] uppercase tracking-wide text-arda-text-muted">Price</label>
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-arda-text-muted">$</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        value={item.unitPrice ?? ''}
-                        onChange={(e) => updateItemFields(item.id, { unitPrice: parseOptionalNumber(e.target.value) })}
-                        className="w-20 bg-white/70 border border-arda-border rounded-md pl-5 pr-2 py-1 text-xs text-arda-text-primary focus:ring-1 focus:ring-arda-accent"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1" />
-                  
-                  {/* Verified checkbox */}
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={item.isVerified}
-                      onChange={(e) => updateItemFields(item.id, { isVerified: e.target.checked })}
-                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                    />
-                    <span className="text-xs text-arda-text-secondary">Verified</span>
-                  </label>
-                </div>
-                
-                {/* Error message */}
-                {enrichErrorById[item.id] && (
-                  <div className="text-xs text-red-600 flex items-center gap-1">
-                    <Icons.AlertCircle className="w-3 h-3" />
-                    {enrichErrorById[item.id]}
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </div>
         ))}
-      </div>
-
-      {filteredItems.length === 0 && (
-        <div className="card-arda p-12 text-center">
-          <Icons.Package className="w-12 h-12 mx-auto text-arda-text-muted mb-4 opacity-60" />
-          <h3 className="text-lg font-medium text-arda-text-primary mb-2">No Items</h3>
-          <p className="text-arda-text-secondary">
-            {items.length === 0
-              ? 'Complete the previous steps to add items to your master list.'
-              : 'No items match your current filters.'}
-          </p>
-        </div>
-      )}
-
-      {/* Bottom CTA */}
-      <div className="sticky bottom-24 z-20">
-        <div className="bg-white/90 backdrop-blur border border-arda-border rounded-xl shadow-lg p-3 flex items-center justify-between gap-4">
-          <div className="text-sm text-arda-text-secondary">
-            {items.length} item{items.length === 1 ? '' : 's'} ready to import
+        
+        {filteredItems.length === 0 && (
+          <div className="card-arda p-12 text-center">
+            <Icons.Package className="w-12 h-12 mx-auto text-arda-text-muted mb-4 opacity-60" />
+            <h3 className="text-lg font-medium text-arda-text-primary mb-2">No Items</h3>
+            <p className="text-arda-text-secondary">
+              {items.length === 0 
+                ? 'Complete the previous steps to add items to your master list.'
+                : 'No items match your current filters.'}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={handleComplete}
-            disabled={items.length === 0}
-            className={[
-              'flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all',
-              items.length > 0
-                ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
-                : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-            ].join(' ')}
-          >
-            <Icons.ArrowRight className="w-4 h-4" />
-            Add to Arda
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -6,41 +6,79 @@ import { mergeSuppliers } from '../utils/supplierUtils';
 import {
   buildSupplierGridItems,
   calculateProgressPercent,
+  getMilestoneMessage,
+  MILESTONES,
   OTHER_PRIORITY_SUPPLIERS,
   PRIORITY_SUPPLIER_DOMAINS,
 } from './supplierSetupUtils';
 
-// Snarky lean manufacturing quotes for loading states
-const LEAN_QUOTES = [
-  { quote: "Inventory is the root of all evil.", author: "Taiichi Ohno" },
-  { quote: "The most dangerous kind of waste is the waste we do not recognize.", author: "Shigeo Shingo" },
-  { quote: "Where there is no standard, there can be no kaizen.", author: "Taiichi Ohno" },
-  { quote: "All we are doing is looking at the timeline from order to cash and reducing it.", author: "Taiichi Ohno" },
-  { quote: "Having no problems is the biggest problem of all.", author: "Taiichi Ohno" },
-  { quote: "Costs do not exist to be calculated. Costs exist to be reduced.", author: "Taiichi Ohno" },
-  { quote: "Progress cannot be generated when we are satisfied with existing situations.", author: "Taiichi Ohno" },
-  { quote: "Without standards, there can be no improvement.", author: "Taiichi Ohno" },
-  { quote: "Make your workplace into a showcase that can be understood by everyone at a glance.", author: "Taiichi Ohno" },
-  { quote: "If you're going to do kaizen continuously, you've got to assume that things are a mess.", author: "Masaaki Imai" },
-  { quote: "Build a culture of stopping to fix problems, to get quality right the first time.", author: "Toyota Principle" },
-  { quote: "Waste is any human activity which absorbs resources but creates no value.", author: "James Womack" },
-  { quote: "Your customers do not care about your systems, they care about their problems.", author: "Lean Wisdom" },
-  { quote: "A relentless barrage of 'why's' is the best way to prepare your mind to pierce the clouded veil of thinking.", author: "Taiichi Ohno" },
-  { quote: "People don't go to Toyota to 'work', they go there to 'think'.", author: "Toyota Wisdom" },
+// Lean manufacturing wisdom - displayed while we ironically batch-process emails
+const LEAN_WISDOM = [
+  {
+    quote: "The irony of batch-processing your emails to teach you about single-piece flow is not lost on us.",
+    attribution: "— Arda Engineering, probably",
+  },
+  {
+    quote: "Batch processing: Because nothing says 'efficiency' like making 49 emails wait for the 50th.",
+    attribution: "— Every ERP System Ever",
+  },
+  {
+    quote: "In the time it takes to batch 100 orders, you could have flowed 100 orders. But here we are.",
+    attribution: "— Taiichi Ohno, if he saw this loading screen",
+  },
+  {
+    quote: "A batch in process is inventory in disguise. Speaking of which, we're currently 'inventorying' your inbox.",
+    attribution: "— The Toyota Production System",
+  },
+  {
+    quote: "Single-piece flow means doing one thing at a time. We're doing all your emails at once. Do as we say, not as we code.",
+    attribution: "— Software Engineering Proverb",
+  },
+  {
+    quote: "The best time to stop batching was 20 years ago. The second best time is after this loading screen finishes.",
+    attribution: "— Ancient Lean Proverb",
+  },
+  {
+    quote: "Every email we batch-process right now is a little lesson in why you shouldn't batch-process.",
+    attribution: "— The Arda Paradox",
+  },
+  {
+    quote: "If Ohno saw this loading spinner, he'd probably suggest we process one email, deliver the insight, then get the next one.",
+    attribution: "— Things We Know But Don't Do",
+  },
+  {
+    quote: "WIP limits are great! We're currently ignoring ours. Don't be like us.",
+    attribution: "— Kanban's Disappointed Dad Voice",
+  },
+  {
+    quote: "Small batches reduce lead time. Anyway, here's 500 emails at once.",
+    attribution: "— Arda's Growth Team",
+  },
+  {
+    quote: "The goal of lean is to eliminate waste. This loading screen is technically waste. We're working on it.",
+    attribution: "— Our Product Roadmap, Probably",
+  },
+  {
+    quote: "Flow efficiency > resource efficiency. Unless you're an email parser. Then it's complicated.",
+    attribution: "— DevOps Philosophy",
+  },
+  {
+    quote: "Muda, Mura, Muri: Waste, Unevenness, Overburden. This scan has all three. Your shop floor shouldn't.",
+    attribution: "— TPS for Hypocrites",
+  },
+  {
+    quote: "The seven wastes include 'waiting.' You're welcome.",
+    attribution: "— This Loading Screen",
+  },
+  {
+    quote: "The seven wastes also include 'wasted human potential.' So. Yeah. There's a lot of other stuff we could be doing here.",
+    attribution: "— This Loading Screen",
+  },
+  {
+    quote: "One-piece flow would be: scan email → show insight → repeat. But our PM wanted a 'wow moment.' So here we batch.",
+    attribution: "— Honest Engineering Notes",
+  },
 ];
-
-function useRotatingQuote(intervalMs = 5000) {
-  const [index, setIndex] = useState(() => Math.floor(Math.random() * LEAN_QUOTES.length));
-  
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setIndex(prev => (prev + 1) % LEAN_QUOTES.length);
-    }, intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  
-  return LEAN_QUOTES[index];
-}
 
 // Background progress type for parent components
 interface BackgroundEmailProgress {
@@ -79,11 +117,16 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onStateChange,
   initialState,
 }) => {
-  // Rotating lean quote for loading states
-  const leanQuote = useRotatingQuote();
-  
   // Track if we already have restored state (don't restart scans)
   const hasRestoredState = Boolean(initialState && (initialState.amazonOrders.length > 0 || initialState.priorityOrders.length > 0 || initialState.otherOrders.length > 0));
+  
+  // Onboarding phase states
+  const [showWelcome, setShowWelcome] = useState(!hasRestoredState);
+  const [celebratingMilestone, setCelebratingMilestone] = useState<string | null>(null);
+  const [achievedMilestones, setAchievedMilestones] = useState<Set<string>>(new Set());
+  
+  // Lean wisdom rotation
+  const [wisdomIndex, setWisdomIndex] = useState(() => Math.floor(Math.random() * LEAN_WISDOM.length));
 
   // Amazon processing state (starts immediately if no initial state)
   const [amazonJobId, setAmazonJobId] = useState<string | null>(null);
@@ -108,7 +151,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [enabledSuppliers, setEnabledSuppliers] = useState<Set<string>>(
     new Set(['mcmaster.com', 'uline.com'])
   );
-  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [, setDiscoverError] = useState<string | null>(null);
   const [hasDiscovered, setHasDiscovered] = useState(initialState?.hasDiscovered || false);
 
   // Other suppliers scanning state
@@ -117,7 +160,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [otherOrders, setOtherOrders] = useState<ExtractedOrder[]>(initialState?.otherOrders || []);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [otherScanDomains, setOtherScanDomains] = useState<string[]>([]);
 
   // Computed values for the experience
   const allItems = useMemo(() => {
@@ -141,7 +183,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           name: item.name,
           price: item.unitPrice || 0,
           supplier: order.supplier,
-          image: item.imageUrl,
           date: order.orderDate,
         });
       });
@@ -153,7 +194,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           name: item.name,
           price: item.unitPrice || 0,
           supplier: order.supplier,
-          image: item.imageUrl,
           date: order.orderDate,
         });
       });
@@ -180,7 +220,49 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   // Merge priority suppliers with discovered ones (excluding Amazon)
   const allSuppliers = useMemo(() => mergeSuppliers(OTHER_PRIORITY_SUPPLIERS, discoveredSuppliers), [discoveredSuppliers]);
 
-  // Note: We keep this step clean and professional — progress is shown inline below.
+  // Check for milestone achievements
+  useEffect(() => {
+    const newMilestones = new Set(achievedMilestones);
+    
+    if (allItems.length >= MILESTONES.firstItem && !achievedMilestones.has('firstItem')) {
+      newMilestones.add('firstItem');
+      setCelebratingMilestone('firstItem');
+      setTimeout(() => setCelebratingMilestone(null), 2000);
+    }
+    
+    if (allItems.length >= MILESTONES.tenItems && !achievedMilestones.has('tenItems')) {
+      newMilestones.add('tenItems');
+      setCelebratingMilestone('tenItems');
+      setTimeout(() => setCelebratingMilestone(null), 2000);
+    }
+    
+    if (allItems.length >= MILESTONES.fiftyItems && !achievedMilestones.has('fiftyItems')) {
+      newMilestones.add('fiftyItems');
+      setCelebratingMilestone('fiftyItems');
+      setTimeout(() => setCelebratingMilestone(null), 2500);
+    }
+    
+    if (newMilestones.size !== achievedMilestones.size) {
+      setAchievedMilestones(newMilestones);
+    }
+  }, [allItems.length, achievedMilestones]);
+
+  // Hide welcome after processing starts
+  useEffect(() => {
+    if (amazonJobId || priorityJobId) {
+      const timer = setTimeout(() => setShowWelcome(false), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [amazonJobId, priorityJobId]);
+
+  // Rotate lean wisdom (every 10 seconds, always running)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWisdomIndex(prev => (prev + 1) % LEAN_WISDOM.length);
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, [hasRestoredState]);
 
   // 1. START PRIORITY SUPPLIERS - STAGGERED TO AVOID RATE LIMITS
   // Skip if we have restored state (user navigated back)
@@ -280,9 +362,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           originalEmailId: o.id,
           supplier: o.supplier,
           orderDate: o.orderDate,
-          shippedDate: o.shippedDate,
-          deliveredDate: o.deliveredDate,
-          leadTimeDays: o.leadTimeDays,
           totalAmount: o.totalAmount,
           items: o.items,
           confidence: o.confidence,
@@ -331,9 +410,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           originalEmailId: o.id,
           supplier: o.supplier,
           orderDate: o.orderDate,
-          shippedDate: o.shippedDate,
-          deliveredDate: o.deliveredDate,
-          leadTimeDays: o.leadTimeDays,
           totalAmount: o.totalAmount,
           items: o.items,
           confidence: o.confidence,
@@ -366,6 +442,12 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [priorityJobId, isPriorityComplete, pollPriorityStatus]);
 
+  // Notify parent when Amazon + Priority suppliers are done (user can proceed)
+  useEffect(() => {
+    const keySuppliersDone = isAmazonComplete && isPriorityComplete;
+    onCanProceed?.(keySuppliersDone);
+  }, [isAmazonComplete, isPriorityComplete, onCanProceed]);
+
   // Preserve state for parent (so navigation back doesn't lose progress)
   useEffect(() => {
     onStateChange?.({
@@ -396,7 +478,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       console.error('Discovery error:', err);
       const message = err instanceof Error ? err.message : 'Failed to discover suppliers';
       setDiscoverError(message);
-      setHasDiscovered(true);
     } finally {
       setIsDiscovering(false);
     }
@@ -416,9 +497,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           originalEmailId: o.id,
           supplier: o.supplier,
           orderDate: o.orderDate,
-          shippedDate: o.shippedDate,
-          deliveredDate: o.deliveredDate,
-          leadTimeDays: o.leadTimeDays,
           totalAmount: o.totalAmount,
           items: o.items,
           confidence: o.confidence,
@@ -464,7 +542,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     
     setIsScanning(true);
     setJobStatus(null);
-    setOtherScanDomains(domainsToScan);
     
     try {
       const response = await jobsApi.startJob(domainsToScan, 'other');
@@ -494,18 +571,8 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [combinedOrders, onScanComplete]);
 
-  const selectableSuppliers = useMemo(
-    () => allSuppliers.filter(s => !PRIORITY_SUPPLIER_DOMAINS.has(s.domain)),
-    [allSuppliers],
-  );
-  const supplierCount = selectableSuppliers.length;
-  const hasSelectableSuppliers = supplierCount > 0;
-  const selectedOtherDomains = useMemo(
-    () => Array.from(enabledSuppliers).filter(d => !d.includes('amazon') && !PRIORITY_SUPPLIER_DOMAINS.has(d)),
-    [enabledSuppliers],
-  );
-  const selectedOtherCount = selectedOtherDomains.length;
-  const canContinueWithoutOthers = (hasDiscovered && !hasSelectableSuppliers) || Boolean(discoverError);
+  const supplierCount = allSuppliers.length;
+  const enabledCount = enabledSuppliers.size;
   const isPriorityProcessing = useMemo(
     () => Boolean(!isPriorityComplete && priorityJobId),
     [isPriorityComplete, priorityJobId],
@@ -513,11 +580,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const isAnyProcessing = useMemo(
     () => Boolean((!isAmazonComplete && amazonJobId) || isPriorityProcessing || isScanning),
     [isAmazonComplete, amazonJobId, isPriorityProcessing, isScanning],
-  );
-  const readyToContinue = isAmazonComplete && isPriorityComplete && (selectedOtherCount > 0 || canContinueWithoutOthers);
-  const foundOtherSupplierNames = useMemo(
-    () => Array.from(new Set(otherOrders.map(o => o.supplier))).slice(0, 10),
-    [otherOrders],
   );
   // Report progress to parent component for background display
   useEffect(() => {
@@ -562,6 +624,11 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     isAnyProcessing
   ]);
 
+  const milestoneMessage = useMemo(
+    () => (celebratingMilestone ? getMilestoneMessage(celebratingMilestone) : null),
+    [celebratingMilestone],
+  );
+  
   // Priority suppliers progress
   const priorityProgress = priorityStatus?.progress;
   const priorityProgressPercent = useMemo(
@@ -577,90 +644,141 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   );
 
   const supplierGridItems = useMemo(
-    () => buildSupplierGridItems(selectableSuppliers, enabledSuppliers),
-    [selectableSuppliers, enabledSuppliers],
+    () => buildSupplierGridItems(allSuppliers, enabledSuppliers),
+    [allSuppliers, enabledSuppliers],
   );
 
-  // Update parent about navigation readiness (Continue button)
-  useEffect(() => {
-    const keySuppliersDone = isAmazonComplete && isPriorityComplete;
-    onCanProceed?.(keySuppliersDone && (selectedOtherCount > 0 || canContinueWithoutOthers));
-  }, [onCanProceed, isAmazonComplete, isPriorityComplete, selectedOtherCount, canContinueWithoutOthers]);
-
   return (
-    <div className="space-y-6">
-      {/* Overview */}
-      <div className="card-arda p-6">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div className="space-y-2">
-            <div className="arda-pill w-fit">
-              <Icons.Sparkles className="w-4 h-4" />
-              Email import
-            </div>
-            <h2 className="text-lg font-semibold text-arda-text-primary">
-              Importing orders from your inbox
+    <div className="max-w-5xl mx-auto p-6 pb-32 space-y-6 relative">
+      
+      {/* Milestone Celebration Overlay */}
+      {milestoneMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 text-center animate-bounce-in border-4 border-arda-accent">
+            <div className="text-6xl mb-4">{milestoneMessage.emoji}</div>
+            <h2 className="text-2xl font-bold text-arda-text-primary mb-2">
+              {milestoneMessage.title}
             </h2>
-            <p className="text-sm text-arda-text-secondary">
-              We’ll extract items from Amazon and your priority suppliers first. Then, pick at least one other supplier to import.
+            <p className="text-arda-text-secondary">
+              {milestoneMessage.subtitle}
             </p>
-            <div className="flex items-center gap-2 text-sm mt-3">
-              {readyToContinue ? (
-                <>
-                  <Icons.CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span className="text-green-700">
-                    Ready — click Continue below{canContinueWithoutOthers ? ' (no additional suppliers required)' : ''}
-                  </span>
-                </>
-              ) : (isAmazonComplete && isPriorityComplete && selectedOtherCount === 0 && !canContinueWithoutOthers) ? (
-                <>
-                  <Icons.AlertCircle className="w-4 h-4 text-arda-accent" />
-                  <span className="text-arda-text-secondary">Select at least 1 other supplier below to unlock Continue</span>
-                </>
-              ) : (
-                <>
-                  <Icons.Loader2 className="w-4 h-4 text-arda-accent animate-spin" />
-                  <span className="text-arda-text-secondary">Import in progress… Continue will unlock shortly</span>
-                </>
-              )}
+          </div>
+          {/* Confetti effect */}
+          <div className="absolute inset-0 overflow-hidden">
+            {[...Array(20)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute animate-confetti"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 0.5}s`,
+                  backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'][i % 5],
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '2px',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Welcome Header - Animated intro */}
+      {showWelcome && (
+        <div className="text-center py-8 animate-fade-in">
+          <div className="inline-flex items-center gap-2 bg-arda-accent/10 text-arda-accent px-4 py-2 rounded-full text-sm font-medium mb-4">
+            <Icons.Sparkles className="w-4 h-4" />
+            Welcome to Arda
+          </div>
+          <h1 className="text-3xl font-bold text-arda-text-primary mb-3">
+            Let's discover your supply chain
+          </h1>
+          <p className="text-arda-text-secondary max-w-lg mx-auto">
+            We're scanning your emails to find orders, track spending, and identify 
+            replenishment patterns. This usually takes about 30 seconds.
+          </p>
+        </div>
+      )}
+
+
+      {/* Lean Wisdom - Always visible */}
+      <div>
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+              <Icons.Lightbulb className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-900 mb-1">
+                {isAnyProcessing ? 'While you wait, a word about batching...' : 'A word about batching...'}
+              </p>
+              <blockquote className="text-amber-800 italic text-sm leading-relaxed">
+                "{LEAN_WISDOM[wisdomIndex].quote}"
+              </blockquote>
+              <p className="text-xs text-amber-600 mt-2 font-medium">
+                {LEAN_WISDOM[wisdomIndex].attribution}
+              </p>
             </div>
           </div>
+        </div>
+      </div>
 
+      {/* Live Stats Bar - The "wow" moment */}
+      {(allItems.length > 0 || totalOrders > 0) && (
+        <div className="bg-gradient-to-r from-arda-accent to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="grid grid-cols-4 gap-6 text-center">
+            <div>
+              <div className="text-4xl font-bold">{allItems.length}</div>
+              <div className="text-white/80 text-sm">Items Found</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">{totalOrders}</div>
+              <div className="text-white/80 text-sm">Orders</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">{uniqueSuppliers}</div>
+              <div className="text-white/80 text-sm">Suppliers</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">
+                ${totalSpend >= 1000 ? `${(totalSpend / 1000).toFixed(1)}k` : totalSpend.toFixed(0)}
+              </div>
+              <div className="text-white/80 text-sm">Tracked</div>
+            </div>
+          </div>
+          
+          {/* Value teaser */}
+          {allItems.length >= 5 && (
+            <div className="mt-4 pt-4 border-t border-white/20 text-center">
+              <p className="text-white/90 text-sm">
+                💡 <span className="font-medium">Insight preview:</span> We're already seeing patterns in your ordering. 
+                Set up Kanban cards to automate replenishment.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Header when not showing welcome */}
+      {!showWelcome && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-arda-text-primary">Importing Your Orders</h1>
+            <p className="text-arda-text-secondary mt-1">
+              {isAnyProcessing 
+                ? 'Discovering items from your suppliers...'
+                : 'Ready to set up your inventory'}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onSkip}
-            disabled={!readyToContinue}
-            className={[
-              'btn-arda-outline whitespace-nowrap',
-              !readyToContinue ? 'opacity-50 cursor-not-allowed' : '',
-            ].join(' ')}
+            className="text-sm font-semibold text-arda-accent hover:text-arda-accent/80 transition-colors"
           >
-            Skip email import
+            Skip for now
           </button>
         </div>
-
-        {(allItems.length > 0 || totalOrders > 0) && (
-          <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-arda-bg-secondary border border-arda-border rounded-arda-lg p-3">
-              <div className="text-xs text-arda-text-muted">Items found</div>
-              <div className="text-lg font-semibold text-arda-text-primary">{allItems.length}</div>
-            </div>
-            <div className="bg-arda-bg-secondary border border-arda-border rounded-arda-lg p-3">
-              <div className="text-xs text-arda-text-muted">Orders</div>
-              <div className="text-lg font-semibold text-arda-text-primary">{totalOrders}</div>
-            </div>
-            <div className="bg-arda-bg-secondary border border-arda-border rounded-arda-lg p-3">
-              <div className="text-xs text-arda-text-muted">Suppliers</div>
-              <div className="text-lg font-semibold text-arda-text-primary">{uniqueSuppliers}</div>
-            </div>
-            <div className="bg-arda-bg-secondary border border-arda-border rounded-arda-lg p-3">
-              <div className="text-xs text-arda-text-muted">Spend tracked</div>
-              <div className="text-lg font-semibold text-arda-text-primary">
-                ${totalSpend >= 1000 ? `${(totalSpend / 1000).toFixed(1)}k` : totalSpend.toFixed(0)}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Amazon Processing Card - Premium look */}
       <div className={`border-2 rounded-2xl p-6 transition-all ${
@@ -872,129 +990,39 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
             <p className="text-sm text-arda-text-secondary">
               {isDiscovering 
                 ? 'Discovering...' 
-                : supplierCount > 0
-                  ? `${supplierCount} suppliers found — select at least 1`
-                  : discoverError
-                    ? 'Discovery failed — you can continue or retry'
-                    : hasDiscovered
-                      ? 'No other suppliers found — you can continue'
-                      : 'No other suppliers found yet'}
+                : `${supplierCount} additional suppliers found`}
             </p>
           </div>
           
-          <div className="flex items-center gap-2">
-            {discoverError && !isDiscovering && (
-              <button
-                onClick={handleDiscoverSuppliers}
-                className="btn-arda-outline px-3 py-2 text-sm"
-              >
-                Retry discovery
-              </button>
-            )}
-            {hasDiscovered && !isScanning && selectedOtherCount > 0 && (
-              <button
-                onClick={handleScanSuppliers}
-                className="bg-arda-accent hover:bg-arda-accent-hover text-white px-5 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2"
-              >
-                <Icons.Download className="w-4 h-4" />
-                Import {selectedOtherCount} Suppliers
-              </button>
-            )}
-          </div>
+          {hasDiscovered && !isScanning && enabledCount > 0 && (
+            <button
+              onClick={handleScanSuppliers}
+              className="bg-arda-accent hover:bg-arda-accent-hover text-white px-5 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2"
+            >
+              <Icons.Download className="w-4 h-4" />
+              Import {enabledCount} Suppliers
+            </button>
+          )}
         </div>
 
-        {/* Discovery error / empty state messaging */}
-        {!isScanning && hasDiscovered && (discoverError || supplierCount === 0) && (
-          <div className={`mb-4 rounded-xl border px-4 py-3 flex items-start gap-3 ${
-            discoverError ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'
-          }`}>
-            <div className="mt-0.5">
-              {discoverError ? (
-                <Icons.AlertTriangle className="w-5 h-5 text-red-500" />
-              ) : (
-                <Icons.AlertCircle className="w-5 h-5 text-blue-500" />
-              )}
-            </div>
-            <div className="text-sm text-arda-text-secondary">
-              {discoverError
-                ? `${discoverError}. You can retry or continue without importing additional suppliers.`
-                : 'We could not find any additional suppliers. You can continue without importing more.'}
-            </div>
-          </div>
-        )}
-
         {/* Scanning Progress */}
-        {isScanning && (
+        {isScanning && jobStatus && (
           <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
             <div className="flex items-center gap-3 mb-2">
               <Icons.Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
               <span className="font-medium text-blue-700">
-                {jobStatus?.progress?.currentTask || 'Starting scan...'}
+                {jobStatus.progress?.currentTask || 'Processing...'}
               </span>
             </div>
-            
-            {/* Selected suppliers being scanned */}
-            {otherScanDomains.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                <span className="text-xs font-medium text-blue-700">Scanning:</span>
-                {otherScanDomains.slice(0, 10).map((domain) => (
-                  <span
-                    key={domain}
-                    className="text-xs px-2 py-0.5 rounded-full bg-white/80 border border-blue-200 text-blue-700"
-                  >
-                    {domain}
-                  </span>
-                ))}
-                {otherScanDomains.length > 10 && (
-                  <span className="text-xs text-blue-700">+{otherScanDomains.length - 10} more</span>
-                )}
-              </div>
-            )}
-
             <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-blue-500 transition-all duration-300"
                 style={{ 
-                  width: `${(jobStatus?.progress?.processed || 0) / Math.max(jobStatus?.progress?.total || 1, 1) * 100}%` 
+                  width: `${(jobStatus.progress?.processed || 0) / Math.max(jobStatus.progress?.total || 1, 1) * 100}%` 
                 }}
               />
             </div>
             
-            {/* Lean quote while scanning */}
-            <blockquote className="mt-3 text-center px-4 py-2 bg-white/50 rounded-lg border border-blue-100 transition-opacity duration-500">
-              <p className="text-xs italic text-blue-700">"{leanQuote.quote}"</p>
-              <footer className="text-xs text-blue-500 mt-1">— {leanQuote.author}</footer>
-            </blockquote>
-            
-            {/* Live updates feed */}
-            {jobStatus?.logs && jobStatus.logs.length > 0 && (
-              <div className="mt-3 bg-white/70 border border-blue-200 rounded-xl p-3 max-h-28 overflow-y-auto">
-                <div className="text-xs font-semibold text-blue-800 mb-2">Live updates</div>
-                <div className="space-y-1">
-                  {jobStatus.logs.slice(0, 8).map((line, idx) => (
-                    <div key={idx} className="text-xs text-blue-900 whitespace-nowrap truncate">
-                      {line}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Suppliers found so far */}
-            {foundOtherSupplierNames.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="text-xs font-medium text-blue-700">Found:</span>
-                {foundOtherSupplierNames.slice(0, 10).map((name) => (
-                  <span
-                    key={name}
-                    className="text-xs px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700"
-                  >
-                    {name}
-                  </span>
-                ))}
-              </div>
-            )}
-
             {/* Other Orders Items */}
             {otherOrders.length > 0 && (
               <div className="mt-4 max-h-32 overflow-y-auto">
@@ -1006,9 +1034,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
                         className="bg-white rounded-lg px-3 py-2 text-sm flex items-center gap-2"
                       >
                         <Icons.Package className="w-4 h-4 text-green-500 flex-shrink-0" />
-                        <span className="truncate text-arda-text-primary">
-                          {item.name}
-                        </span>
+                        <span className="truncate text-arda-text-primary">{item.name}</span>
                       </div>
                     ))
                   )}

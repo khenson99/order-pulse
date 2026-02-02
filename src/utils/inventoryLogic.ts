@@ -97,58 +97,6 @@ const roundUpToMultiple = (value: number, multiple: number): number => {
   return Math.max(rounded, multiple);
 };
 
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, value));
-
-const mean = (values: number[]): number => {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, v) => sum + v, 0) / values.length;
-};
-
-const median = (values: number[]): number => {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
-  }
-  return sorted[mid];
-};
-
-const standardDeviation = (values: number[]): number => {
-  if (values.length < 2) return 0;
-  const avg = mean(values);
-  const variance = mean(values.map(v => (v - avg) ** 2));
-  return Math.sqrt(variance);
-};
-
-const coefficientOfVariation = (values: number[]): number => {
-  const avg = mean(values);
-  if (avg <= 0) return 0;
-  const sd = standardDeviation(values);
-  return sd / avg;
-};
-
-const diffDays = (fromDate: string, toDate: string): number => {
-  const from = new Date(fromDate);
-  const to = new Date(toDate);
-  if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
-  const diffMs = to.getTime() - from.getTime();
-  return Math.max(0, diffMs / (1000 * 60 * 60 * 24));
-};
-
-const defaultLeadTimeDaysForSupplier = (supplier: string): number => {
-  const s = supplier.toLowerCase();
-  // Conservative-ish defaults (industry heuristics) when we have no shipped/delivered emails.
-  if (s.includes('amazon')) return 3;
-  if (s.includes('mcmaster')) return 2;
-  if (s.includes('uline')) return 3;
-  if (s.includes('grainger')) return 5;
-  if (s.includes('fastenal')) return 7;
-  if (s.includes('digikey') || s.includes('mouser') || s.includes('newark') || s.includes('element14')) return 7;
-  return 7;
-};
-
 /**
  * Calculate simple string similarity using Levenshtein-like distance
  * Returns a value between 0 (identical) and 1 (completely different)
@@ -288,18 +236,11 @@ export const buildVelocityProfiles = (
   orders: ExtractedOrder[]
 ): Map<string, ItemVelocityProfile> => {
   const profileMap = new Map<string, ItemVelocityProfile>();
-  const leadTimeSamplesByItem = new Map<string, number[]>();
   
   // Enrich orders first
   const enrichedOrders = enrichLineItems(orders);
   
   enrichedOrders.forEach(order => {
-    const leadTimeDays =
-      typeof order.leadTimeDays === 'number' && Number.isFinite(order.leadTimeDays) && order.leadTimeDays > 0
-        ? order.leadTimeDays
-        : null;
-    const leadTimePushedForThisOrder = new Set<string>();
-
     order.items.forEach(item => {
       const normalizedName = item.normalizedName || normalizeItemName(item.name);
       const amazonData = item.amazonEnriched;
@@ -366,14 +307,6 @@ export const buildVelocityProfiles = (
       });
       
       profile.totalQuantityOrdered += effectiveQuantity;
-
-      // Track lead time samples (Wi) per item for ReLoWiSa sizing
-      if (leadTimeDays !== null && !leadTimePushedForThisOrder.has(normalizedName)) {
-        leadTimePushedForThisOrder.add(normalizedName);
-        const samples = leadTimeSamplesByItem.get(normalizedName) || [];
-        samples.push(leadTimeDays);
-        leadTimeSamplesByItem.set(normalizedName, samples);
-      }
       
       // Update dates
       if (new Date(order.orderDate) < new Date(profile.firstOrderDate)) {
@@ -387,100 +320,43 @@ export const buildVelocityProfiles = (
   
   // Calculate analytics for each profile
   profileMap.forEach(profile => {
-    // Dedupe orders per item (sum quantities per orderId)
-    const byOrderId = new Map<string, ItemVelocityProfile['orders'][0]>();
-    for (const occ of profile.orders) {
-      const existing = byOrderId.get(occ.orderId);
-      if (!existing) {
-        byOrderId.set(occ.orderId, { ...occ });
-      } else {
-        existing.quantity += occ.quantity;
-        // Prefer any known unitPrice
-        if (existing.unitPrice === undefined && occ.unitPrice !== undefined) {
-          existing.unitPrice = occ.unitPrice;
-        }
-      }
-    }
-    const uniqueOrders = Array.from(byOrderId.values()).sort((a, b) =>
+    // Count unique orders (dedupe by orderId)
+    const uniqueOrderIds = new Set(profile.orders.map(o => o.orderId));
+    profile.orderCount = uniqueOrderIds.size;
+    
+    // Sort orders by date
+    profile.orders.sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
-    profile.orders = uniqueOrders;
-    profile.orderCount = uniqueOrders.length;
-    profile.totalQuantityOrdered = uniqueOrders.reduce((sum, o) => sum + o.quantity, 0);
-
-    if (uniqueOrders.length > 0) {
-      profile.firstOrderDate = uniqueOrders[0].date;
-      profile.lastOrderDate = uniqueOrders[uniqueOrders.length - 1].date;
+    
+    const firstDate = new Date(profile.firstOrderDate);
+    const lastDate = new Date(profile.lastOrderDate);
+    const daySpan = (lastDate.getTime() - firstDate.getTime()) / (1000 * 3600 * 24);
+    
+    // Calculate cadence
+    if (profile.orderCount > 1 && daySpan > 0) {
+      profile.averageCadenceDays = daySpan / (profile.orderCount - 1);
+    } else {
+      profile.averageCadenceDays = 30; // Default
     }
-
+    
+    // Calculate burn rate
+    const effectiveSpan = daySpan === 0 ? 30 : daySpan;
+    profile.dailyBurnRate = profile.totalQuantityOrdered / effectiveSpan;
+    
+    // Calculate recommendations (two-bin system with pack-size rounding)
+    const coverageDays = Math.max(profile.averageCadenceDays, 1);
     const packSize = profile.packSize || 1;
-
-    // --- Infer takt time + NPK from email orders ---
-    // NPK ~ typical replenishment quantity (median ordered qty)
-    const orderQuantities = uniqueOrders.map(o => o.quantity).filter(q => Number.isFinite(q) && q > 0);
-    const npk = orderQuantities.length > 0 ? median(orderQuantities) : 1;
-
-    // Cadence ~ typical time between orders (median inter-order interval)
-    const intervals: number[] = [];
-    for (let i = 1; i < uniqueOrders.length; i++) {
-      const delta = diffDays(uniqueOrders[i - 1].date, uniqueOrders[i].date);
-      // Ignore same-day duplicates for cadence inference
-      if (delta >= 1) intervals.push(delta);
-    }
-
-    const firstDate = profile.firstOrderDate;
-    const lastDate = profile.lastOrderDate;
-    const spanDays = diffDays(firstDate, lastDate);
-
-    let cadenceDays = 30;
-    if (uniqueOrders.length > 1) {
-      cadenceDays = intervals.length > 0
-        ? median(intervals)
-        : (spanDays > 0 ? spanDays / (uniqueOrders.length - 1) : 30);
-    }
-    cadenceDays = clamp(cadenceDays, 1, 365);
-    profile.averageCadenceDays = cadenceDays;
-
-    // Takt (consumption pace) expressed as daily demand
-    // dailyDemand = NPK / cadenceDays
-    const dailyDemand = Math.max(0, npk / cadenceDays);
-    profile.dailyBurnRate = dailyDemand;
-
-    // --- ReLoWiSa (Bosch-style) sizing for a two-bin loop ---
-    // Wi: replenishment lead time (days)
-    const leadSamples = leadTimeSamplesByItem.get(profile.normalizedName) || [];
-    const wiFromData = leadSamples.length > 0 ? median(leadSamples) : 0;
-    const wiDays = clamp(
-      wiFromData > 0 ? wiFromData : defaultLeadTimeDaysForSupplier(profile.supplier),
-      1,
-      120
-    );
-
-    // Sa: safety buffer (heuristic: % of lead time, scaled by variability)
-    const cadenceCv = clamp(coefficientOfVariation(intervals), 0, 1);
-    const leadTimeCv = clamp(coefficientOfVariation(leadSamples), 0, 1);
-    const variability = (cadenceCv + leadTimeCv) / 2;
-    const baseSafetyFactor = profile.orderCount >= 4 ? 0.20 : 0.30;
-    const safetyFactor = clamp(baseSafetyFactor + 0.30 * variability, 0.20, 0.60);
-    const safetyDays = Math.max(1, Math.ceil(wiDays * safetyFactor));
-
-    // Minimal replenishment coverage (Meldebestand) in units
-    const reorderPointQty = dailyDemand * (wiDays + safetyDays);
-
-    // Losgröße (Lo) from observed purchasing behavior (NPK), with two-bin preference:
-    // set orderQty = minQty = max(Lo, reorderPoint) rounded to pack size.
-    const loQty = npk;
-    const loRounded = roundUpToMultiple(loQty, packSize);
-    const reorderRounded = roundUpToMultiple(reorderPointQty, packSize);
-    const binQty = Math.max(loRounded, reorderRounded);
-
+    const binQty = roundUpToMultiple(profile.dailyBurnRate * coverageDays, packSize);
     profile.recommendedMin = binQty;
     profile.recommendedOrderQty = binQty;
-
-    // Predict next order date (based on inferred cadence)
+    
+    // Predict next order date
     if (profile.orderCount >= 2) {
       const lastOrderDate = new Date(profile.lastOrderDate);
-      const nextOrderDate = new Date(lastOrderDate.getTime() + cadenceDays * 24 * 60 * 60 * 1000);
+      const nextOrderDate = new Date(
+        lastOrderDate.getTime() + profile.averageCadenceDays * 24 * 60 * 60 * 1000
+      );
       profile.nextPredictedOrder = nextOrderDate.toISOString().split('T')[0];
     }
   });
