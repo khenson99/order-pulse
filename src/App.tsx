@@ -8,6 +8,8 @@ import { LoginScreen } from './views/LoginScreen';
 import { PipelineView } from './views/PipelineView';
 import { JourneyView } from './views/JourneyView';
 import { SupplierSetup } from './views/SupplierSetup';
+import { OnboardingFlow, ReconciliationItem } from './views/OnboardingFlow';
+import { MobileScanner } from './views/MobileScanner';
 import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
 import { processOrdersToInventory } from './utils/inventoryLogic';
 import { useAutoIngestion } from './hooks/useAutoIngestion';
@@ -144,6 +146,15 @@ export default function App() {
     setActiveView('journey'); // Go to journey view to see results
   };
 
+  const handleOnboardingComplete = (items: ReconciliationItem[]) => {
+    // Convert reconciliation items to inventory items format
+    // This would sync with Arda and update local state
+    console.log('Onboarding complete with', items.length, 'items');
+    setHasCompletedSetup(true);
+    localStorage.setItem('orderPulse_setupComplete', 'true');
+    setActiveView('dashboard');
+  };
+
   const handleSkipSetup = () => {
     setHasCompletedSetup(true);
     localStorage.setItem('orderPulse_setupComplete', 'true');
@@ -162,6 +173,19 @@ export default function App() {
     await ingestion.resetAndRestart();
   };
 
+  // Check for mobile scanner routes (no auth required for scanning)
+  const path = window.location.pathname;
+  const scanMatch = path.match(/^\/scan\/([^/]+)$/);
+  const photoMatch = path.match(/^\/photo\/([^/]+)$/);
+  
+  if (scanMatch) {
+    return <MobileScanner sessionId={scanMatch[1]} mode="barcode" />;
+  }
+  
+  if (photoMatch) {
+    return <MobileScanner sessionId={photoMatch[1]} mode="photo" />;
+  }
+
   // Show login screen if not authenticated
   if (isCheckingAuth) {
     return <LoginScreen onCheckingAuth={true} />;
@@ -171,17 +195,14 @@ export default function App() {
     return <LoginScreen />;
   }
 
-  // Show supplier setup view if user hasn't completed setup yet
+  // Show full onboarding flow if user hasn't completed setup yet
   if (!hasCompletedSetup && activeView === 'setup') {
     return (
-      <div className="min-h-screen bg-arda-bg-secondary text-arda-text-primary font-sans">
-        <div className="max-w-4xl mx-auto p-8">
-          <SupplierSetup
-            onScanComplete={handleSetupComplete}
-            onSkip={handleSkipSetup}
-          />
-        </div>
-      </div>
+      <OnboardingFlow
+        onComplete={handleOnboardingComplete}
+        onSkip={handleSkipSetup}
+        userProfile={{ name: userProfile.name, email: userProfile.email }}
+      />
     );
   }
 

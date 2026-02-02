@@ -76,14 +76,25 @@ const LEAN_WISDOM = [
   },
 ];
 
+// Background progress type for parent components
+interface BackgroundEmailProgress {
+  isActive: boolean;
+  supplier: string;
+  processed: number;
+  total: number;
+  currentTask?: string;
+}
+
 interface SupplierSetupProps {
   onScanComplete: (orders: ExtractedOrder[]) => void;
   onSkip: () => void;
+  onProgressUpdate?: (progress: BackgroundEmailProgress | null) => void;
 }
 
 export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onScanComplete,
   onSkip,
+  onProgressUpdate,
 }) => {
   // Onboarding phase states
   const [showWelcome, setShowWelcome] = useState(true);
@@ -523,6 +534,49 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     () => Boolean((!isAmazonComplete && amazonJobId) || isPriorityProcessing || isScanning),
     [isAmazonComplete, amazonJobId, isPriorityProcessing, isScanning],
   );
+  // Report progress to parent component for background display
+  useEffect(() => {
+    if (!onProgressUpdate) return;
+    
+    // Determine active scanning progress
+    if (isScanning && jobStatus?.progress) {
+      onProgressUpdate({
+        isActive: true,
+        supplier: 'Other Suppliers',
+        processed: jobStatus.progress.processed || 0,
+        total: jobStatus.progress.total || 0,
+        currentTask: jobStatus.progress.currentTask,
+      });
+    } else if (isPriorityProcessing && priorityStatus?.progress) {
+      onProgressUpdate({
+        isActive: true,
+        supplier: 'McMaster-Carr & Uline',
+        processed: priorityStatus.progress.processed || 0,
+        total: priorityStatus.progress.total || 0,
+        currentTask: priorityStatus.progress.currentTask,
+      });
+    } else if (!isAmazonComplete && amazonStatus?.progress) {
+      onProgressUpdate({
+        isActive: true,
+        supplier: 'Amazon',
+        processed: amazonStatus.progress.processed || 0,
+        total: amazonStatus.progress.total || 0,
+        currentTask: amazonStatus.progress.currentTask,
+      });
+    } else if (!isAnyProcessing) {
+      onProgressUpdate(null);
+    }
+  }, [
+    onProgressUpdate, 
+    isScanning, 
+    jobStatus, 
+    isPriorityProcessing, 
+    priorityStatus, 
+    isAmazonComplete, 
+    amazonStatus, 
+    isAnyProcessing
+  ]);
+
   const milestoneMessage = useMemo(
     () => (celebratingMilestone ? getMilestoneMessage(celebratingMilestone) : null),
     [celebratingMilestone],

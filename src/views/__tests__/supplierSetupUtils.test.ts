@@ -39,6 +39,8 @@ describe('supplierSetupUtils', () => {
     expect(calculateProgressPercent({ total: 0, processed: 0, success: 0, failed: 0, currentTask: '' })).toBe(0);
     expect(calculateProgressPercent({ total: 2, processed: 1, success: 1, failed: 0, currentTask: '' })).toBe(50);
     expect(calculateProgressPercent({ total: 5, processed: 10, success: 0, failed: 0, currentTask: '' })).toBe(100);
+    expect(calculateProgressPercent({ total: 4, processed: -2, success: 0, failed: 0, currentTask: '' })).toBe(0);
+    expect(calculateProgressPercent({ total: 4, processed: Number.POSITIVE_INFINITY, success: 0, failed: 0, currentTask: '' })).toBe(0);
   });
 
   it('returns milestone metadata for known milestones and fallback for unknown', () => {
