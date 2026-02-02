@@ -2,48 +2,15 @@ import { Router, Request, Response } from 'express';
 import { google } from 'googleapis';
 import redisClient from '../utils/redisClient.js';
 import { requireRedis } from '../config.js';
+import { saveUser, getUserById, deleteUser, getUserEmail as getUserEmailFromStore, StoredUser } from '../services/userStore.js';
 
 const router = Router();
 
 // In-memory storage (for development without PostgreSQL)
-interface UserData {
-  id: string;
-  googleId: string;
-  email: string;
-  name: string;
-  picture: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: Date;
-}
-
-const users = new Map<string, UserData>(); // local cache for dev
-
-const userKey = (userId: string) => `auth:user:${userId}`;
-
-async function storeUser(user: UserData): Promise<void> {
-  if (redisClient) {
-    await redisClient.set(userKey(user.id), JSON.stringify(user));
-  }
-  users.set(user.id, user);
-}
-
-async function getUser(userId: string): Promise<UserData | null> {
-  if (users.has(userId)) return users.get(userId)!;
-  if (redisClient) {
-    const data = await redisClient.get(userKey(userId));
-    if (data) {
-      const parsed = JSON.parse(data) as UserData;
-      users.set(userId, parsed);
-      return parsed;
-    }
-  }
-  return null;
-}
+const users = new Map<string, StoredUser>(); // local cache for dev
 
 export async function getUserEmail(userId: string): Promise<string | null> {
-  const user = await getUser(userId);
-  return user?.email || null;
+  return getUserEmailFromStore(userId);
 }
 
 function ensureRedis(res: Response): boolean {
@@ -116,7 +83,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
 
     // Store user
     const userId = userInfo.id;
-    const userData: UserData = {
+    const userData: StoredUser = {
       id: userId,
       googleId: userInfo.id,
       email: userInfo.email,
@@ -127,7 +94,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : new Date(Date.now() + 3600 * 1000),
     };
     
-    await storeUser(userData);
+    await saveUser(userData);
     console.log(`✅ User authenticated: ${userData.name} (${userData.email})`);
 
     // Set session
@@ -147,7 +114,7 @@ router.get('/me', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const user = await getUser(req.session.userId);
+  const user = await getUserById(req.session.userId);
   if (!user) {
     req.session.destroy(() => {});
     return res.status(401).json({ error: 'User not found' });
@@ -167,9 +134,7 @@ router.get('/me', async (req: Request, res: Response) => {
 router.post('/logout', async (req: Request, res: Response) => {
   if (req.session.userId) {
     users.delete(req.session.userId);
-    if (redisClient) {
-      await redisClient.del(userKey(req.session.userId));
-    }
+    await deleteUser(req.session.userId);
     req.session.destroy((err) => {
       if (err) {
         console.error('Session destroy error:', err);
@@ -181,7 +146,7 @@ router.post('/logout', async (req: Request, res: Response) => {
 
 // Get valid access token (with auto-refresh)
 export async function getValidAccessToken(userId: string): Promise<string | null> {
-  const user = await getUser(userId);
+  const user = await getUserById(userId);
   if (!user) {
     return null;
   }

@@ -303,7 +303,38 @@ async function humanizeProductNames(
 }
 
 // Recursively extract text from email parts
-function extractTextFromParts(parts: any[]): string {
+function extractBodiesFromParts(parts: any[] | undefined): { html: string; plain: string } {
+  let html = '';
+  let plain = '';
+
+  if (!parts) return { html, plain };
+
+  for (const part of parts) {
+    if (part.mimeType === 'text/plain' && part.body?.data) {
+      const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8');
+      if (decoded.length > plain.length) {
+        plain = decoded;
+      }
+    } else if (part.mimeType === 'text/html' && part.body?.data) {
+      const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8');
+      if (decoded.length > html.length) {
+        html = decoded;
+      }
+    } else if (part.parts) {
+      const nested = extractBodiesFromParts(part.parts);
+      if (nested.plain.length > plain.length) {
+        plain = nested.plain;
+      }
+      if (nested.html.length > html.length) {
+        html = nested.html;
+      }
+    }
+  }
+
+  return { html, plain };
+}
+
+function _extractTextFromParts(parts: any[]): string {
   let text = '';
   
   for (const part of parts) {
@@ -317,7 +348,7 @@ function extractTextFromParts(parts: any[]): string {
       text = Buffer.from(part.body.data, 'base64').toString('utf-8');
     } else if (part.parts) {
       // Recursively check nested parts
-      const nestedText = extractTextFromParts(part.parts);
+      const nestedText = _extractTextFromParts(part.parts);
       if (nestedText.length > text.length) {
         text = nestedText;
       }
@@ -360,6 +391,146 @@ function stripHtml(html: string): string {
     .replace(/\n\s*\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function cleanUrlCandidate(raw: string): string | null {
+  const v = (raw || '')
+    .trim()
+    .replace(/&amp;/g, '&')
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#47;/g, '/')
+    .replace(/&#x3D;/g, '=')
+    .replace(/&#61;/g, '=')
+    // common trailing punctuation from email text
+    .replace(/[)\],.;]+$/g, '');
+
+  if (!/^https?:\/\//i.test(v)) return null;
+  try {
+    const parsed = new URL(v);
+    // Strip common tracking params
+    const trackingKeys = new Set(['gclid', 'fbclid', 'mc_cid', 'mc_eid']);
+    for (const key of Array.from(parsed.searchParams.keys())) {
+      const lower = key.toLowerCase();
+      if (lower.startsWith('utm_') || trackingKeys.has(lower)) {
+        parsed.searchParams.delete(key);
+      }
+    }
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractUrlsFromText(text: string): string[] {
+  if (!text) return [];
+  const re = /\bhttps?:\/\/[^\s"'<>]+/gi;
+  const matches = Array.from(text.matchAll(re)).map(m => m[0]);
+  const cleaned = matches.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
+  return uniqueStrings(cleaned);
+}
+
+function extractUrlsFromHtml(html: string): string[] {
+  if (!html) return [];
+  const hrefs = Array.from(html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
+  const candidates = [...hrefs, ...extractUrlsFromText(html)];
+  const cleaned = candidates.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
+  return uniqueStrings(cleaned);
+}
+
+function extractImageUrlsFromHtml(html: string): string[] {
+  if (!html) return [];
+  const imgSrcs = Array.from(html.matchAll(/<img[^>]*\ssrc\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
+  const ogImages = Array.from(html.matchAll(/<meta[^>]*property\s*=\s*["']og:image["'][^>]*content\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
+  const candidates = [...imgSrcs, ...ogImages];
+  const cleaned = candidates.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
+  return uniqueStrings(cleaned);
+}
+
+function looksLikeImageUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const p = u.pathname.toLowerCase();
+    return /\.(png|jpe?g|webp|gif|svg)$/.test(p);
+  } catch {
+    return false;
+  }
+}
+
+function isJunkUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  // email / marketing / tracking / account links
+  const junkFragments = [
+    'unsubscribe',
+    'preferences',
+    'privacy',
+    'terms',
+    'support',
+    'help',
+    'account',
+    'login',
+    'signup',
+    'doubleclick',
+    'mailchimp',
+    'mandrillapp',
+    'sendgrid',
+    'constantcontact',
+    'campaign-archive',
+  ];
+  if (junkFragments.some(f => lower.includes(f))) return true;
+  return false;
+}
+
+function pickBestProductUrlForItem(params: { vendorDomain?: string; itemName: string; sku?: string }, urls: string[]): string | undefined {
+  if (urls.length === 0) return undefined;
+  const vendorDomain = (params.vendorDomain || '').toLowerCase();
+  const vendorUrls = vendorDomain && vendorDomain !== 'unknown'
+    ? urls.filter(u => u.toLowerCase().includes(vendorDomain))
+    : urls;
+  const pool = vendorUrls.length > 0 ? vendorUrls : urls;
+
+  const sku = params.sku?.trim();
+  if (sku) {
+    const match = pool.find(u => u.toLowerCase().includes(sku.toLowerCase()));
+    if (match) return match;
+  }
+
+  const tokens = params.itemName
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .filter(t => t.length >= 4)
+    .slice(0, 3);
+  for (const token of tokens) {
+    const match = pool.find(u => u.toLowerCase().includes(token));
+    if (match) return match;
+  }
+
+  // Prefer non-root paths when possible
+  const nonRoot = pool.find(u => {
+    try {
+      const parsed = new URL(u);
+      return parsed.pathname && parsed.pathname !== '/';
+    } catch {
+      return false;
+    }
+  });
+  return nonRoot || pool[0];
+}
+
+function pickBestImageUrlForItem(params: { vendorDomain?: string }, urls: string[]): string | undefined {
+  if (urls.length === 0) return undefined;
+  const vendorDomain = (params.vendorDomain || '').toLowerCase();
+  const vendorUrls = vendorDomain && vendorDomain !== 'unknown'
+    ? urls.filter(u => u.toLowerCase().includes(vendorDomain))
+    : urls;
+  const pool = vendorUrls.length > 0 ? vendorUrls : urls;
+  const imagesOnly = pool.filter(looksLikeImageUrl);
+  if (imagesOnly.length > 0) return imagesOnly[0];
+  return pool[0];
 }
 
 // Analyze a single email with retry logic
@@ -799,13 +970,25 @@ async function processEmailsInBackground(
             headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
 
           let body = '';
+          let htmlBody = '';
+          let plainBody = '';
           const parts = fullMsg.data.payload?.parts || [];
           
           if (fullMsg.data.payload?.body?.data) {
-            body = Buffer.from(fullMsg.data.payload.body.data, 'base64').toString('utf-8');
+            const decoded = Buffer.from(fullMsg.data.payload.body.data, 'base64').toString('utf-8');
+            // Gmail sometimes inlines either HTML or plain text at the top level.
+            if (decoded.includes('<html') || decoded.includes('<div') || decoded.includes('<table') || decoded.includes('<body')) {
+              htmlBody = decoded;
+            } else {
+              plainBody = decoded;
+            }
           } else if (parts.length > 0) {
-            body = extractTextFromParts(parts);
+            const extracted = extractBodiesFromParts(parts);
+            htmlBody = extracted.html;
+            plainBody = extracted.plain;
           }
+
+          body = plainBody || htmlBody;
           
           if (!body || body.length < 20) {
             const snippet = fullMsg.data.snippet || '';
@@ -828,6 +1011,19 @@ async function processEmailsInBackground(
           }
 
           const headerDate = getHeader('Date') || emailInfo.date || '';
+          const candidateProductUrls = uniqueStrings([
+            ...extractUrlsFromHtml(htmlBody),
+            ...extractUrlsFromText(body),
+          ])
+            .filter(u => !isJunkUrl(u))
+            .slice(0, 50);
+
+          const candidateImageUrls = uniqueStrings([
+            ...extractImageUrlsFromHtml(htmlBody),
+          ])
+            .filter(u => !isJunkUrl(u))
+            .slice(0, 30);
+
           const email = {
             id: emailInfo.id,
             subject: getHeader('Subject'),
@@ -871,6 +1067,11 @@ async function processEmailsInBackground(
                 unitPrice: item.unitPrice || 0,
                 asin: item.asin,
                 sku: item.partNumber || item.sku,
+                productUrl: pickBestProductUrlForItem(
+                  { vendorDomain, itemName: item.name || '', sku: item.partNumber || item.sku },
+                  candidateProductUrls
+                ),
+                imageUrl: pickBestImageUrlForItem({ vendorDomain }, candidateImageUrls),
               })),
               confidence: result.confidence || 0.8,
             };
@@ -948,6 +1149,9 @@ async function processEmailsInBackground(
           unit: item.unit,
           unitPrice: item.unitPrice || 0,
           asin: item.asin,
+          sku: item.sku,
+          productUrl: item.productUrl,
+          imageUrl: item.imageUrl,
           amazonEnriched: item.amazonEnriched,
         })),
         confidence: consolidated.confidence,
@@ -1285,6 +1489,8 @@ async function processAmazonEmailsInBackground(
             unit: 'each',
             unitPrice: parseFloat(data?.Price?.replace(/[^0-9.]/g, '') || '0'),
             asin: orderItem.asin,
+            productUrl: data?.AmazonURL,
+            imageUrl: data?.ImageURL,
             amazonEnriched: data ? {
               asin: data.ASIN,
               itemName: data.ItemName,
@@ -1355,6 +1561,9 @@ async function processAmazonEmailsInBackground(
             unit: item.unit,
             unitPrice: item.unitPrice || 0,
             asin: item.asin,
+            sku: item.sku,
+            productUrl: item.productUrl,
+            imageUrl: item.imageUrl,
             amazonEnriched: item.amazonEnriched,
           })),
           confidence: consolidated.confidence,
