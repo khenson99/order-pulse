@@ -387,6 +387,8 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
           {/* Switch camera */}
           <button
             onClick={toggleCamera}
+            aria-label="Switch camera"
+            title="Switch camera"
             className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"
           >
             <Icons.RefreshCw className="w-5 h-5 text-white" />
@@ -396,6 +398,8 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
           {mode === 'photo' && isScanning && (
             <button
               onClick={capturePhoto}
+              aria-label="Capture photo"
+              title="Capture photo"
               className="w-16 h-16 rounded-full bg-white flex items-center justify-center"
             >
               <div className="w-14 h-14 rounded-full border-4 border-black/20" />
@@ -412,6 +416,8 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
           {/* Flash toggle (placeholder) */}
           <button
             onClick={() => setFlashEnabled(!flashEnabled)}
+            aria-label={flashEnabled ? 'Disable flash' : 'Enable flash'}
+            title={flashEnabled ? 'Disable flash' : 'Enable flash'}
             className={`w-12 h-12 rounded-full flex items-center justify-center ${
               flashEnabled ? 'bg-yellow-500' : 'bg-white/10'
             }`}
