@@ -1,8 +1,21 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Icons } from '../components/Icons';
-import { InventoryItem } from '../types';
 import { ScannedBarcode, CapturedPhoto } from './OnboardingFlow';
 import { CSVItem } from './CSVUploadStep';
+
+// Simple email item from onboarding
+interface EmailItem {
+  id: string;
+  name: string;
+  supplier: string;
+  asin?: string;
+  imageUrl?: string;
+  lastPrice?: number;
+  quantity?: number;
+  location?: string;
+  recommendedMin?: number;
+  recommendedOrderQty?: number;
+}
 
 // Master list item - unified from all sources
 export interface MasterListItem {
@@ -33,7 +46,7 @@ export interface MasterListItem {
 }
 
 interface MasterListStepProps {
-  emailItems: InventoryItem[];
+  emailItems: EmailItem[];
   scannedBarcodes: ScannedBarcode[];
   capturedPhotos: CapturedPhoto[];
   csvItems: CSVItem[];
@@ -56,13 +69,11 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
     // Add email items
     emailItems.forEach(item => {
       items.push({
-        id: `email-${item.id}`,
+        id: item.id,
         source: 'email',
         name: item.name,
-        description: item.amazonEnriched?.itemName,
         supplier: item.supplier,
         location: item.location,
-        barcode: item.amazonEnriched?.upc,
         asin: item.asin,
         minQty: item.recommendedMin,
         orderQty: item.recommendedOrderQty,

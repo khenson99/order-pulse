@@ -1,12 +1,26 @@
 import { useState, useCallback } from 'react';
 import { Icons } from '../components/Icons';
-import { ExtractedOrder, InventoryItem } from '../types';
+import { ExtractedOrder } from '../types';
 import { SupplierSetup } from './SupplierSetup';
 import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
 import { CSVUploadStep, CSVItem } from './CSVUploadStep';
 import { MasterListStep, MasterListItem } from './MasterListStep';
 import { ArdaSyncStep } from './ArdaSyncStep';
+
+// Simple email item for onboarding (before full InventoryItem processing)
+interface EmailItem {
+  id: string;
+  name: string;
+  supplier: string;
+  asin?: string;
+  imageUrl?: string;
+  lastPrice?: number;
+  quantity?: number;
+  location?: string;
+  recommendedMin?: number;
+  recommendedOrderQty?: number;
+}
 
 // Onboarding step definitions
 export type OnboardingStep = 'email' | 'barcode' | 'photo' | 'csv' | 'masterlist' | 'sync';
@@ -143,7 +157,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   
   // Data from each step
   const [, setEmailOrders] = useState<ExtractedOrder[]>([]);
-  const [emailInventory, setEmailInventory] = useState<InventoryItem[]>([]);
+  const [emailItems, setEmailItems] = useState<EmailItem[]>([]);
   const [scannedBarcodes, setScannedBarcodes] = useState<ScannedBarcode[]>([]);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const [csvItems, setCsvItems] = useState<CSVItem[]>([]);
@@ -171,21 +185,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Handle email step completion
   const handleEmailComplete = useCallback((orders: ExtractedOrder[]) => {
     setEmailOrders(orders);
-    // Convert orders to inventory items
-    const inventoryItems: InventoryItem[] = orders.flatMap(order => 
-      order.lineItems.map(item => ({
-        id: `${order.orderId}-${item.name}`,
+    // Convert orders to simple email items for master list
+    const items: EmailItem[] = orders.flatMap(order => 
+      order.items.map(item => ({
+        id: `email-${order.id}-${item.name}`,
         name: item.name,
-        supplier: order.supplierName,
+        supplier: order.supplier,
         asin: item.asin,
-        imageUrl: item.imageUrl,
         lastPrice: item.unitPrice,
-        totalQuantityOrdered: item.quantity,
+        quantity: item.quantity,
         recommendedMin: Math.ceil((item.quantity || 1) / 2),
         recommendedOrderQty: item.quantity || 1,
       }))
     );
-    setEmailInventory(inventoryItems);
+    setEmailItems(items);
     handleStepComplete('email');
   }, [handleStepComplete]);
 
