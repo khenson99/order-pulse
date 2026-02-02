@@ -122,18 +122,20 @@ router.post('/items', async (req: Request, res: Response) => {
       });
     }
 
-    // Set defaults for required fields
-    const item: Omit<ItemInput, 'externalGuid'> = {
+    // Set defaults and pass all available fields
+    const item: ItemInput = {
       name: itemData.name,
+      primarySupplier: itemData.primarySupplier,
       orderMechanism: itemData.orderMechanism || 'email',
       minQty: itemData.minQty || 1,
       minQtyUnit: itemData.minQtyUnit || 'each',
-      primarySupplier: itemData.primarySupplier,
-      location: itemData.location,
       orderQty: itemData.orderQty || 1,
       orderQtyUnit: itemData.orderQtyUnit || 'each',
+      location: itemData.location,
       primarySupplierLink: itemData.primarySupplierLink,
       imageUrl: itemData.imageUrl,
+      sku: (itemData as any).sku || (itemData as any).barcode,
+      color: (itemData as any).color,
     };
 
     const result = await ardaService.createItem(item, credentials.author!);

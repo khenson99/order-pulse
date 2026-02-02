@@ -8,19 +8,59 @@ const ARDA_TENANT_ID = process.env.ARDA_TENANT_ID;
 // Cache for tenant lookups (reserved for future use)
 // const tenantCache = new Map<string, string>();
 
-// Types based on Arda OpenAPI schemas
-export interface ItemInput {
-  externalGuid: string;
-  name: string;
-  orderMechanism: string;
+// Types based on Arda OpenAPI schemas (matching actual API structure)
+export interface QuantityValue {
+  amount: number;
+  unit: string;
+}
+
+export interface ItemSupplyValue {
+  supplier: string;
+  name?: string;
+  sku?: string;
+  orderMethod?: 'EMAIL' | 'MANUAL' | 'AUTO' | 'FAX' | 'PHONE' | 'WEB' | 'EDI';
+  url?: string;
+  orderQuantity?: QuantityValue;
+  unitCost?: { value: number; currency: string };
+}
+
+export interface PhysicalLocatorValue {
+  facility: string;
+  department?: string;
   location?: string;
-  minQty: number;
-  minQtyUnit: string;
+  subLocation?: string;
+}
+
+export type ItemColor = 'BLUE' | 'GREEN' | 'YELLOW' | 'ORANGE' | 'RED' | 'PINK' | 'PURPLE' | 'GRAY';
+
+// Arda Item.Entity structure
+export interface ArdaItemEntity {
+  eId: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  locator?: PhysicalLocatorValue;
+  internalSKU?: string;
+  minQuantity?: QuantityValue;
+  notes?: string;
+  primarySupply?: ItemSupplyValue;
+  itemColor?: ItemColor;
+}
+
+// Our simplified input that gets mapped to Arda format
+export interface ItemInput {
+  name: string;
+  primarySupplier: string;
+  orderMechanism?: string;
+  location?: string;
+  minQty?: number;
+  minQtyUnit?: string;
   orderQty?: number;
   orderQtyUnit?: string;
-  primarySupplier: string;
   primarySupplierLink?: string;
   imageUrl?: string;
+  sku?: string;
+  color?: string;
 }
 
 export interface ItemInputMetadata {
@@ -181,24 +221,91 @@ export function isMockMode(): boolean {
          (!ARDA_API_KEY || !ARDA_TENANT_ID || ARDA_TENANT_ID === 'your_tenant_uuid_here');
 }
 
+// Map color string to Arda ItemColor enum
+function mapToArdaColor(color?: string): ItemColor | undefined {
+  if (!color) return undefined;
+  const colorMap: Record<string, ItemColor> = {
+    'blue': 'BLUE',
+    'green': 'GREEN',
+    'yellow': 'YELLOW',
+    'orange': 'ORANGE',
+    'red': 'RED',
+    'pink': 'PINK',
+    'purple': 'PURPLE',
+    'gray': 'GRAY',
+    'grey': 'GRAY',
+  };
+  return colorMap[color.toLowerCase()] || undefined;
+}
+
+// Map order mechanism to Arda OrderMethod enum
+function mapToArdaOrderMethod(mechanism?: string): ItemSupplyValue['orderMethod'] {
+  if (!mechanism) return 'EMAIL';
+  const methodMap: Record<string, ItemSupplyValue['orderMethod']> = {
+    'email': 'EMAIL',
+    'manual': 'MANUAL',
+    'auto': 'AUTO',
+    'fax': 'FAX',
+    'phone': 'PHONE',
+    'web': 'WEB',
+    'edi': 'EDI',
+  };
+  return methodMap[mechanism.toLowerCase()] || 'EMAIL';
+}
+
 // Create an item in Arda's Item Data Authority
-// NOTE: The Items API expects ItemInput directly at root, not wrapped in RequestCreate
-// Auth is done via headers (X-Author, X-Tenant-Id) not body fields
+// Maps our simplified ItemInput to Arda's Item.Entity schema
 export async function createItem(
-  item: Omit<ItemInput, 'externalGuid'>,
+  item: ItemInput,
   author: string
 ): Promise<EntityRecord> {
   const tenantId = await resolveTenantId(author);
 
-  // Send ItemInput directly at root (NOT wrapped in payload/metadata/effectiveAt/author)
-  const itemInput: ItemInput = {
-    ...item,
-    externalGuid: uuidv4(),
+  // Build Arda Item.Entity structure
+  const ardaItem: ArdaItemEntity = {
+    eId: uuidv4(),
+    name: item.name,
+    imageUrl: item.imageUrl || undefined,
+    internalSKU: item.sku || undefined,
+    itemColor: mapToArdaColor(item.color),
   };
 
-  return ardaFetch<EntityRecord>('/v1/items/item', {
+  // Add minQuantity if provided
+  if (item.minQty) {
+    ardaItem.minQuantity = {
+      amount: item.minQty,
+      unit: item.minQtyUnit || 'each',
+    };
+  }
+
+  // Add locator if location provided
+  if (item.location) {
+    ardaItem.locator = {
+      facility: 'Main', // Default facility
+      location: item.location,
+    };
+  }
+
+  // Add primarySupply
+  ardaItem.primarySupply = {
+    supplier: item.primarySupplier,
+    orderMethod: mapToArdaOrderMethod(item.orderMechanism),
+    url: item.primarySupplierLink || undefined,
+  };
+
+  // Add orderQuantity to supply if provided
+  if (item.orderQty) {
+    ardaItem.primarySupply.orderQuantity = {
+      amount: item.orderQty,
+      unit: item.orderQtyUnit || item.minQtyUnit || 'each',
+    };
+  }
+
+  console.log('📤 Creating Arda item:', JSON.stringify(ardaItem, null, 2));
+
+  return ardaFetch<EntityRecord>('/v1/item/item', {
     method: 'POST',
-    body: itemInput,
+    body: ardaItem,
     author,
     tenantId,
   });
