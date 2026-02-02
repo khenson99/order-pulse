@@ -59,22 +59,32 @@ export const ArdaSyncStep: React.FC<ArdaSyncStepProps> = ({
         }),
       });
 
+      const data = await response.json();
+      
+      // Handle 409 conflict (item already exists) as success
+      if (response.status === 409 || (data.error && data.error.includes('already exists'))) {
+        return {
+          itemId: item.id,
+          itemName: item.name,
+          success: true,
+          ardaEntityId: 'already-exists',
+        };
+      }
+      
       if (!response.ok) {
-        const errorData = await response.json();
         return {
           itemId: item.id,
           itemName: item.name,
           success: false,
-          error: errorData.error || 'Failed to create item',
+          error: data.error || 'Failed to create item',
         };
       }
 
-      const data = await response.json();
       return {
         itemId: item.id,
         itemName: item.name,
         success: true,
-        ardaEntityId: data.entityId || data.rId,
+        ardaEntityId: data.record?.rId || data.entityId || data.rId,
       };
     } catch (error) {
       return {
