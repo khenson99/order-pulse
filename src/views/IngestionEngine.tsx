@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { MOCK_EMAILS } from '../services/mockData';
-import { authApi, gmailApi, analysisApi, ordersApi, jobsApi, amazonApi, API_BASE_URL, JobStatus } from '../services/api';
+import { authApi, analysisApi, jobsApi, amazonApi, API_BASE_URL } from '../services/api';
 import { ExtractedOrder, ProcessingStatus, GoogleUserProfile, InventoryItem, ReviewStatus } from '../types';
 import { InventoryView } from './InventoryView';
 import { buildVelocityProfiles, normalizeItemName } from '../utils/inventoryLogic';

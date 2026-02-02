@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder, InventoryItem } from '../types';
 import { SupplierSetup } from './SupplierSetup';
@@ -127,18 +127,20 @@ interface BackgroundEmailProgress {
 
 export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onComplete,
-  onSkip,
-  userProfile,
+  onSkip: _onSkip,
+  userProfile: _userProfile,
 }) => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('email');
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
   
   // Data from each step
-  const [emailOrders, setEmailOrders] = useState<ExtractedOrder[]>([]);
+  const [, setEmailOrders] = useState<ExtractedOrder[]>([]);
   const [emailInventory, setEmailInventory] = useState<InventoryItem[]>([]);
   const [scannedBarcodes, setScannedBarcodes] = useState<ScannedBarcode[]>([]);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
-  const [reconciliationItems, setReconciliationItems] = useState<ReconciliationItem[]>([]);
+  const [, setReconciliationItems] = useState<ReconciliationItem[]>([]);
+  
+  // Note: _onSkip and _userProfile are available for future use
   
   // Background email scanning progress
   const [emailProgress, setEmailProgress] = useState<BackgroundEmailProgress | null>(null);

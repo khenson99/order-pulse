@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { jobsApi, JobStatus } from '../services/api';
+import { jobsApi } from '../services/api';
 import { ExtractedOrder, GoogleUserProfile } from '../types';
 
 interface EmailPreview {

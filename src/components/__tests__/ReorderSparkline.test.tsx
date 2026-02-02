@@ -1,19 +1,19 @@
-import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ReorderSparkline } from '../ReorderSparkline';
 
 vi.mock('recharts', async () => {
   const React = await import('react');
+  type RCProps = { children?: React.ReactNode | ((args: { width?: number | string; height?: number | string }) => React.ReactNode); width?: number | string; height?: number | string };
   return {
-    ResponsiveContainer: ({ children, width, height }: any) => (
+    ResponsiveContainer: ({ children, width, height }: RCProps) => (
       <div data-testid="responsive" style={{ width, height }}>
         {typeof children === 'function' ? children({ width, height }) : children}
       </div>
     ),
-    LineChart: ({ children }: any) => <div data-testid="line-chart">{children}</div>,
-    Line: (props: any) => <div data-testid="line" data-props={JSON.stringify(props)} />,
-    Tooltip: (props: any) => {
+    LineChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
+    Line: (props: Record<string, unknown>) => <div data-testid="line" data-props={JSON.stringify(props)} />,
+    Tooltip: (props: { formatter?: (value: unknown) => unknown; labelFormatter?: (label: unknown, payload?: unknown) => unknown }) => {
       props.formatter?.(5);
       props.labelFormatter?.('label', [{ payload: { displayDate: 'Jan 2' } }]);
       props.labelFormatter?.('label', undefined);

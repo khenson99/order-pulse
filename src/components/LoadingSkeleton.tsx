@@ -9,10 +9,12 @@ export const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type = 'card',
   const items = Array.from({ length: count }, (_, i) => i);
 
   if (type === 'text') {
+    // Use deterministic widths based on index to avoid impure render
+    const widths = [75, 90, 65, 85, 70, 95, 80, 60, 88, 72];
     return (
       <div className="space-y-2 animate-pulse">
         {items.map((i) => (
-          <div key={i} className="h-4 bg-arda-bg-tertiary rounded w-full" style={{ width: `${60 + Math.random() * 40}%` }} />
+          <div key={i} className="h-4 bg-arda-bg-tertiary rounded w-full" style={{ width: `${widths[i % widths.length]}%` }} />
         ))}
       </div>
     );

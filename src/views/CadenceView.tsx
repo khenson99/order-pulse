@@ -1,13 +1,13 @@
 import { InventoryItem, ExtractedOrder } from '../types';
 import { Icons } from '../components/Icons';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LineChart, Line, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 
 interface CadenceViewProps {
   inventory: InventoryItem[];
   orders?: ExtractedOrder[];
 }
 
-export const CadenceView: React.FC<CadenceViewProps> = ({ inventory, orders = [] }) => {
+export const CadenceView: React.FC<CadenceViewProps> = ({ inventory }) => {
   // Cadence chart data (days between orders)
   const cadenceData = inventory
     .map(item => ({

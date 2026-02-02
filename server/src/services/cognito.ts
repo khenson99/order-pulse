@@ -1,7 +1,7 @@
 // Cognito User Sync Service
 // Syncs user data from GitHub Cognito workflow for email→tenant/author lookups
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 
 const GITHUB_TOKEN = process.env.GITHUB_COGNITO_TOKEN;
@@ -24,7 +24,7 @@ export interface CognitoUser {
 }
 
 // In-memory cache of users
-let usersCache: Map<string, CognitoUser> = new Map();
+const usersCache: Map<string, CognitoUser> = new Map();
 let lastLoadTime: Date | null = null;
 
 // Parse CSV into user objects

@@ -1,13 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Icons } from './Icons';
 import { TreeNode } from './TreeNode';
-import { 
-  JourneyNode, 
-  ExtractedOrder, 
-  RawEmail,
-  ItemVelocityProfile,
-  LineItemNodeData
-} from '../types';
+import { JourneyNode, ExtractedOrder, RawEmail, LineItemNodeData } from '../types';
 import { buildJourneyTree, buildVelocityProfiles } from '../utils/inventoryLogic';
 
 interface OrderTreeProps {
@@ -41,6 +35,12 @@ export const OrderTree: React.FC<OrderTreeProps> = ({
     buildJourneyTree(orders, emails), 
     [orders, emails]
   );
+
+  const handleNodeClick = useCallback((node: JourneyNode) => {
+    if (node.type === 'lineItem' && onItemClick && node.data) {
+      onItemClick(node.data as LineItemNodeData);
+    }
+  }, [onItemClick]);
 
   // Filter tree based on search query
   const filteredTree = useMemo(() => {
@@ -294,7 +294,7 @@ export const OrderTree: React.FC<OrderTreeProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusedNodeId, visibleNodes, expandedNodes, handleNodeExpandToggle]);
+  }, [focusedNodeId, visibleNodes, expandedNodes, handleNodeExpandToggle, handleNodeClick]);
 
   // Set initial focus on first node if none focused
   useEffect(() => {
@@ -308,12 +308,6 @@ export const OrderTree: React.FC<OrderTreeProps> = ({
     setExpandedNodes(new Set());
     setFocusedNodeId(null);
   }, [viewMode]);
-
-  const handleNodeClick = (node: JourneyNode) => {
-    if (node.type === 'lineItem' && onItemClick && node.data) {
-      onItemClick(node.data as LineItemNodeData);
-    }
-  };
 
   // Summary stats
   const stats = useMemo(() => ({

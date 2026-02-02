@@ -71,6 +71,10 @@ const LEAN_WISDOM = [
     attribution: "— This Loading Screen",
   },
   {
+    quote: "The seven wastes also include 'wasted human potential.' So. Yeah. There's a lot of other stuff we could be doing here.",
+    attribution: "— This Loading Screen",
+  },
+  {
     quote: "One-piece flow would be: scan email → show insight → repeat. But our PM wanted a 'wow moment.' So here we batch.",
     attribution: "— Honest Engineering Notes",
   },
@@ -100,7 +104,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [showWelcome, setShowWelcome] = useState(true);
   const [celebratingMilestone, setCelebratingMilestone] = useState<string | null>(null);
   const [achievedMilestones, setAchievedMilestones] = useState<Set<string>>(new Set());
-  const [showInsights, setShowInsights] = useState(false);
+  const [, setShowInsights] = useState(false);
   
   // Lean wisdom rotation
   const [wisdomIndex, setWisdomIndex] = useState(() => Math.floor(Math.random() * LEAN_WISDOM.length));
@@ -128,7 +132,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [enabledSuppliers, setEnabledSuppliers] = useState<Set<string>>(
     new Set(['mcmaster.com', 'uline.com'])
   );
-  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [, setDiscoverError] = useState<string | null>(null);
   const [hasDiscovered, setHasDiscovered] = useState(false);
 
   // Other suppliers scanning state
@@ -233,6 +237,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   }, [amazonJobId, priorityJobId]);
 
   // Rotate lean wisdom (every 10 seconds, always running)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- computed for future UI enhancements
   const isCurrentlyProcessing = Boolean(
     (!isAmazonComplete && amazonJobId) || 
     (!isPriorityComplete && priorityJobId) || 

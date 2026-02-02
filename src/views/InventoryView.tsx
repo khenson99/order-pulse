@@ -187,7 +187,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const [syncingItems, setSyncingItems] = useState<Set<string>>(new Set());
   const [syncResults, setSyncResults] = useState<Record<string, 'success' | 'error' | null>>({});
-  const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
+  const [, setSyncErrors] = useState<Record<string, string>>({});
   const [isBulkSyncing, setIsBulkSyncing] = useState(false);
   const [bulkSyncError, setBulkSyncError] = useState<string | null>(null);
   // Local state for items when no external handler

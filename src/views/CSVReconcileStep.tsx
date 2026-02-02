@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { InventoryItem } from '../types';
 import { ScannedBarcode, CapturedPhoto, ReconciliationItem } from './OnboardingFlow';

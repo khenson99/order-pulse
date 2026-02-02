@@ -23,7 +23,7 @@ import {
  * - Common abbreviations
  */
 export const normalizeItemName = (name: string): string => {
-  let normalized = name
+  const normalized = name
     .toLowerCase()
     .trim()
     // Normalize dashes and underscores to spaces
@@ -33,7 +33,7 @@ export const normalizeItemName = (name: string): string => {
     // Remove common prefixes
     .replace(/^(the|a|an)\s+/i, '')
     // Remove product codes in parentheses or brackets (e.g., "Item (SKU-12345)", "Item [ABC-123]")
-    .replace(/\s*[\(\[][^)\]]*[\)\]]\s*/g, '')
+    .replace(/\s*[([[][^\])]*[\])]\s*/g, '')
     // Remove common size/quantity patterns (e.g., "100 pack", "box of 50", "50ct", "12pk")
     .replace(/\b\d+\s*(pack|box|case|bag|ct|pk|count|each|ea|unit|units|pcs|pieces)\b/gi, '')
     .replace(/\b(box|case|pack|bag)\s+of\s+\d+\b/gi, '')
@@ -605,8 +605,9 @@ export const processOrdersToInventory = (orders: ExtractedOrder[]): InventoryIte
     item.recommendedMin = binQty;
     item.recommendedOrderQty = binQty;
 
-    // Clean up temp field before returning
-    const { orderIds, packSize: _packSize, ...cleanItem } = item;
+    // Clean up temp field before returning - destructure to remove internal fields
+    const { orderIds: _ids, packSize: _ps, ...cleanItem } = item;
+    void _ids; void _ps; // Mark as intentionally unused
     return cleanItem as InventoryItem;
   });
 };

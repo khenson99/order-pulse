@@ -34,9 +34,10 @@ interface PhotoMetadata {
   imageSizeBytes?: number;
 }
 
-interface CapturedPhoto extends PhotoMetadata {
-  imageData: string; // Base64 data URL
-}
+// CapturedPhoto interface extends PhotoMetadata with image data
+// interface CapturedPhoto extends PhotoMetadata {
+//   imageData: string; // Base64 data URL
+// }
 
 interface PhotoSession {
   photoIds: string[]; // Just store IDs, actual data stored separately
@@ -88,7 +89,7 @@ const getSession = async (sessionId: string): Promise<PhotoSession> => {
         return JSON.parse(data);
       }
     } catch (error) {
-      appLogger.error('Redis get session error:', error);
+      appLogger.error({ err: error }, 'Redis get session error');
     }
   }
   
@@ -116,7 +117,7 @@ const saveSession = async (sessionId: string, session: PhotoSession): Promise<vo
       );
       return;
     } catch (error) {
-      appLogger.error('Redis set session error:', error);
+      appLogger.error({ err: error }, 'Redis set session error');
     }
   }
   
@@ -129,7 +130,7 @@ const getPhotoData = async (photoId: string): Promise<string | null> => {
     try {
       return await redisClient.get(`${PHOTO_DATA_PREFIX}${photoId}`);
     } catch (error) {
-      appLogger.error('Redis get photo error:', error);
+      appLogger.error({ err: error }, 'Redis get photo error');
     }
   }
   return memoryPhotoData.get(photoId) || null;
@@ -146,7 +147,7 @@ const savePhotoData = async (photoId: string, imageData: string): Promise<void> 
       );
       return;
     } catch (error) {
-      appLogger.error('Redis set photo error:', error);
+      appLogger.error({ err: error }, 'Redis set photo error');
     }
   }
   
@@ -203,7 +204,7 @@ router.get('/session/:sessionId/photos', validateSessionId, async (req: Request,
       totalCount: session.photoIds.length,
     });
   } catch (error) {
-    appLogger.error('Get photos error:', error);
+    appLogger.error({ err: error }, 'Get photos error');
     res.status(500).json({ error: 'Failed to retrieve photos' });
   }
 });
@@ -235,7 +236,7 @@ router.get('/session/:sessionId/photo/:photoId', validateSessionId, async (req: 
       }
     });
   } catch (error) {
-    appLogger.error('Get photo error:', error);
+    appLogger.error({ err: error }, 'Get photo error');
     res.status(500).json({ error: 'Failed to retrieve photo' });
   }
 });
@@ -293,7 +294,7 @@ router.post('/session/:sessionId/photo', validateSessionId, async (req: Request,
     
     res.json({ success: true, photoId });
   } catch (error) {
-    appLogger.error('Add photo error:', error);
+    appLogger.error({ err: error }, 'Add photo error');
     res.status(500).json({ error: 'Failed to save photo' });
   }
 });
@@ -319,7 +320,7 @@ router.post('/analyze', async (req: Request, res: Response) => {
     const analysis = await analyzeImage(imageData);
     res.json(analysis);
   } catch (error) {
-    appLogger.error('Image analysis error:', error);
+    appLogger.error({ err: error }, 'Image analysis error');
     res.status(500).json({ error: 'Analysis failed' });
   }
 });
@@ -352,7 +353,7 @@ async function analyzePhotoAsync(sessionId: string, photoId: string, imageData: 
       appLogger.info(`Photo analyzed: ${photoId} - "${analysis.suggestedName || 'unknown'}"`);
     }
   } catch (error) {
-    appLogger.error('Async photo analysis error:', error);
+    appLogger.error({ err: error }, 'Async photo analysis error');
   }
 }
 
@@ -457,12 +458,12 @@ Omit fields that cannot be determined.`;
             : undefined,
         };
       } catch (parseError) {
-        appLogger.warn('Failed to parse Gemini response JSON:', text.substring(0, 200));
+        appLogger.warn({ responseText: text.substring(0, 200) }, 'Failed to parse Gemini response JSON');
         return {};
       }
     }
     
-    appLogger.warn('No JSON found in Gemini response:', text.substring(0, 200));
+    appLogger.warn({ responseText: text.substring(0, 200) }, 'No JSON found in Gemini response');
     return {};
   } catch (error: any) {
     // Check for rate limiting

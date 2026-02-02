@@ -53,7 +53,7 @@ export const BarcodeScanStep: React.FC<BarcodeScanStepProps> = ({
             });
           }
         }
-      } catch (error) {
+      } catch {
         // Silently ignore polling errors
       }
     }, 2000);

@@ -5,7 +5,8 @@ import { InventoryView } from './views/InventoryView';
 import { CadenceView } from './views/CadenceView';
 import { ComposeEmail } from './views/ComposeEmail';
 import { LoginScreen } from './views/LoginScreen';
-import { PipelineView } from './views/PipelineView';
+// PipelineView available but not currently used in navigation
+// import { PipelineView } from './views/PipelineView';
 import { JourneyView } from './views/JourneyView';
 import { SupplierSetup } from './views/SupplierSetup';
 import { OnboardingFlow, ReconciliationItem } from './views/OnboardingFlow';
@@ -146,10 +147,9 @@ export default function App() {
     setActiveView('journey'); // Go to journey view to see results
   };
 
-  const handleOnboardingComplete = (items: ReconciliationItem[]) => {
+  const handleOnboardingComplete = () => {
     // Convert reconciliation items to inventory items format
-    // This would sync with Arda and update local state
-    console.log('Onboarding complete with', items.length, 'items');
+    // Sync to Arda is handled by OnboardingFlow, _items available for future use
     setHasCompletedSetup(true);
     localStorage.setItem('orderPulse_setupComplete', 'true');
     setActiveView('dashboard');

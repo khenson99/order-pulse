@@ -23,19 +23,11 @@ interface TreeNodeProps {
   onFocusChange?: (nodeId: string) => void;
 }
 
-const getNodeIcon = (type: JourneyNodeType) => {
-  switch (type) {
-    case 'email':
-      return Icons.Mail;
-    case 'order':
-      return Icons.Package;
-    case 'lineItem':
-      return Icons.Box;
-    case 'velocity':
-      return Icons.Activity;
-    default:
-      return Icons.FileText;
-  }
+const ICONS_BY_TYPE: Record<JourneyNodeType, React.ComponentType<{ className?: string }>> = {
+  email: Icons.Mail,
+  order: Icons.Package,
+  lineItem: Icons.Box,
+  velocity: Icons.Activity,
 };
 
 const getNodeColors = (type: JourneyNodeType) => {
@@ -88,7 +80,7 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = ({
   const isFocused = focusedNodeId === node.id;
   const isNew = node.isNew ?? false;
 
-  const Icon = useMemo(() => getNodeIcon(node.type), [node.type]);
+  const Icon = ICONS_BY_TYPE[node.type] ?? Icons.FileText;
   const colors = useMemo(() => getNodeColors(node.type), [node.type]);
 
   const velocityProfile = useMemo(() => {

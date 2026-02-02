@@ -26,7 +26,7 @@ const AMAZON_API_CONFIG = {
 };
 
 // ASIN pattern: B followed by 9 alphanumeric, or 10 digits
-const ASIN_PATTERN = /\b(B0[A-Z0-9]{8}|[0-9]{10})\b/gi;
+// const ASIN_PATTERN = /\b(B0[A-Z0-9]{8}|[0-9]{10})\b/gi;
 
 // Extract ASINs from email content
 export function extractAsinsFromEmail(emailBody: string, emailSubject: string): string[] {

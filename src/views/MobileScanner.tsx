@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
+import { API_BASE_URL } from '../services/api';
 
 interface MobileScannerProps {
   sessionId: string;
@@ -28,69 +29,73 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const idCounterRef = useRef(0);
 
-  // Start camera
-  const startCamera = useCallback(async () => {
-    try {
-      setError(null);
-      
-      // Stop existing stream
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: cameraFacing,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      });
-      
-      streamRef.current = stream;
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setIsScanning(true);
-        
-        // Start continuous scanning for barcodes
-        if (mode === 'barcode') {
-          startBarcodeScanning();
-        }
-      }
-    } catch (err) {
-      console.error('Camera error:', err);
-      setError('Could not access camera. Please grant permission.');
-    }
-  }, [cameraFacing, mode]);
-
-  // Stop camera
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    setIsScanning(false);
+  const nextId = useCallback((prefix: 'scan' | 'photo') => {
+    idCounterRef.current += 1;
+    return `${prefix}-${idCounterRef.current}`;
   }, []);
 
-  // Start continuous barcode scanning
-  const startBarcodeScanning = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
+  // Sync item to desktop session
+  const syncToDesktop = useCallback(async (item: ScannedItem) => {
+    try {
+      const endpoint = item.type === 'barcode' 
+        ? `/api/scan/session/${sessionId}/barcode`
+        : `/api/photo/session/${sessionId}/photo`;
+      
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          id: item.id,
+          data: item.data,
+          timestamp: item.timestamp,
+        }),
+      });
+      
+      if (response.ok) {
+        setScannedItems(prev => 
+          prev.map(i => i.id === item.id ? { ...i, synced: true } : i)
+        );
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+    }
+  }, [sessionId]);
+
+  // Handle detected barcode - defined before scanForBarcode so it's in scope
+  const handleBarcodeDetected = useCallback(async (barcode: string) => {
+    // Avoid duplicates in quick succession
+    const now = Date.now();
+    const recentScans = scannedItems.filter(
+      item => now - new Date(item.timestamp).getTime() < 3000
+    );
+    if (recentScans.some(item => item.data === barcode)) {
+      return;
     }
     
-    scanIntervalRef.current = setInterval(() => {
-      scanForBarcode();
-    }, 200); // Scan every 200ms
-  };
+    // Vibrate for feedback
+    if (navigator.vibrate) {
+      navigator.vibrate(100);
+    }
+    
+    const item: ScannedItem = {
+      id: nextId('scan'),
+      type: 'barcode',
+      data: barcode,
+      timestamp: new Date().toISOString(),
+      synced: false,
+    };
+    
+    setScannedItems(prev => [item, ...prev]);
+    
+    // Sync to desktop
+    await syncToDesktop(item);
+  }, [scannedItems, nextId, syncToDesktop]);
 
-  // Scan current frame for barcode
-  const scanForBarcode = async () => {
+  // Start continuous barcode scanning
+  const scanForBarcode = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
     const video = videoRef.current;
@@ -130,37 +135,70 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
     } else {
       // Fallback: Send to server for processing
       // This is just a placeholder - would need server-side barcode detection
+      void imageData;
     }
-  };
+  }, [handleBarcodeDetected]);
 
-  // Handle detected barcode
-  const handleBarcodeDetected = async (barcode: string) => {
-    // Avoid duplicates in quick succession
-    const recentScans = scannedItems.filter(
-      item => Date.now() - new Date(item.timestamp).getTime() < 3000
-    );
-    if (recentScans.some(item => item.data === barcode)) {
-      return;
+  const startBarcodeScanning = useCallback(() => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
     }
     
-    // Vibrate for feedback
-    if (navigator.vibrate) {
-      navigator.vibrate(100);
+    scanIntervalRef.current = setInterval(() => {
+      void scanForBarcode();
+    }, 200); // Scan every 200ms
+  }, [scanForBarcode]);
+
+  // Start camera
+  const startCamera = useCallback(async () => {
+    try {
+      setError(null);
+      
+      // Stop existing stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: cameraFacing,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+      
+      streamRef.current = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setIsScanning(true);
+        
+        // Start continuous scanning for barcodes
+        if (mode === 'barcode') {
+          startBarcodeScanning();
+        }
+      }
+    } catch (err) {
+      console.error('Camera error:', err);
+      setError('Could not access camera. Please grant permission.');
     }
-    
-    const item: ScannedItem = {
-      id: `scan-${Date.now()}`,
-      type: 'barcode',
-      data: barcode,
-      timestamp: new Date().toISOString(),
-      synced: false,
-    };
-    
-    setScannedItems(prev => [item, ...prev]);
-    
-    // Sync to desktop
-    await syncToDesktop(item);
-  };
+  }, [cameraFacing, mode, startBarcodeScanning]);
+
+  // Stop camera
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    setIsScanning(false);
+  }, []);
+
+  // Note: scanForBarcode and handleBarcodeDetected are defined above with useCallback
 
   // Capture photo
   const capturePhoto = async () => {
@@ -184,7 +222,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
     }
     
     const item: ScannedItem = {
-      id: `photo-${Date.now()}`,
+      id: nextId('photo'),
       type: 'photo',
       data: imageData,
       timestamp: new Date().toISOString(),
@@ -197,32 +235,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
     await syncToDesktop(item);
   };
 
-  // Sync item to desktop session
-  const syncToDesktop = async (item: ScannedItem) => {
-    try {
-      const endpoint = item.type === 'barcode' 
-        ? `/api/scan/session/${sessionId}/barcode`
-        : `/api/photo/session/${sessionId}/photo`;
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: item.id,
-          data: item.data,
-          timestamp: item.timestamp,
-        }),
-      });
-      
-      if (response.ok) {
-        setScannedItems(prev =>
-          prev.map(i => i.id === item.id ? { ...i, synced: true } : i)
-        );
-      }
-    } catch (err) {
-      console.error('Sync error:', err);
-    }
-  };
+  // Note: syncToDesktop is defined above with useCallback
 
   // Toggle camera facing
   const toggleCamera = () => {

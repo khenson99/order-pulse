@@ -20,7 +20,6 @@ import {
   normalizeItemName,
   logConsolidationSummary,
   RawOrderData,
-  ConsolidatedOrder,
 } from '../utils/orderConsolidation.js';
 
 const router = Router();

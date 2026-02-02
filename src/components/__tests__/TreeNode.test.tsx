@@ -255,7 +255,7 @@ describe('TreeNode', () => {
   });
 
   it('exposes memo comparator that reacts to expanded state and handlers', () => {
-    const comparator = (TreeNode as any).compare as (prev: any, next: any) => boolean;
+    const comparator = (TreeNode as unknown as { compare: (prev: unknown, next: unknown) => boolean }).compare;
     const sharedNode = { ...baseNode };
     const sharedVelocity = new Map([['test', velocityProfile]]);
     const baseProps = {
@@ -290,7 +290,7 @@ describe('TreeNode', () => {
           label: 'No Velocity',
           // omit children to exercise hasChildren optional path
           data: { name: 'No Velocity Item', quantity: 1, unit: 'ea' },
-        } as any}
+        } as JourneyNode}
         level={0}
         velocityProfiles={new Map()}
       />,
@@ -384,8 +384,8 @@ describe('TreeNode', () => {
   });
 
   it('covers memo comparator branches for mismatched props', () => {
-    const comparator = (TreeNode as any).compare as (prev: any, next: any) => boolean;
-    const makeProps = (overrides: any = {}) => {
+    const comparator = (TreeNode as unknown as { compare: (prev: unknown, next: unknown) => boolean }).compare;
+    const makeProps = (overrides: Record<string, unknown> = {}) => {
       const nodeOverride = overrides.node ?? {};
       return {
         node: { ...baseNode, ...nodeOverride },
@@ -411,7 +411,7 @@ describe('TreeNode', () => {
     expect(comparator(baseProps, makeProps({ level: 2 }))).toBe(false);
     expect(comparator(baseProps, makeProps({ node: { ...baseProps.node, label: 'Changed' } }))).toBe(false);
     expect(comparator(baseProps, makeProps({ node: { ...baseProps.node, subtitle: 'Changed subtitle' } }))).toBe(false);
-    expect(comparator(baseProps, makeProps({ node: { ...baseProps.node, type: 'order' as any } }))).toBe(false);
+    expect(comparator(baseProps, makeProps({ node: { ...baseProps.node, type: 'order' as JourneyNode['type'] } }))).toBe(false);
     expect(comparator(baseProps, makeProps({ node: { ...baseProps.node, isNew: true } }))).toBe(false);
     expect(comparator(baseProps, makeProps({ node: { ...baseProps.node, data: { ...baseProps.node.data } } }))).toBe(false);
     expect(comparator(baseProps, makeProps({ expandedNodes: undefined }))).toBe(false);

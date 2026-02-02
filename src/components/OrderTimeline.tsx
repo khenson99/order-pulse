@@ -39,9 +39,9 @@ interface ChartDataPoint {
   itemCount: number;
 }
 
-const CustomTooltip = ({ active, payload }: any) => {
+const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: ChartDataPoint }> }) => {
   if (active && payload && payload.length > 0) {
-    const data = payload[0].payload as ChartDataPoint;
+    const data = payload[0].payload;
     const order = data.order;
     const date = new Date(order.orderDate);
     

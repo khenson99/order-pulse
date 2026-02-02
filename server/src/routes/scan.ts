@@ -55,7 +55,7 @@ const getSession = async (sessionId: string): Promise<ScanSession> => {
         return JSON.parse(data);
       }
     } catch (error) {
-      appLogger.error('Redis get error:', error);
+      appLogger.error({ err: error }, 'Redis get error');
     }
   }
   
@@ -86,7 +86,7 @@ const saveSession = async (sessionId: string, session: ScanSession): Promise<voi
       );
       return;
     } catch (error) {
-      appLogger.error('Redis set error:', error);
+      appLogger.error({ err: error }, 'Redis set error');
     }
   }
   
@@ -139,7 +139,7 @@ router.get('/session/:sessionId/barcodes', validateSessionId, async (req: Reques
       totalCount: session.barcodes.length,
     });
   } catch (error) {
-    appLogger.error('Get barcodes error:', error);
+    appLogger.error({ err: error }, 'Get barcodes error');
     res.status(500).json({ error: 'Failed to retrieve barcodes' });
   }
 });
@@ -186,8 +186,8 @@ router.post('/session/:sessionId/barcode', validateSessionId, async (req: Reques
         setTimeout(() => reject(new Error('Lookup timeout')), 5000)
       );
       productInfo = await Promise.race([lookupPromise, timeoutPromise]);
-    } catch (error) {
-      appLogger.warn('Barcode lookup failed or timed out:', cleanBarcode);
+    } catch {
+      appLogger.warn({ barcode: cleanBarcode }, 'Barcode lookup failed or timed out');
     }
     
     const barcode: ScannedBarcode = {
@@ -209,7 +209,7 @@ router.post('/session/:sessionId/barcode', validateSessionId, async (req: Reques
     
     res.json({ success: true, barcode });
   } catch (error) {
-    appLogger.error('Add barcode error:', error);
+    appLogger.error({ err: error }, 'Add barcode error');
     res.status(500).json({ error: 'Failed to save barcode' });
   }
 });
@@ -263,7 +263,7 @@ router.get('/lookup', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Product not found' });
     }
   } catch (error) {
-    appLogger.error('Barcode lookup error:', error);
+    appLogger.error({ err: error }, 'Barcode lookup error');
     res.status(500).json({ error: 'Lookup failed' });
   }
 });
@@ -298,7 +298,17 @@ async function lookupBarcode(barcode: string): Promise<{
     );
     
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as {
+        status?: number;
+        product?: {
+          product_name?: string;
+          product_name_en?: string;
+          brands?: string;
+          image_url?: string;
+          image_front_url?: string;
+          categories?: string;
+        };
+      };
       
       if (data.status === 1 && data.product) {
         const product = data.product;
@@ -311,7 +321,7 @@ async function lookupBarcode(barcode: string): Promise<{
       }
     }
   } catch (error) {
-    console.error('Open Food Facts lookup error:', error);
+    appLogger.error({ err: error }, 'Open Food Facts lookup error');
   }
   
   // Try UPC Item DB as fallback (free tier)
@@ -321,7 +331,14 @@ async function lookupBarcode(barcode: string): Promise<{
     );
     
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as {
+        items?: Array<{
+          title?: string;
+          brand?: string;
+          images?: string[];
+          category?: string;
+        }>;
+      };
       
       if (data.items && data.items.length > 0) {
         const item = data.items[0];
@@ -334,7 +351,7 @@ async function lookupBarcode(barcode: string): Promise<{
       }
     }
   } catch (error) {
-    console.error('UPC Item DB lookup error:', error);
+    appLogger.error({ err: error }, 'UPC Item DB lookup error');
   }
   
   // Return empty if nothing found

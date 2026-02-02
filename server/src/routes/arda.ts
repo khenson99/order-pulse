@@ -7,9 +7,7 @@ import {
   OrderHeaderInput,
   createItemFromVelocity,
   syncVelocityToArda,
-  ItemVelocityProfileInput,
-  VelocitySyncResult,
-  EntityRecord
+  ItemVelocityProfileInput
 } from '../services/arda.js';
 import { cognitoService } from '../services/cognito.js';
 import { getUserEmail } from './auth.js';

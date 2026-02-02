@@ -5,8 +5,8 @@ const ARDA_BASE_URL = process.env.ARDA_BASE_URL || 'https://prod.alpha001.io.ard
 const ARDA_API_KEY = process.env.ARDA_API_KEY;
 const ARDA_TENANT_ID = process.env.ARDA_TENANT_ID;
 
-// Cache for tenant lookups
-const tenantCache = new Map<string, string>();
+// Cache for tenant lookups (reserved for future use)
+// const tenantCache = new Map<string, string>();
 
 // Types based on Arda OpenAPI schemas
 export interface ItemInput {
@@ -91,12 +91,13 @@ interface UserAccountRecord {
   payload: UserAccountEntity;
 }
 
-interface PageResult {
-  thisPage: string;
-  nextPage: string;
-  results: UserAccountRecord[];
-  totalCount?: number;
-}
+// PageResult interface available for paginated API calls
+// interface PageResult {
+//   thisPage: string;
+//   nextPage: string;
+//   results: UserAccountRecord[];
+//   totalCount?: number;
+// }
 
 interface ArdaError {
   responseMessage: string;

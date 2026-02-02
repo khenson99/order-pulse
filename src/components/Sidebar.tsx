@@ -1,4 +1,4 @@
-import { NAV_ITEMS, APP_NAME, APP_DESCRIPTION } from '../constants';
+import { NAV_ITEMS, APP_DESCRIPTION } from '../constants';
 import { Icons } from './Icons';
 import { GoogleUserProfile } from '../types';
 
