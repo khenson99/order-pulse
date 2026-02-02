@@ -37,7 +37,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
         setExpandedOrders(prev => new Set(prev).add(latestOrder.id));
       }, 0);
     }
-  }, [orders.length]);
+  }, [orders]);
 
   const toggleOrder = (orderId: string) => {
     setExpandedOrders(prev => {

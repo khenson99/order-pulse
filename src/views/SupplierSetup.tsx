@@ -104,7 +104,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [showWelcome, setShowWelcome] = useState(true);
   const [celebratingMilestone, setCelebratingMilestone] = useState<string | null>(null);
   const [achievedMilestones, setAchievedMilestones] = useState<Set<string>>(new Set());
-  const [, setShowInsights] = useState(false);
   
   // Lean wisdom rotation
   const [wisdomIndex, setWisdomIndex] = useState(() => Math.floor(Math.random() * LEAN_WISDOM.length));
@@ -257,8 +256,8 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
         const response = await jobsApi.startAmazon();
         setAmazonJobId(response.jobId);
         setAmazonError(null);
-      } catch (error: any) {
-        const errorMessage = error.message || 'Failed to start Amazon processing';
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to start Amazon processing';
         console.error('Amazon processing error:', errorMessage);
         
         // Retry on rate limit or temporary errors (up to 3 times)
@@ -279,8 +278,8 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
         const response = await jobsApi.startJob(['mcmaster.com', 'uline.com'], 'priority');
         setPriorityJobId(response.jobId);
         setPriorityError(null);
-      } catch (error: any) {
-        const errorMessage = error.message || 'Failed to start McMaster-Carr & Uline';
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to start McMaster-Carr & Uline';
         console.error('Priority suppliers error:', errorMessage);
         
         // Retry on rate limit (up to 3 times)
@@ -429,9 +428,10 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       setDiscoveredSuppliers(nonAmazonSuppliers);
       setHasDiscovered(true);
       setDiscoveryProgress('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Discovery error:', err);
-      setDiscoverError(err.message || 'Failed to discover suppliers');
+      const message = err instanceof Error ? err.message : 'Failed to discover suppliers';
+      setDiscoverError(message);
     } finally {
       setIsDiscovering(false);
     }
@@ -500,7 +500,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     try {
       const response = await jobsApi.startJob(domainsToScan, 'other');
       setCurrentJobId(response.jobId);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Scan error:', error);
       setIsScanning(false);
     }

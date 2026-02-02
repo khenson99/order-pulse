@@ -299,13 +299,17 @@ export const OrderTree: React.FC<OrderTreeProps> = ({
   // Set initial focus on first node if none focused
   useEffect(() => {
     if (focusedNodeId || visibleNodes.length === 0) return;
-    setFocusedNodeId(visibleNodes[0].id);
+    setTimeout(() => {
+      setFocusedNodeId(visibleNodes[0].id);
+    }, 0);
   }, [visibleNodes, focusedNodeId]);
 
   // Reset expanded nodes when view mode changes
   useEffect(() => {
-    setExpandedNodes(new Set());
-    setFocusedNodeId(null);
+    setTimeout(() => {
+      setExpandedNodes(new Set());
+      setFocusedNodeId(null);
+    }, 0);
   }, [viewMode]);
 
   // Summary stats

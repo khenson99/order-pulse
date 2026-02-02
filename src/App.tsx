@@ -9,7 +9,7 @@ import { LoginScreen } from './views/LoginScreen';
 // import { PipelineView } from './views/PipelineView';
 import { JourneyView } from './views/JourneyView';
 import { SupplierSetup } from './views/SupplierSetup';
-import { OnboardingFlow, ReconciliationItem } from './views/OnboardingFlow';
+import { OnboardingFlow } from './views/OnboardingFlow';
 import { MobileScanner } from './views/MobileScanner';
 import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
 import { processOrdersToInventory } from './utils/inventoryLogic';

@@ -123,7 +123,9 @@ export function useAutoIngestion(
   useEffect(() => {
     if (isIngesting && currentJobId) {
       pollingRef.current = setInterval(pollJobStatus, 1000);
-      void pollJobStatus(); // Immediate first poll
+      setTimeout(() => {
+        void pollJobStatus(); // Immediate first poll
+      }, 0);
     }
     
     return () => {
@@ -191,8 +193,9 @@ export function useAutoIngestion(
           setCurrentJobId(result.jobId);
           setJobStatus('running');
         }
-      } catch (err: any) {
-        setError(err.message || 'Failed to start ingestion');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to start ingestion';
+        setError(message);
         setIsIngesting(false);
       }
     }
@@ -215,19 +218,19 @@ export function useAutoIngestion(
             setJobStatus(status.status || null);
             
             // If completed, load the orders
-            if (status.status === 'completed' && status.orders) {
-              const convertedOrders: ExtractedOrder[] = status.orders.map((o: any) => ({
-                id: o.id,
-                originalEmailId: o.id,
-                supplier: o.supplier,
-                orderDate: o.orderDate,
-                totalAmount: o.totalAmount,
-                items: o.items,
-                confidence: o.confidence,
-              }));
-              setOrders(convertedOrders);
-              onOrdersProcessed(convertedOrders);
-            }
+                if (status.status === 'completed' && status.orders) {
+                  const convertedOrders: ExtractedOrder[] = status.orders.map((o) => ({
+                    id: o.id,
+                    originalEmailId: o.id,
+                    supplier: o.supplier,
+                    orderDate: o.orderDate,
+                    totalAmount: o.totalAmount,
+                    items: o.items,
+                    confidence: o.confidence,
+                  }));
+                  setOrders(convertedOrders);
+                  onOrdersProcessed(convertedOrders);
+                }
           } else {
             // No existing job, start a new one
             await startIngestion();

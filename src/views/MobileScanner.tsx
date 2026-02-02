@@ -69,7 +69,6 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
   // Handle detected barcode - defined before scanForBarcode so it's in scope
   const handleBarcodeDetected = useCallback(async (barcode: string) => {
     // Avoid duplicates in quick succession
-    // eslint-disable-next-line react-hooks/purity
     const now = Date.now();
     const recentScans = scannedItems.filter(
       item => now - new Date(item.timestamp).getTime() < 3000
@@ -252,10 +251,12 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
 
   // Restart camera when facing changes
   useEffect(() => {
-    if (isScanning) {
-      startCamera();
-    }
-  }, [cameraFacing]);
+    if (!isScanning) return;
+    const timeout = setTimeout(() => {
+      void startCamera();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [cameraFacing, isScanning, startCamera]);
 
   // Cleanup on unmount
   useEffect(() => {

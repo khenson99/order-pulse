@@ -90,11 +90,11 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
     onOrdersProcessed(filteredOrders);
   }, [filteredOrders, onOrdersProcessed]);
 
-  const addLog = (msg: string) => setLogs(prev => {
+  const addLog = useCallback((msg: string) => setLogs(prev => {
     // Avoid duplicates
     if (prev[0]?.includes(msg.substring(10))) return prev;
     return [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 99)];
-  });
+  }), []);
 
   const buildQueueItemsFromOrders = useCallback((orders: ExtractedOrder[]): InventoryItem[] => {
     if (orders.length === 0) return [];
@@ -360,7 +360,7 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
           setJobStatus(status.status);
           addLog('📋 Resuming existing job...');
         }
-      } catch (error) {
+      } catch {
         // No existing job, that's fine
       }
     };
@@ -421,7 +421,7 @@ export const IngestionEngine: React.FC<IngestionEngineProps> = ({
     };
     
     checkAuth();
-  }, []);
+  }, [addLog, setUserProfile]);
 
   const handleAuthClick = () => {
     setIsConnecting(true);

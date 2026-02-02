@@ -38,11 +38,35 @@ export const PhotoCaptureStep: React.FC<PhotoCaptureStepProps> = ({
         if (response.ok) {
           const data = await response.json();
           if (data.photos && Array.isArray(data.photos)) {
-            data.photos.forEach((photo: CapturedPhoto) => {
-              if (!capturedPhotos.some(existing => existing.id === photo.id)) {
-                onPhotoCaptured(photo);
+            // Process each new photo
+            for (const photoMeta of data.photos) {
+              if (!capturedPhotos.some(existing => existing.id === photoMeta.id)) {
+                // Fetch full image data for this photo
+                try {
+                  const imageResponse = await fetch(
+                    `${API_BASE_URL}/api/photo/session/${sessionId}/photo/${photoMeta.id}`,
+                    { credentials: 'include' }
+                  );
+                  if (imageResponse.ok) {
+                    const { photo: fullPhoto } = await imageResponse.json();
+                    const photo: CapturedPhoto = {
+                      id: fullPhoto.id,
+                      imageData: fullPhoto.imageData,
+                      source: fullPhoto.source || 'mobile',
+                      capturedAt: fullPhoto.capturedAt,
+                      suggestedName: fullPhoto.suggestedName,
+                      suggestedSupplier: fullPhoto.suggestedSupplier,
+                      extractedText: fullPhoto.extractedText,
+                      detectedBarcodes: fullPhoto.detectedBarcodes,
+                      isInternalItem: fullPhoto.isInternalItem,
+                    };
+                    onPhotoCaptured(photo);
+                  }
+                } catch {
+                  // Ignore individual photo fetch errors
+                }
               }
-            });
+            }
           }
         }
       } catch {

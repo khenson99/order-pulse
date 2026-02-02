@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { ExtractedOrder, InventoryItem, RawEmail, LineItemNodeData, ItemVelocityProfile } from '../types';
+import { ExtractedOrder, InventoryItem, LineItemNodeData, ItemVelocityProfile, RawEmail } from '../types';
 import { Icons } from '../components/Icons';
-import { buildVelocityProfiles, buildJourneyTree } from '../utils/inventoryLogic';
+import { buildVelocityProfiles } from '../utils/inventoryLogic';
 import { exportVelocityToCSV, exportOrdersToCSV } from '../utils/exportUtils';
 import { VelocityBadge } from '../components/VelocityBadge';
 
@@ -37,7 +37,6 @@ const getHumanItemName = (item: { name: string; amazonEnriched?: { itemName?: st
 export const JourneyView: React.FC<JourneyViewProps> = ({
   orders,
   inventory,
-  emails,
   onReorder,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');

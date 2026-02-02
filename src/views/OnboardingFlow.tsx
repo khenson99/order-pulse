@@ -133,7 +133,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   
   // Data from each step
   const [, setEmailOrders] = useState<ExtractedOrder[]>([]);
-  const [emailInventory, setEmailInventory] = useState<InventoryItem[]>([]);
+  const [emailInventory] = useState<InventoryItem[]>([]);
   const [scannedBarcodes, setScannedBarcodes] = useState<ScannedBarcode[]>([]);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const [, setReconciliationItems] = useState<ReconciliationItem[]>([]);

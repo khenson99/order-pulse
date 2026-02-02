@@ -116,7 +116,7 @@ export const CSVReconcileStep: React.FC<CSVReconcileStepProps> = ({
     });
     
     // Mark duplicates
-    nameMap.forEach((ids, _name) => {
+    nameMap.forEach((ids) => {
       if (ids.length > 1) {
         ids.slice(1).forEach(id => {
           const item = items.find(i => i.id === id);
@@ -226,7 +226,7 @@ export const CSVReconcileStep: React.FC<CSVReconcileStepProps> = ({
         }
       });
       
-      nameMap.forEach((ids, _name) => {
+      nameMap.forEach((ids) => {
         if (ids.length > 1) {
           ids.slice(1).forEach(id => {
             const item = combined.find(i => i.id === id);
