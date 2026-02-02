@@ -374,7 +374,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       case 'masterlist':
         return (
           <MasterListStep
-            emailItems={emailInventory}
+            emailItems={emailItems}
             scannedBarcodes={scannedBarcodes}
             capturedPhotos={capturedPhotos}
             csvItems={csvItems}
