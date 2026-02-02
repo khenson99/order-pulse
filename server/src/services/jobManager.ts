@@ -1,6 +1,7 @@
 // Job Manager - Background processing for email analysis
 import { v4 as uuidv4 } from 'uuid';
 import redisClient from '../utils/redisClient.js';
+import { requireRedis } from '../config.js';
 
 export interface JobProgress {
   total: number;
@@ -296,6 +297,9 @@ export const jobManager = {
 
 export async function initializeJobManager(): Promise<void> {
   if (!redisClient) {
+    if (requireRedis) {
+      throw new Error('Redis is required for job manager in production');
+    }
     console.log('⚠️ Redis unavailable – job store will remain in-memory only');
     startCleanupScheduler();
     return;

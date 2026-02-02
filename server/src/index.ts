@@ -24,7 +24,7 @@ import { appLogger, requestLogger } from './middleware/requestLogger.js';
 import { securityHeaders } from './middleware/securityHeaders.js';
 import { defaultLimiter, authLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { corsOrigin, isProduction, port } from './config.js';
+import { corsOrigin, isProduction, port, requireRedis } from './config.js';
 
 // Debug: Log OAuth config status
 console.log('🔐 OAuth Config:', {
@@ -69,6 +69,10 @@ for (const key of requiredSecrets) {
 }
 if (isProduction && !process.env.REDIS_URL) {
   console.warn('⚠️ REDIS_URL not set in production - sessions will not persist across restarts');
+}
+
+if (requireRedis && !redisClient) {
+  throw new Error('REDIS_URL is required in production; in-memory storage is disabled');
 }
 
 // Trust proxy for Railway (required for secure cookies behind reverse proxy)

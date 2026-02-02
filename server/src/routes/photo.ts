@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import redisClient from '../utils/redisClient.js';
+import { requireRedis } from '../config.js';
 import { appLogger } from '../middleware/requestLogger.js';
 
 const router = Router();
@@ -162,6 +163,14 @@ const savePhotoData = async (photoId: string, imageData: string): Promise<void> 
   }
 };
 
+const ensureRedis = (res: Response): boolean => {
+  if (requireRedis && !redisClient) {
+    res.status(503).json({ error: 'Redis unavailable; photo sessions require persistent storage' });
+    return false;
+  }
+  return true;
+};
+
 // Session ID validation middleware
 const validateSessionId = (req: Request, res: Response, next: NextFunction) => {
   const { sessionId } = req.params;
@@ -177,6 +186,7 @@ const validateSessionId = (req: Request, res: Response, next: NextFunction) => {
  */
 router.get('/session/:sessionId/photos', validateSessionId, async (req: Request, res: Response) => {
   try {
+    if (!ensureRedis(res)) return;
     const { sessionId } = req.params;
     const { since } = req.query;
     
@@ -215,6 +225,7 @@ router.get('/session/:sessionId/photos', validateSessionId, async (req: Request,
  */
 router.get('/session/:sessionId/photo/:photoId', validateSessionId, async (req: Request, res: Response) => {
   try {
+    if (!ensureRedis(res)) return;
     const { sessionId, photoId } = req.params;
     
     const session = await getSession(sessionId);
@@ -247,6 +258,7 @@ router.get('/session/:sessionId/photo/:photoId', validateSessionId, async (req: 
  */
 router.post('/session/:sessionId/photo', validateSessionId, async (req: Request, res: Response) => {
   try {
+    if (!ensureRedis(res)) return;
     const { sessionId } = req.params;
     const { id, data, timestamp } = req.body;
     

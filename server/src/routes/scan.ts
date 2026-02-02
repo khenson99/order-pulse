@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import redisClient from '../utils/redisClient.js';
+import { requireRedis } from '../config.js';
 import { appLogger } from '../middleware/requestLogger.js';
 import { lookupProductByBarcode } from '../services/barcodeLookup.js';
 
@@ -114,12 +115,21 @@ const validateSessionId = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
+const ensureRedis = (res: Response): boolean => {
+  if (requireRedis && !redisClient) {
+    res.status(503).json({ error: 'Redis unavailable; scanning sessions require persistent storage' });
+    return false;
+  }
+  return true;
+};
+
 /**
  * GET /api/scan/session/:sessionId/barcodes
  * Get all barcodes for a session (used by desktop to poll for mobile scans)
  */
 router.get('/session/:sessionId/barcodes', validateSessionId, async (req: Request, res: Response) => {
   try {
+    if (!ensureRedis(res)) return;
     const { sessionId } = req.params;
     const { since } = req.query;
     
@@ -151,6 +161,7 @@ router.get('/session/:sessionId/barcodes', validateSessionId, async (req: Reques
  */
 router.post('/session/:sessionId/barcode', validateSessionId, async (req: Request, res: Response) => {
   try {
+    if (!ensureRedis(res)) return;
     const { sessionId } = req.params;
     const { id, data, timestamp, barcodeType } = req.body;
     

@@ -23,12 +23,12 @@ declare module 'express-session' {
 
 // Get user credentials from session - returns email, tenantId, and author (sub)
 // Falls back to first Cognito user for demo mode when not authenticated
-function getUserCredentials(req: Request): { email: string; tenantId: string | null; author: string | null } {
+async function getUserCredentials(req: Request): Promise<{ email: string; tenantId: string | null; author: string | null }> {
   let email = '';
   
   // Try to get from session first
   if (req.session?.userId) {
-    const sessionEmail = getUserEmail(req.session.userId);
+    const sessionEmail = await getUserEmail(req.session.userId);
     if (sessionEmail) email = sessionEmail;
   }
 
@@ -76,7 +76,7 @@ router.get('/lookup-tenant', async (req: Request, res: Response) => {
     // Accept email from query param or session
     let email = req.query.email as string;
     if (!email && req.session?.userId) {
-      email = getUserCredentials(req).email;
+      email = (await getUserCredentials(req)).email;
     }
     
     if (!email) {
@@ -117,7 +117,7 @@ router.get('/lookup-tenant', async (req: Request, res: Response) => {
 // Create item in Arda
 router.post('/items', requireAuth, async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     if (!credentials.author) {
       return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
     }
@@ -157,7 +157,7 @@ router.post('/items', requireAuth, async (req: Request, res: Response) => {
 // Create Kanban card in Arda
 router.post('/kanban-cards', requireAuth, async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     if (!credentials.author) {
       return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
     }
@@ -183,7 +183,7 @@ router.post('/kanban-cards', requireAuth, async (req: Request, res: Response) =>
 // Create order in Arda
 router.post('/orders', requireAuth, async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     if (!credentials.author) {
       return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
     }
@@ -220,7 +220,7 @@ router.post('/orders', requireAuth, async (req: Request, res: Response) => {
 // Bulk sync items to Arda (no auth required for demo)
 router.post('/items/bulk', async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     const items: Array<Omit<ItemInput, 'externalGuid'>> = req.body.items;
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -289,7 +289,7 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
 // Sync velocity profiles to Arda
 router.post('/sync-velocity', requireAuth, async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     if (!credentials.author) {
       return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
     }
@@ -336,7 +336,7 @@ router.post('/sync-velocity', requireAuth, async (req: Request, res: Response) =
 // Push velocity items to Arda
 router.post('/push-velocity', requireAuth, async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     if (!credentials.author) {
       return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
     }
@@ -388,7 +388,7 @@ router.post('/push-velocity', requireAuth, async (req: Request, res: Response) =
 // Sync a single item from velocity data
 router.post('/sync-item', requireAuth, async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     if (!credentials.author) {
       return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
     }
@@ -420,7 +420,7 @@ router.post('/sync-item', requireAuth, async (req: Request, res: Response) => {
 // Get sync status (returns basic status since tracking is not yet implemented)
 router.get('/sync-status', requireAuth, async (req: Request, res: Response) => {
   try {
-    const credentials = getUserCredentials(req);
+    const credentials = await getUserCredentials(req);
     
     // Since sync status tracking is not yet implemented, return basic status
     res.json({

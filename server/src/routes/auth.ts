@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { google } from 'googleapis';
+import redisClient from '../utils/redisClient.js';
+import { requireRedis } from '../config.js';
 
 const router = Router();
 
@@ -15,17 +17,42 @@ interface UserData {
   expiresAt: Date;
 }
 
-const users = new Map<string, UserData>();
+const users = new Map<string, UserData>(); // local cache for dev
 
-// Export users map for other routes that need user email
-export { users };
+const userKey = (userId: string) => `auth:user:${userId}`;
 
-// Helper to get user email by session userId
-export function getUserEmail(userId: string): string | null {
-  const user = users.get(userId);
+async function storeUser(user: UserData): Promise<void> {
+  if (redisClient) {
+    await redisClient.set(userKey(user.id), JSON.stringify(user));
+  }
+  users.set(user.id, user);
+}
+
+async function getUser(userId: string): Promise<UserData | null> {
+  if (users.has(userId)) return users.get(userId)!;
+  if (redisClient) {
+    const data = await redisClient.get(userKey(userId));
+    if (data) {
+      const parsed = JSON.parse(data) as UserData;
+      users.set(userId, parsed);
+      return parsed;
+    }
+  }
+  return null;
+}
+
+export async function getUserEmail(userId: string): Promise<string | null> {
+  const user = await getUser(userId);
   return user?.email || null;
 }
 
+function ensureRedis(res: Response): boolean {
+  if (requireRedis && !redisClient) {
+    res.status(503).json({ error: 'Redis unavailable; authentication persistence is required in production' });
+    return false;
+  }
+  return true;
+}
 
 // Create OAuth2 client lazily (after env vars are loaded)
 function getOAuth2Client() {
@@ -72,6 +99,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
   }
 
   try {
+    if (!ensureRedis(res)) return;
     const oauth2Client = getOAuth2Client();
     
     // Exchange code for tokens
@@ -86,7 +114,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       throw new Error('Missing user info from Google');
     }
 
-    // Store user in memory
+    // Store user
     const userId = userInfo.id;
     const userData: UserData = {
       id: userId,
@@ -99,7 +127,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : new Date(Date.now() + 3600 * 1000),
     };
     
-    users.set(userId, userData);
+    await storeUser(userData);
     console.log(`✅ User authenticated: ${userData.name} (${userData.email})`);
 
     // Set session
@@ -119,7 +147,7 @@ router.get('/me', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const user = users.get(req.session.userId);
+  const user = await getUser(req.session.userId);
   if (!user) {
     req.session.destroy(() => {});
     return res.status(401).json({ error: 'User not found' });
@@ -139,6 +167,9 @@ router.get('/me', async (req: Request, res: Response) => {
 router.post('/logout', async (req: Request, res: Response) => {
   if (req.session.userId) {
     users.delete(req.session.userId);
+    if (redisClient) {
+      await redisClient.del(userKey(req.session.userId));
+    }
     req.session.destroy((err) => {
       if (err) {
         console.error('Session destroy error:', err);
@@ -150,7 +181,7 @@ router.post('/logout', async (req: Request, res: Response) => {
 
 // Get valid access token (with auto-refresh)
 export async function getValidAccessToken(userId: string): Promise<string | null> {
-  const user = users.get(userId);
+  const user = await getUser(userId);
   if (!user) {
     return null;
   }
