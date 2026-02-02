@@ -46,6 +46,14 @@ import {
   Smartphone,
   Circle,
   QrCode,
+  ListChecks,
+  PartyPopper,
+  FileSpreadsheet,
+  MapPin,
+  Pencil,
+  Trash2,
+  XCircle,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const Icons = {
@@ -96,5 +104,13 @@ export const Icons = {
   Smartphone,
   Circle,
   QrCode,
+  ListChecks,
+  PartyPopper,
+  FileSpreadsheet,
+  MapPin,
+  Pencil,
+  Trash2,
+  XCircle,
+  AlertTriangle,
 };
 
