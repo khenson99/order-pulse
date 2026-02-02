@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { CapturedPhoto } from './OnboardingFlow';
+import { API_BASE_URL } from '../services/api';
 
 interface PhotoCaptureStepProps {
   sessionId: string;
@@ -31,7 +32,9 @@ export const PhotoCaptureStep: React.FC<PhotoCaptureStepProps> = ({
   useEffect(() => {
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/photo/session/${sessionId}/photos`);
+        const response = await fetch(`${API_BASE_URL}/api/photo/session/${sessionId}/photos`, {
+          credentials: 'include',
+        });
         if (response.ok) {
           const data = await response.json();
           if (data.photos && Array.isArray(data.photos)) {

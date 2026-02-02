@@ -33,7 +33,9 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
   useEffect(() => {
     if (orders.length > 0) {
       const latestOrder = orders[orders.length - 1];
-      setExpandedOrders(prev => new Set(prev).add(latestOrder.id));
+      setTimeout(() => {
+        setExpandedOrders(prev => new Set(prev).add(latestOrder.id));
+      }, 0);
     }
   }, [orders.length]);
 

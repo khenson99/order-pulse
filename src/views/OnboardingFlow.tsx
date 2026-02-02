@@ -127,8 +127,6 @@ interface BackgroundEmailProgress {
 
 export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onComplete,
-  onSkip: _onSkip,
-  userProfile: _userProfile,
 }) => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('email');
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
@@ -139,8 +137,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const [scannedBarcodes, setScannedBarcodes] = useState<ScannedBarcode[]>([]);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const [, setReconciliationItems] = useState<ReconciliationItem[]>([]);
-  
-  // Note: _onSkip and _userProfile are available for future use
   
   // Background email scanning progress
   const [emailProgress, setEmailProgress] = useState<BackgroundEmailProgress | null>(null);

@@ -48,9 +48,6 @@ export const JourneyView: React.FC<JourneyViewProps> = ({
 
   // Build velocity profiles
   const velocityProfiles = useMemo(() => buildVelocityProfiles(orders), [orders]);
-  // Journey tree built for future use
-  const _journeyTree = useMemo(() => buildJourneyTree(orders, emails), [orders, emails]);
-
   // Get selected item's profile
   const selectedProfile = selectedItem 
     ? velocityProfiles.get(selectedItem.normalizedName) 

@@ -7,9 +7,23 @@ interface CadenceViewProps {
   orders?: ExtractedOrder[];
 }
 
+type CadenceDatum = {
+  name: string;
+  fullName: string;
+  cadence: number;
+  orderCount: number;
+};
+
+type VelocityDatum = {
+  name: string;
+  fullName: string;
+  velocity: number;
+  supplier: string;
+};
+
 export const CadenceView: React.FC<CadenceViewProps> = ({ inventory }) => {
   // Cadence chart data (days between orders)
-  const cadenceData = inventory
+  const cadenceData: CadenceDatum[] = inventory
     .map(item => ({
       name: item.name.substring(0, 15) + (item.name.length > 15 ? '...' : ''),
       fullName: item.name,
@@ -20,7 +34,7 @@ export const CadenceView: React.FC<CadenceViewProps> = ({ inventory }) => {
     .slice(0, 10); // Top 10
 
   // Velocity chart data (units per day - consumption rate)
-  const velocityData = inventory
+  const velocityData: VelocityDatum[] = inventory
     .map(item => ({
       name: item.name.substring(0, 15) + (item.name.length > 15 ? '...' : ''),
       fullName: item.name,
@@ -145,10 +159,10 @@ export const CadenceView: React.FC<CadenceViewProps> = ({ inventory }) => {
                 <Tooltip
                   cursor={{ fill: '#F3F4F6' }}
                   contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
-                  formatter={(value, name, props) => [
-                    `${value} days (${(props.payload as any).orderCount} orders)`,
-                    (props.payload as any).fullName
-                  ]}
+                  formatter={(value, _name, props) => {
+                    const payload = props?.payload as CadenceDatum;
+                    return [`${value} days (${payload.orderCount} orders)`, payload.fullName];
+                  }}
                 />
                 <Bar dataKey="cadence" fill="#58a6ff" radius={[0, 4, 4, 0]} barSize={18}>
                   {cadenceData.map((entry, index) => (
@@ -181,10 +195,10 @@ export const CadenceView: React.FC<CadenceViewProps> = ({ inventory }) => {
                 <Tooltip
                   cursor={{ fill: '#F3F4F6' }}
                   contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
-                  formatter={(value, name, props) => [
-                    `${value} units/day`,
-                    (props.payload as any).fullName
-                  ]}
+                  formatter={(value, _name, props) => {
+                    const payload = props?.payload as VelocityDatum;
+                    return [`${value} units/day`, payload.fullName];
+                  }}
                 />
                 <Bar dataKey="velocity" fill="#3fb950" radius={[0, 4, 4, 0]} barSize={18} />
               </BarChart>

@@ -12,7 +12,6 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ orders, inventory, onReorder }) => {
   const totalSpend = orders.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
-  const _activeSuppliers = new Set(inventory.map(i => i.supplier)).size;
   
   // Build velocity profiles
   const velocityProfiles = buildVelocityProfiles(orders);

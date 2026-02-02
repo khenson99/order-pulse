@@ -237,13 +237,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   }, [amazonJobId, priorityJobId]);
 
   // Rotate lean wisdom (every 10 seconds, always running)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- computed for future UI enhancements
-  const isCurrentlyProcessing = Boolean(
-    (!isAmazonComplete && amazonJobId) || 
-    (!isPriorityComplete && priorityJobId) || 
-    isScanning
-  );
-  
   useEffect(() => {
     const interval = setInterval(() => {
       setWisdomIndex(prev => (prev + 1) % LEAN_WISDOM.length);

@@ -482,8 +482,8 @@ export const buildJourneyTree = (
   
   // Sort by date (most recent first)
   tree.sort((a, b) => {
-    const dateA = (a.data as any)?.date || '';
-    const dateB = (b.data as any)?.date || '';
+    const dateA = (a.data as { date?: string })?.date || '';
+    const dateB = (b.data as { date?: string })?.date || '';
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
   
@@ -611,4 +611,3 @@ export const processOrdersToInventory = (orders: ExtractedOrder[]): InventoryIte
     return cleanItem as InventoryItem;
   });
 };
-

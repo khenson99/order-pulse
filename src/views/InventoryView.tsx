@@ -271,16 +271,18 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         }
       }
       
-      result.results?.forEach((r: any, i: number) => {
+      result.results?.forEach((r, i: number) => {
+        const status = (r as { status?: string }).status;
+        const errorMsg = (r as { error?: string }).error;
         if (items[i]) {
           setSyncResults(prev => ({
             ...prev,
-            [items[i].id]: r.status === 'fulfilled' ? 'success' : 'error',
+            [items[i].id]: status === 'fulfilled' ? 'success' : 'error',
           }));
-          if (r.error) {
-            setSyncErrors(prev => ({ ...prev, [items[i].id]: r.error }));
+          if (errorMsg) {
+            setSyncErrors(prev => ({ ...prev, [items[i].id]: errorMsg }));
           }
-          if (r.status === 'fulfilled') {
+          if (status === 'fulfilled') {
             handleUpdate(items[i].id, { isDraft: false });
           }
         }

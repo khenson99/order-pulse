@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { ScannedBarcode } from './OnboardingFlow';
+import { API_BASE_URL } from '../services/api';
 
 interface BarcodeScanStepProps {
   sessionId: string;
@@ -29,6 +30,12 @@ export const BarcodeScanStep: React.FC<BarcodeScanStepProps> = ({
   const [lookupStatus, setLookupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const inputRef = useRef<HTMLInputElement>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idCounterRef = useRef(0);
+
+  const nextId = useCallback(() => {
+    idCounterRef.current += 1;
+    return `scan-${idCounterRef.current}`;
+  }, []);
 
   // Focus input for scanner when listening
   useEffect(() => {
@@ -41,7 +48,9 @@ export const BarcodeScanStep: React.FC<BarcodeScanStepProps> = ({
   useEffect(() => {
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/scan/session/${sessionId}/barcodes`);
+        const response = await fetch(`${API_BASE_URL}/api/scan/session/${sessionId}/barcodes`, {
+          credentials: 'include',
+        });
         if (response.ok) {
           const data = await response.json();
           // Process any new barcodes from mobile
@@ -61,26 +70,37 @@ export const BarcodeScanStep: React.FC<BarcodeScanStepProps> = ({
     return () => clearInterval(pollInterval);
   }, [sessionId, scannedBarcodes, onBarcodeScanned]);
 
-  // Handle scanner input
-  const handleScannerInput = useCallback((value: string) => {
-    setScannerInput(value);
-    
-    // Clear previous timeout
-    if (scanTimeoutRef.current) {
-      clearTimeout(scanTimeoutRef.current);
-    }
-    
-    // Barcode scanners typically send input quickly followed by Enter
-    // Set a timeout to process if no more input comes
-    scanTimeoutRef.current = setTimeout(() => {
-      if (value.length >= 8) { // Minimum UPC length
-        processBarcode(value);
+  // Detect barcode type from string
+  const detectBarcodeType = useCallback((barcode: string): ScannedBarcode['barcodeType'] => {
+    const digits = barcode.replace(/\D/g, '');
+    if (digits.length === 12) return 'UPC-A';
+    if (digits.length === 13) return 'EAN-13';
+    if (digits.length === 8) return 'UPC';
+    return 'unknown';
+  }, []);
+
+  // Look up product info from barcode
+  const lookupBarcode = useCallback(async (barcode: string): Promise<{
+    name: string;
+    brand?: string;
+    imageUrl?: string;
+    category?: string;
+  } | null> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/barcode/lookup?code=${encodeURIComponent(barcode)}`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        return await response.json();
       }
-    }, 100);
+    } catch {
+      // Ignore lookup errors
+    }
+    return null;
   }, []);
 
   // Process a scanned barcode
-  const processBarcode = async (barcode: string) => {
+  const processBarcode = useCallback(async (barcode: string) => {
     const cleanBarcode = barcode.trim();
     if (!cleanBarcode) return;
     
@@ -99,7 +119,7 @@ export const BarcodeScanStep: React.FC<BarcodeScanStepProps> = ({
     
     // Create the scanned barcode entry
     const scannedItem: ScannedBarcode = {
-      id: `scan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: nextId(),
       barcode: cleanBarcode,
       barcodeType,
       scannedAt: new Date().toISOString(),
@@ -128,41 +148,32 @@ export const BarcodeScanStep: React.FC<BarcodeScanStepProps> = ({
       setLookupStatus('idle');
       setRecentScan(null);
     }, 2000);
-  };
+  }, [detectBarcodeType, lookupBarcode, nextId, onBarcodeScanned, scannedBarcodes]);
 
-  // Detect barcode type from string
-  const detectBarcodeType = (barcode: string): ScannedBarcode['barcodeType'] => {
-    const digits = barcode.replace(/\D/g, '');
-    if (digits.length === 12) return 'UPC-A';
-    if (digits.length === 13) return 'EAN-13';
-    if (digits.length === 8) return 'UPC';
-    return 'unknown';
-  };
-
-  // Look up product info from barcode (placeholder - would call real API)
-  const lookupBarcode = async (barcode: string): Promise<{
-    name: string;
-    brand?: string;
-    imageUrl?: string;
-    category?: string;
-  } | null> => {
-    try {
-      const response = await fetch(`/api/barcode/lookup?code=${encodeURIComponent(barcode)}`);
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch {
-      // Ignore lookup errors
+  // Handle scanner input
+  const handleScannerInput = useCallback((value: string) => {
+    setScannerInput(value);
+    
+    // Clear previous timeout
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
     }
-    return null;
-  };
+    
+    // Barcode scanners typically send input quickly followed by Enter
+    // Set a timeout to process if no more input comes
+    scanTimeoutRef.current = setTimeout(() => {
+      if (value.length >= 8) { // Minimum UPC length
+        void processBarcode(value);
+      }
+    }, 100);
+  }, [processBarcode]);
 
   // Handle keyboard input
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (scannerInput.length >= 8) {
-        processBarcode(scannerInput);
+        void processBarcode(scannerInput);
       }
     }
   };
