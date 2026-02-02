@@ -28,7 +28,7 @@ describe('supplierSetupUtils', () => {
         displayName: 'Unknown',
         emailCount: 0,
         score: 10,
-        category: 'mystery',
+        category: 'unknown',
         sampleSubjects: [],
         isRecommended: false,
       },

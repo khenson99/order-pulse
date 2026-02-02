@@ -116,6 +116,7 @@ describe('TreeNode', () => {
       label: 'Velocity Node',
       children: [],
       data: {
+        normalizedName: 'test-item',
         dailyBurnRate: 2,
         averageCadenceDays: 15,
         orderCount: 3,
@@ -149,7 +150,7 @@ describe('TreeNode', () => {
             label: 'Order Label',
             subtitle: 'order subtitle',
             children: [],
-            data: { totalAmount: 123.45 },
+            data: { orderId: 'o1', emailId: 'e1', supplier: 'Test', orderDate: '2024-01-01', itemCount: 1, confidence: 0.9, totalAmount: 123.45 },
           }}
           level={1}
           expandedNodes={new Set(['order-1'])}
@@ -161,7 +162,7 @@ describe('TreeNode', () => {
             label: 'Email Label',
             subtitle: 'email subtitle',
             children: [],
-            data: { date: '2024-02-10' },
+            data: { emailId: 'e1', sender: 'test@test.com', subject: 'Test', date: '2024-02-10' },
           }}
           level={0}
           expandedNodes={new Set(['email-1'])}
@@ -173,7 +174,7 @@ describe('TreeNode', () => {
             label: 'Velocity',
             subtitle: 'velocity subtitle',
             children: [],
-            data: { dailyBurnRate: 1.2, averageCadenceDays: 10, orderCount: 2, nextPredictedOrder: '2024-04-01' },
+            data: { normalizedName: 'test', dailyBurnRate: 1.2, averageCadenceDays: 10, orderCount: 2, nextPredictedOrder: '2024-04-01' },
           }}
           level={2}
           expandedNodes={new Set(['vel-1'])}
@@ -329,7 +330,7 @@ describe('TreeNode', () => {
               type: 'lineItem',
               label: 'Nested Child',
               children: [],
-              data: { name: 'n', quantity: 1, unit: 'ea', normalizedName: 'n' },
+              data: { lineItemId: 'li1', orderId: 'o1', emailId: 'e1', name: 'n', quantity: 1, unit: 'ea', normalizedName: 'n' },
             },
           ],
         }}
@@ -351,7 +352,7 @@ describe('TreeNode', () => {
           label: 'Order Missing Amount',
           subtitle: 'no amount',
           children: [],
-          data: {},
+          data: { orderId: 'o1', emailId: 'e1', supplier: 'Test', orderDate: '2024-01-01', itemCount: 1, confidence: 0.9 },
         }}
         level={0}
         expandedNodes={new Set()}
@@ -371,7 +372,7 @@ describe('TreeNode', () => {
           label: 'Zero Amount',
           subtitle: 'zero total',
           children: [],
-          data: { totalAmount: 0 },
+          data: { orderId: 'o1', emailId: 'e1', supplier: 'Test', orderDate: '2024-01-01', itemCount: 1, confidence: 0.9, totalAmount: 0 },
         }}
         level={0}
         expandedNodes={new Set()}

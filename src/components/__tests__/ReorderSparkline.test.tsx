@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ReorderSparkline } from '../ReorderSparkline';
 
-vi.mock('recharts', () => {
-  const ReactImport = require('react');
+vi.mock('recharts', async () => {
+  const React = await import('react');
   return {
     ResponsiveContainer: ({ children, width, height }: any) => (
       <div data-testid="responsive" style={{ width, height }}>
