@@ -6,6 +6,7 @@ import { corsOrigin, isProduction, requireRedis } from '../config.js';
 import { saveUser, getUserById, deleteUser, getUserEmail as getUserEmailFromStore, StoredUser } from '../services/userStore.js';
 
 const router = Router();
+type CachedUser = StoredUser & { _cachedAt?: number };
 
 // Rate limit only OAuth endpoints (not /me which is called frequently)
 const oauthLimiter = rateLimit({
@@ -17,7 +18,7 @@ const oauthLimiter = rateLimit({
 });
 
 // In-memory storage (for development without PostgreSQL)
-const users = new Map<string, StoredUser>(); // local cache for dev
+const users = new Map<string, CachedUser>(); // local cache for dev
 
 export async function getUserEmail(userId: string): Promise<string | null> {
   return getUserEmailFromStore(userId);
@@ -159,7 +160,8 @@ router.get('/google', oauthLimiter, (req: Request, res: Response) => {
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: SCOPES,
-      prompt: 'consent',
+      // Faster repeat logins: only force account picker, skip full consent when already granted
+      prompt: 'select_account',
     });
     console.log('🔗 Redirecting to:', authUrl.substring(0, 140) + '...');
     res.redirect(authUrl);
@@ -268,8 +270,21 @@ router.get('/me', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  // Fast path: check local memory first
-  let user = users.get(req.session.userId) || null;
+  // Fast path: check local memory first (with TTL)
+  const cacheTtlMs = 60_000; // 60 seconds
+  const cached = users.get(req.session.userId);
+  if (cached && cached._cachedAt && Date.now() - cached._cachedAt <= cacheTtlMs) {
+    return res.json({ 
+      user: {
+        id: cached.id,
+        email: cached.email,
+        name: cached.name,
+        picture_url: cached.picture,
+      }
+    });
+  }
+
+  let user = (cached as StoredUser | undefined) || null;
   
   // Fall back to persistent store
   if (!user) {
@@ -282,7 +297,8 @@ router.get('/me', async (req: Request, res: Response) => {
   }
 
   // Cache locally for future requests
-  users.set(user.id, user);
+  const now = Date.now();
+  users.set(user.id, { ...user, _cachedAt: now });
 
   res.json({ 
     user: {

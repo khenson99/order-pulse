@@ -5,7 +5,8 @@ import { buildVelocityProfiles } from '../utils/inventoryLogic';
 import { SupplierSetup, EmailScanState } from './SupplierSetup';
 import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
-import { CSVUploadStep, CSVItem } from './CSVUploadStep';
+import { CSVUploadStep } from './CSVUploadStep';
+import { CSVItem } from './csvUploadUtils';
 import { MasterListStep, MasterListItem } from './MasterListStep';
 import { ArdaSyncStep } from './ArdaSyncStep';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectColumnMapping } from '../CSVUploadStep';
+import { detectColumnMapping } from '../csvUploadUtils';
 
 describe('detectColumnMapping', () => {
   it('auto-maps common inventory headers', () => {

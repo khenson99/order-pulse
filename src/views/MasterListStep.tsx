@@ -1,7 +1,7 @@
-import { useState, useMemo, useCallback, useDeferredValue, memo } from 'react';
+import { useState, useMemo, useCallback, useDeferredValue } from 'react';
 import { Icons } from '../components/Icons';
 import { ScannedBarcode, CapturedPhoto } from './OnboardingFlow';
-import { CSVItem, CSVItemColor } from './CSVUploadStep';
+import { CSVItem, CSVItemColor } from './csvUploadUtils';
 import { productApi } from '../services/api';
 
 function trimOrUndefined(value: string | undefined): string | undefined {
