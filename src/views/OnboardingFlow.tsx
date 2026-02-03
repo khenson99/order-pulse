@@ -39,42 +39,42 @@ const ONBOARDING_STEPS: StepConfig[] = [
   {
     id: 'email',
     number: 1,
-    title: 'Link Email',
+    title: 'Email',
     description: 'Import orders from your inbox',
     icon: 'Mail',
   },
   {
     id: 'barcode',
     number: 2,
-    title: 'Scan Barcodes',
+    title: 'UPCs',
     description: 'Scan UPC/EAN codes in your shop',
     icon: 'Barcode',
   },
   {
     id: 'photo',
     number: 3,
-    title: 'Capture Items',
+    title: 'Images',
     description: 'Photograph items with labels',
     icon: 'Camera',
   },
   {
     id: 'csv',
     number: 4,
-    title: 'Upload CSV',
+    title: 'CSV',
     description: 'Import from spreadsheet',
     icon: 'FileSpreadsheet',
   },
   {
     id: 'masterlist',
     number: 5,
-    title: 'Review Items',
+    title: 'Review',
     description: 'Verify and enrich data',
     icon: 'ListChecks',
   },
   {
     id: 'sync',
     number: 6,
-    title: 'Sync to Arda',
+    title: 'Sync',
     description: 'Push items to inventory',
     icon: 'Upload',
   },
@@ -409,7 +409,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         </div>
 
         <div className="mt-4">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center">
             {ONBOARDING_STEPS.map((step, index) => {
               const status = getStepStatus(step.id);
               const Icon = Icons[step.icon] || Icons.Circle;
@@ -426,24 +426,37 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                       if (isInteractive) setCurrentStep(step.id);
                     }}
                     disabled={!isInteractive}
-                    title={step.title}
                     className={[
-                      'w-8 h-8 rounded-full flex items-center justify-center transition-all border',
-                      isCurrent ? 'bg-orange-500 border-orange-600 text-white ring-2 ring-orange-200' : '',
-                      isCompleted ? 'bg-arda-accent border-orange-600 text-white' : '',
-                      status === 'upcoming' ? 'bg-white border-arda-border text-arda-text-muted' : '',
-                      !isInteractive ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-105',
+                      'flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-all border whitespace-nowrap',
+                      isCurrent ? 'bg-orange-50 border-orange-200' : 'bg-white/70 border-arda-border hover:bg-white',
+                      !isInteractive ? 'opacity-50 cursor-not-allowed' : '',
                     ].join(' ')}
                     aria-current={isCurrent ? 'step' : undefined}
-                    aria-label={step.title}
                   >
-                    {isCompleted ? <Icons.Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                    <span
+                      className={[
+                        'w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 border',
+                        isCompleted ? 'bg-arda-accent border-orange-600 text-white' : '',
+                        isCurrent ? 'bg-orange-500 border-orange-600 text-white' : '',
+                        status === 'upcoming' ? 'bg-arda-bg-tertiary border-arda-border text-arda-text-muted' : '',
+                      ].join(' ')}
+                    >
+                      {isCompleted ? <Icons.Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
+                    </span>
+                    <span
+                      className={[
+                        'text-xs font-medium',
+                        isCurrent ? 'text-arda-text-primary' : 'text-arda-text-secondary',
+                      ].join(' ')}
+                    >
+                      {step.title}
+                    </span>
                   </button>
 
                   {index < ONBOARDING_STEPS.length - 1 && (
                     <div
                       className={[
-                        'flex-1 h-[2px] mx-1 rounded-full',
+                        'flex-1 h-[2px] mx-1 rounded-full min-w-2',
                         completedSteps.has(step.id) ? 'bg-orange-400' : 'bg-arda-border',
                       ].join(' ')}
                     />
