@@ -221,19 +221,18 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
       }
     });
     
-    // Add photo-captured items
+    // Add photo-captured items (include ALL photos, even without analysis)
     capturedPhotos.forEach(photo => {
-      if (photo.suggestedName) {
-        items.push({
-          id: `photo-${photo.id}`,
-          source: 'photo',
-          name: photo.suggestedName,
-          supplier: photo.suggestedSupplier,
-          imageUrl: photo.imageData,
-          isVerified: false,
-          needsAttention: false,
-        });
-      }
+      items.push({
+        id: `photo-${photo.id}`,
+        source: 'photo',
+        name: photo.suggestedName || 'Captured Item (analyzing...)',
+        supplier: photo.suggestedSupplier,
+        imageUrl: photo.imageData,
+        isVerified: false,
+        // Needs attention if not analyzed yet
+        needsAttention: !photo.suggestedName,
+      });
     });
     
     // Add CSV items
@@ -261,6 +260,41 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   const [filter, setFilter] = useState<'all' | 'needs_attention' | 'verified'>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'email' | 'barcode' | 'photo' | 'csv'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Sync items when new data comes in (e.g., new photos from mobile, updated analysis)
+  useEffect(() => {
+    setItems(prev => {
+      const newItems = [...prev];
+      let hasChanges = false;
+
+      // Add or update items from initialItems
+      for (const newItem of initialItems) {
+        const existingIndex = newItems.findIndex(i => i.id === newItem.id);
+        if (existingIndex === -1) {
+          // New item - add it
+          newItems.push(newItem);
+          hasChanges = true;
+        } else {
+          // Existing item - update if analysis has completed
+          const existing = newItems[existingIndex];
+          if (
+            (!existing.name || existing.name.includes('analyzing')) && 
+            newItem.name && !newItem.name.includes('analyzing')
+          ) {
+            newItems[existingIndex] = {
+              ...existing,
+              name: newItem.name,
+              supplier: newItem.supplier || existing.supplier,
+              needsAttention: false,
+            };
+            hasChanges = true;
+          }
+        }
+      }
+
+      return hasChanges ? newItems : prev;
+    });
+  }, [initialItems]);
 
   // Update a field on an item
   const updateItem = useCallback((id: string, field: keyof MasterListItem, value: string | number | undefined) => {
