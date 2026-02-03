@@ -96,6 +96,10 @@ const buildEmailItemsFromOrders = (orders: ExtractedOrder[]): EmailItem[] => {
         ?? item.amazonEnriched?.itemName
         ?? item.name;
 
+      // Two-bin system: min qty = order qty (refill one bin when empty)
+      // Use velocity profile if available, otherwise default to 1.5x last order quantity
+      const minQty = profile?.recommendedMin || Math.ceil((item.quantity || 1) * 1.5);
+
       const emailItem: EmailItem = {
         id: `email-${order.id}-${item.name}`,
         name: displayName,
@@ -105,12 +109,8 @@ const buildEmailItemsFromOrders = (orders: ExtractedOrder[]): EmailItem[] => {
         productUrl: item.amazonEnriched?.amazonUrl,
         lastPrice: item.unitPrice,
         quantity: item.quantity,
-        recommendedMin: profile?.recommendedMin || Math.ceil((item.quantity || 1) * 1.5),
-        recommendedOrderQty: Math.max(
-          profile?.recommendedOrderQty ?? 0,
-          profile?.recommendedMin ?? 0,
-          item.quantity || 1,
-        ),
+        recommendedMin: minQty,
+        recommendedOrderQty: minQty, // Two-bin: order qty = min qty
       };
 
       const existing = uniqueItems.get(normalizedKey);

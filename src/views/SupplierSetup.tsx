@@ -676,13 +676,12 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [enabledSuppliers]);
 
-  // NOTE: Auto-start disabled to let users select multiple suppliers first
-  // The user will click "Import Selected" button to start the import
-  // useEffect(() => {
-  //   if (shouldAutoStartOtherImport) {
-  //     handleScanSuppliers();
-  //   }
-  // }, [shouldAutoStartOtherImport, handleScanSuppliers]);
+  // Auto-start other supplier import when we have prior selections and discovery is done
+  useEffect(() => {
+    if (shouldAutoStartOtherImport) {
+      handleScanSuppliers();
+    }
+  }, [shouldAutoStartOtherImport, handleScanSuppliers]);
 
   const handleToggleSupplier = useCallback((domain: string) => {
     setEnabledSuppliers(prev => {
