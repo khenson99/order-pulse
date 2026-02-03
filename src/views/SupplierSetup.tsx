@@ -545,12 +545,12 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   }, [priorityJobId, isPriorityComplete, pollPriorityStatus]);
 
   // Notify parent when user can leave email step
+  // User can proceed if: discovery is done AND (no other suppliers to select, OR they've selected some)
   useEffect(() => {
-    const requireOtherImport = hasSelectableOtherSuppliers && hasDiscovered;
-    const hasSelectedOther = selectedOtherCount > 0;
-    const canProceed =
-      (!requireOtherImport && hasDiscovered) ||
-      (requireOtherImport && hasSelectedOther && (hasStartedOtherImport || otherOrders.length > 0));
+    // If no other suppliers were discovered, can proceed once discovery is done
+    // If there are other suppliers, can proceed once user has selected at least one
+    // (they don't need to start scanning - they can skip to continue and scan in background)
+    const canProceed = hasDiscovered && (!hasSelectableOtherSuppliers || selectedOtherCount > 0 || hasStartedOtherImport);
 
     onCanProceed?.(canProceed);
   }, [
@@ -558,7 +558,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     hasDiscovered,
     hasStartedOtherImport,
     selectedOtherCount,
-    otherOrders.length,
     onCanProceed,
   ]);
 
@@ -677,11 +676,13 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [enabledSuppliers]);
 
-  useEffect(() => {
-    if (shouldAutoStartOtherImport) {
-      handleScanSuppliers();
-    }
-  }, [shouldAutoStartOtherImport, handleScanSuppliers]);
+  // NOTE: Auto-start disabled to let users select multiple suppliers first
+  // The user will click "Import Selected" button to start the import
+  // useEffect(() => {
+  //   if (shouldAutoStartOtherImport) {
+  //     handleScanSuppliers();
+  //   }
+  // }, [shouldAutoStartOtherImport, handleScanSuppliers]);
 
   const handleToggleSupplier = useCallback((domain: string) => {
     setEnabledSuppliers(prev => {
