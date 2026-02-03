@@ -11,6 +11,7 @@ import {
 } from '../services/arda.js';
 import { cognitoService } from '../services/cognito.js';
 import { getUserEmail } from './auth.js';
+import { ensureHostedUrl, isDataUrl } from '../services/imageUpload.js';
 
 const router = Router();
 
@@ -122,6 +123,18 @@ router.post('/items', async (req: Request, res: Response) => {
       });
     }
 
+    // If imageUrl is a data URL (base64), upload it to get a hosted URL
+    let hostedImageUrl = itemData.imageUrl;
+    if (itemData.imageUrl && isDataUrl(itemData.imageUrl)) {
+      console.log('📸 Uploading captured photo to cloud storage...');
+      hostedImageUrl = await ensureHostedUrl(itemData.imageUrl, 'order-pulse/items');
+      if (hostedImageUrl) {
+        console.log('✅ Photo uploaded:', hostedImageUrl);
+      } else {
+        console.warn('⚠️ Photo upload failed - image will be omitted from Arda');
+      }
+    }
+
     // Set defaults and pass all available fields
     const item: ItemInput = {
       name: itemData.name,
@@ -133,7 +146,7 @@ router.post('/items', async (req: Request, res: Response) => {
       orderQtyUnit: itemData.orderQtyUnit || 'each',
       location: itemData.location,
       primarySupplierLink: itemData.primarySupplierLink,
-      imageUrl: itemData.imageUrl,
+      imageUrl: hostedImageUrl, // Use hosted URL instead of data URL
       sku: (itemData as any).sku || (itemData as any).barcode,
       color: (itemData as any).color,
     };
