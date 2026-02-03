@@ -127,6 +127,17 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   
   // Lean wisdom rotation
   const [wisdomIndex, setWisdomIndex] = useState(() => Math.floor(Math.random() * LEAN_WISDOM.length));
+  
+  // Discovery progress messages for better feedback
+  const [discoveryMessageIndex, setDiscoveryMessageIndex] = useState(0);
+  const DISCOVERY_MESSAGES = useMemo(() => [
+    'Scanning your inbox for suppliers...',
+    'Looking for order confirmations...',
+    'Identifying supplier domains...',
+    'Analyzing email patterns...',
+    'Finding shipping notifications...',
+    'Detecting invoice emails...',
+  ], []);
 
   // Amazon processing state (starts immediately if no initial state)
   const [amazonJobId, setAmazonJobId] = useState<string | null>(null);
@@ -263,6 +274,17 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     
     return () => clearInterval(interval);
   }, [hasRestoredState]);
+  
+  // Rotate discovery messages while scanning (every 2.5 seconds)
+  useEffect(() => {
+    if (!isDiscovering) return;
+    
+    const interval = setInterval(() => {
+      setDiscoveryMessageIndex(prev => (prev + 1) % DISCOVERY_MESSAGES.length);
+    }, 2500);
+    
+    return () => clearInterval(interval);
+  }, [isDiscovering, DISCOVERY_MESSAGES.length]);
 
   // 1. START PRIORITY SUPPLIERS - STAGGERED TO AVOID RATE LIMITS
   // Skip if we have restored state (user navigated back)
@@ -1079,11 +1101,61 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           </div>
         )}
 
-        {/* Discovering state */}
+        {/* Discovering state - Enhanced feedback */}
         {isDiscovering && (
-          <div className="flex items-center justify-center py-8">
-            <Icons.Loader2 className="w-6 h-6 text-blue-500 animate-spin mr-3" />
-            <span className="text-arda-text-secondary">{discoveryProgress}</span>
+          <div className="py-6 space-y-6">
+            {/* Animated progress message */}
+            <div className="flex items-center justify-center gap-3">
+              <div className="relative">
+                <Icons.Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                <div className="absolute inset-0 animate-ping opacity-30">
+                  <Icons.Loader2 className="w-6 h-6 text-blue-500" />
+                </div>
+              </div>
+              <span className="text-arda-text-secondary font-medium transition-opacity duration-300">
+                {DISCOVERY_MESSAGES[discoveryMessageIndex]}
+              </span>
+            </div>
+            
+            {/* Scanning animation - shows activity */}
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-100 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Icons.Search className="w-4 h-4 text-blue-500 animate-pulse" />
+                <span className="text-sm font-medium text-blue-700">
+                  {DISCOVERY_MESSAGES[discoveryMessageIndex]}
+                </span>
+              </div>
+              
+              {/* Animated scanning bars */}
+              <div className="space-y-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div 
+                      className="h-2 rounded-full animate-shimmer"
+                      style={{ 
+                        width: `${65 + i * 8}%`,
+                        animationDelay: `${i * 150}ms`,
+                      }}
+                    />
+                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Skeleton placeholder grid for suppliers being discovered */}
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="aspect-square p-3 rounded-xl border-2 border-gray-100 bg-gray-50 flex flex-col items-center justify-center animate-pulse"
+                  style={{ animationDelay: `${i * 100}ms` }}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-gray-200 mb-2" />
+                  <div className="w-16 h-3 rounded bg-gray-200" />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
