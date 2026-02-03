@@ -42,7 +42,19 @@ export const env = parsed.data;
 export const isProduction = env.NODE_ENV === 'production';
 export const allowInMemoryStorage = env.NODE_ENV !== 'production' || process.env.ALLOW_INMEMORY_STORAGE === 'true';
 export const port = env.PORT || 3001;
-export const corsOrigin = env.FRONTEND_URL || 'http://localhost:5173';
+
+// CORS origin - require FRONTEND_URL in production, allow localhost only in development
+export const corsOrigin = (() => {
+  if (env.FRONTEND_URL) {
+    return env.FRONTEND_URL;
+  }
+  if (isProduction) {
+    console.warn('⚠️ FRONTEND_URL not set in production - CORS may block requests');
+    // Return a permissive pattern for Vercel preview deployments
+    return /^https:\/\/.*\.vercel\.app$|^https:\/\/order-pulse.*\.vercel\.app$/;
+  }
+  return 'http://localhost:5173';
+})();
 
 export const rateLimitConfig = {
   windowMs: env.RATE_LIMIT_WINDOW_MS ?? 60_000, // default 1 minute

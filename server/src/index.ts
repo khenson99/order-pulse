@@ -162,8 +162,9 @@ async function startServer() {
   await initializeJobManager();
 
   server = app.listen(PORT, () => {
-    appLogger.info(`🚀 OrderPulse API running on http://localhost:${PORT}`);
-    appLogger.info(`📧 Frontend URL: ${process.env.FRONTEND_URL}`);
+    appLogger.info(`🚀 OrderPulse API running on port ${PORT}`);
+    appLogger.info(`📧 Frontend URL: ${process.env.FRONTEND_URL || '(not set - using fallback CORS)'}`);
+    appLogger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     
     startCognitoSyncScheduler();
     
