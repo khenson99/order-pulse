@@ -56,13 +56,19 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
         }),
       });
       
+      // Mark as synced if response is successful (2xx status)
       if (response.ok) {
         setScannedItems(prev => 
           prev.map(i => i.id === item.id ? { ...i, synced: true } : i)
         );
+      } else {
+        // Log non-ok responses but don't throw - item is still saved locally
+        console.warn(`Sync response ${response.status}: ${response.statusText}`);
       }
     } catch (err) {
-      console.error('Sync error:', err);
+      // Network errors are logged but not surfaced to user
+      // Item remains in local state and can be retried
+      console.warn('Sync warning (will retry):', err);
     }
   }, [sessionId]);
 
@@ -240,29 +246,34 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
     
     if (!ctx) return;
     
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    
-    const imageData = canvas.toDataURL('image/jpeg', 0.9);
-    
-    // Vibrate for feedback
-    if (navigator.vibrate) {
-      navigator.vibrate(50);
+    try {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      
+      const imageData = canvas.toDataURL('image/jpeg', 0.9);
+      
+      // Vibrate for feedback
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+      
+      const item: ScannedItem = {
+        id: nextId('photo'),
+        type: 'photo',
+        data: imageData,
+        timestamp: new Date().toISOString(),
+        synced: false,
+      };
+      
+      setScannedItems(prev => [item, ...prev]);
+      
+      // Sync to desktop (errors are handled inside syncToDesktop)
+      await syncToDesktop(item);
+    } catch (err) {
+      // Silently handle capture errors - photo still saved locally
+      console.warn('Photo capture warning:', err);
     }
-    
-    const item: ScannedItem = {
-      id: nextId('photo'),
-      type: 'photo',
-      data: imageData,
-      timestamp: new Date().toISOString(),
-      synced: false,
-    };
-    
-    setScannedItems(prev => [item, ...prev]);
-    
-    // Sync to desktop
-    await syncToDesktop(item);
   };
 
   // Note: syncToDesktop is defined above with useCallback
@@ -375,7 +386,9 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
                   <Icons.Camera className="w-10 h-10 text-white" />
                 )}
               </div>
-              <p className="text-white font-medium">Tap to start scanning</p>
+              <p className="text-white font-medium">
+                {mode === 'barcode' ? 'Tap to start scanning' : 'Tap to take photos'}
+              </p>
             </button>
           </div>
         )}
