@@ -611,6 +611,15 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [currentJobId, otherOrders.length, hasStartedOtherImport]);
 
+  // Auto-start other supplier import when we have prior selections and discovery is done
+  const shouldAutoStartOtherImport =
+    hasDiscovered &&
+    !isScanning &&
+    !currentJobId &&
+    !hasStartedOtherImport &&
+    selectedOtherCount > 0 &&
+    selectableOtherSuppliers.length > 0;
+
   // Scan selected suppliers
   const handleScanSuppliers = useCallback(async () => {
     // Filter to only non-Amazon, non-priority enabled suppliers
@@ -634,6 +643,12 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       setIsScanning(false);
     }
   }, [enabledSuppliers]);
+
+  useEffect(() => {
+    if (shouldAutoStartOtherImport) {
+      handleScanSuppliers();
+    }
+  }, [shouldAutoStartOtherImport, handleScanSuppliers]);
 
   const handleToggleSupplier = useCallback((domain: string) => {
     setEnabledSuppliers(prev => {
