@@ -433,9 +433,9 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
 
       {/* Spreadsheet table */}
       <div className="bg-white rounded-lg border border-arda-border overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[60vh]">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-arda-border">
+            <thead className="bg-gray-50 border-b border-arda-border sticky top-0 z-10">
               <tr>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-8"></th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-10">Img</th>
