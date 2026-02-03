@@ -10,7 +10,24 @@ import { SupplierSetup } from './views/SupplierSetup';
 import { ExtractedOrder, InventoryItem, GoogleUserProfile } from './types';
 import { processOrdersToInventory } from './utils/inventoryLogic';
 import { useAutoIngestion } from './hooks/useAutoIngestion';
-import { authApi, ordersApi, InventoryItem as ApiInventoryItem } from './services/api';
+import { authApi, ordersApi, InventoryItem as ApiInventoryItem, Order as ApiOrder } from './services/api';
+
+// Convert ExtractedOrder to API Order format
+const convertToApiOrder = (order: ExtractedOrder): Omit<ApiOrder, 'id' | 'user_id'> => ({
+  original_email_id: order.originalEmailId,
+  supplier: order.supplier,
+  order_date: order.orderDate,
+  total_amount: order.totalAmount || 0,
+  confidence: order.confidence,
+  items: order.items.map(item => ({
+    id: item.id || '',
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    unitPrice: item.unitPrice || 0,
+    totalPrice: item.totalPrice || 0,
+  })),
+});
 
 export default function App() {
   const [activeView, setActiveView] = useState('setup'); // Start with supplier setup
@@ -53,7 +70,7 @@ export default function App() {
     if (newlyAdded.length > 0) {
       try {
         await ordersApi.saveOrders(
-          newlyAdded.map(({ id, ...rest }) => ({ ...rest, id: undefined }))
+          newlyAdded.map(order => convertToApiOrder(order)) as ApiOrder[]
         );
         // Refresh inventory from server so cadence math stays consistent
         const invRes = await ordersApi.getInventory();
