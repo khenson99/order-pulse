@@ -32,6 +32,9 @@ export const authApi = {
   
   getCurrentUser: () => fetchApi<{ user: { id: string; email: string; name: string; picture_url: string } }>('/auth/me'),
   
+  // Exchange short-lived auth token for session (used after OAuth redirect)
+  exchangeToken: (token: string) => fetchApi<{ success: boolean; user: { id: string; email: string; name: string; picture_url: string } }>(`/auth/token-exchange?token=${token}`),
+  
   logout: () => fetchApi<{ success: boolean }>('/auth/logout', { method: 'POST' }),
 };
 

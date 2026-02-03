@@ -9,6 +9,25 @@ const router = Router();
 // In-memory storage (for development without PostgreSQL)
 const users = new Map<string, StoredUser>(); // local cache for dev
 
+// Short-lived auth tokens for cross-origin authentication
+// Token -> { userId, expiresAt }
+const authTokens = new Map<string, { userId: string; expiresAt: Date }>();
+
+function generateAuthToken(userId: string): string {
+  const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+  // Token expires in 60 seconds (just enough for the redirect)
+  authTokens.set(token, { userId, expiresAt: new Date(Date.now() + 60000) });
+  return token;
+}
+
+function consumeAuthToken(token: string): string | null {
+  const data = authTokens.get(token);
+  if (!data) return null;
+  authTokens.delete(token); // One-time use
+  if (data.expiresAt < new Date()) return null;
+  return data.userId;
+}
+
 export async function getUserEmail(userId: string): Promise<string | null> {
   return getUserEmailFromStore(userId);
 }
@@ -97,15 +116,52 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     await saveUser(userData);
     console.log(`✅ User authenticated: ${userData.name} (${userData.email})`);
 
-    // Set session
+    // Generate a short-lived auth token for cross-origin cookie setting
+    const authToken = generateAuthToken(userId);
+
+    // Set session (for same-origin requests)
     req.session.userId = userId;
 
-    // Redirect to frontend
-    res.redirect(`${process.env.FRONTEND_URL}?auth=success`);
+    // Redirect to frontend with auth token
+    res.redirect(`${process.env.FRONTEND_URL}?auth=success&token=${authToken}`);
   } catch (error) {
     console.error('OAuth callback error:', error);
     res.redirect(`${process.env.FRONTEND_URL}?error=auth_failed`);
   }
+});
+
+// Token exchange endpoint - converts short-lived token to session cookie
+// This is called by the frontend to establish the session in a same-origin context
+router.get('/token-exchange', async (req: Request, res: Response) => {
+  const { token } = req.query;
+  
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Missing token' });
+  }
+
+  const userId = consumeAuthToken(token);
+  if (!userId) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  const user = await getUserById(userId);
+  if (!user) {
+    return res.status(401).json({ error: 'User not found' });
+  }
+
+  // Set session
+  req.session.userId = userId;
+  console.log(`🔄 Token exchange successful for ${user.email}`);
+
+  res.json({ 
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture_url: user.picture,
+    }
+  });
 });
 
 // Get current user

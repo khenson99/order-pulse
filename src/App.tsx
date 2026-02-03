@@ -104,8 +104,23 @@ export default function App() {
   useEffect(() => {
     const hydrate = async () => {
       try {
-        const data = await authApi.getCurrentUser();
-        if (!data.user) return;
+        // Check for auth token in URL (from OAuth callback)
+        const urlParams = new URLSearchParams(window.location.search);
+        const authToken = urlParams.get('token');
+        
+        let data;
+        if (authToken) {
+          // Exchange token for session
+          console.log('🔑 Exchanging auth token...');
+          data = await authApi.exchangeToken(authToken);
+          // Clean up URL
+          window.history.replaceState({}, '', window.location.pathname);
+          if (!data.user) return;
+        } else {
+          // Normal auth check
+          data = await authApi.getCurrentUser();
+          if (!data.user) return;
+        }
 
         setUserProfile({
           id: data.user.id,
