@@ -93,6 +93,45 @@ export function extractAsinsFromEmail(emailBody: string, emailSubject: string): 
   return asins;
 }
 
+// Get the affiliate tag from config
+export function getAffiliateTag(): string {
+  return process.env.AMAZON_PARTNER_TAG || 'arda06-20';
+}
+
+// Create an affiliate-tagged Amazon product URL from an ASIN
+export function createAffiliateUrl(asin: string): string {
+  const tag = getAffiliateTag();
+  return `https://www.amazon.com/dp/${asin}?tag=${tag}`;
+}
+
+// Ensure a product URL has the affiliate tag
+export function ensureAffiliateTag(url: string): string {
+  if (!url) return url;
+  
+  const tag = getAffiliateTag();
+  
+  // If URL already has our tag, return as-is
+  if (url.includes(`tag=${tag}`)) {
+    return url;
+  }
+  
+  // Try to extract ASIN and create clean affiliate URL
+  const asin = extractAsinFromUrl(url);
+  if (asin) {
+    return createAffiliateUrl(asin);
+  }
+  
+  // If we can't extract ASIN but it's an Amazon URL, append tag
+  if (url.includes('amazon.com')) {
+    const separator = url.includes('?') ? '&' : '?';
+    // Remove any existing tag first
+    const cleanUrl = url.replace(/[?&]tag=[^&]+/g, '');
+    return `${cleanUrl}${separator}tag=${tag}`;
+  }
+  
+  return url;
+}
+
 // Extract ASINs from Amazon product URLs
 export function extractAsinFromUrl(url: string): string | null {
   // Patterns for Amazon product URLs
@@ -162,12 +201,17 @@ export async function getAmazonItemDetails(asins: string[]): Promise<Map<string,
         
         if (response.ItemsResult?.Items) {
           for (const item of response.ItemsResult.Items) {
+            // Ensure the URL has our affiliate tag
+            const amazonUrl = item.DetailPageURL 
+              ? ensureAffiliateTag(item.DetailPageURL)
+              : createAffiliateUrl(item.ASIN);
+            
             const itemData: AmazonItemResponse = {
               ASIN: item.ASIN,
               ItemName: item.ItemInfo?.Title?.DisplayValue,
               Price: item.Offers?.Listings?.[0]?.Price?.DisplayAmount,
               ImageURL: item.Images?.Primary?.Large?.URL,
-              AmazonURL: item.DetailPageURL,
+              AmazonURL: amazonUrl,
               UnitCount: item.ItemInfo?.ProductInfo?.UnitCount?.DisplayValue,
             };
             
@@ -235,4 +279,7 @@ export const amazonService = {
   getAmazonItemDetails,
   enrichItemWithAmazon,
   batchEnrichItems,
+  getAffiliateTag,
+  createAffiliateUrl,
+  ensureAffiliateTag,
 };
