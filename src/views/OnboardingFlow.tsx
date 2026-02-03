@@ -408,8 +408,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           </div>
         </div>
 
-        <div className="mt-4 overflow-x-auto pb-2">
-          <div className="flex items-center min-w-max">
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
             {ONBOARDING_STEPS.map((step, index) => {
               const status = getStepStatus(step.id);
               const Icon = Icons[step.icon] || Icons.Circle;
@@ -419,7 +419,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               const isCurrent = status === 'current';
 
               return (
-                <div key={step.id} className="flex items-center">
+                <div key={step.id} className="flex items-center flex-1 last:flex-none">
                   <button
                     type="button"
                     onClick={() => {
@@ -427,7 +427,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                     }}
                     disabled={!isInteractive}
                     className={[
-                      'group flex items-center gap-2 rounded-xl px-3 py-2 transition-all whitespace-nowrap border',
+                      'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-all border text-left',
                       isCurrent ? 'bg-orange-50 border-orange-200' : 'bg-white/70 border-arda-border hover:bg-white',
                       !isInteractive ? 'opacity-50 cursor-not-allowed' : '',
                     ].join(' ')}
@@ -435,18 +435,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   >
                     <span
                       className={[
-                        'w-8 h-8 rounded-xl flex items-center justify-center',
+                        'w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0',
                         'border transition-colors',
                         isCompleted ? 'bg-arda-accent border-orange-600 text-white' : '',
                         isCurrent ? 'bg-orange-500 border-orange-600 text-white' : '',
                         status === 'upcoming' ? 'bg-arda-bg-tertiary border-arda-border text-arda-text-muted' : '',
                       ].join(' ')}
                     >
-                      {isCompleted ? <Icons.Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                      {isCompleted ? <Icons.Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
                     </span>
                     <span
                       className={[
-                        'text-sm font-medium',
+                        'text-xs font-medium hidden sm:inline',
                         isCurrent ? 'text-arda-text-primary' : 'text-arda-text-secondary group-hover:text-arda-text-primary',
                       ].join(' ')}
                     >
@@ -457,7 +457,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   {index < ONBOARDING_STEPS.length - 1 && (
                     <div
                       className={[
-                        'w-8 h-[2px] mx-2 rounded-full',
+                        'flex-1 h-[2px] mx-1 rounded-full min-w-[8px]',
                         completedSteps.has(step.id) ? 'bg-orange-400' : 'bg-arda-border',
                       ].join(' ')}
                     />
