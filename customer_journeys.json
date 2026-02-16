@@ -1,0 +1,2925 @@
+[
+  {
+    "company": "Lichen Precision",
+    "tenant_id": "6d81d80e-7010-468f-a191-f1dab4f4fc79",
+    "first_touch": "2025-05-09T17:14:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-15T14:24:17.548000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "600",
+    "deal_create_date": "2025-05-09T19:21:16.160Z",
+    "deal_close_date": "2025-05-09T19:21:16.160Z",
+    "contacts": [
+      {
+        "email": "devin@lichenprecision.com",
+        "name": "Devin Bodony",
+        "created": "2025-10-15T14:24:17.548000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "devin@lichenprecision.com",
+        "name": "Devin Bodony",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-09T17:14:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Lichen Precision - Sales",
+        "stage": "Closed Won",
+        "amount": "600",
+        "created": "2025-05-09T19:21:16.160Z",
+        "closed": "2025-05-09T19:21:16.160Z"
+      },
+      {
+        "name": "Lichen Precision",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:06.462Z",
+        "closed": "2025-08-23T18:35:06.137Z"
+      }
+    ]
+  },
+  {
+    "company": "Blackwell Engineering",
+    "tenant_id": "b5ea0be9-ce18-4bf0-81c8-b5981a893189",
+    "first_touch": "2025-05-09T17:14:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-03T02:30:40.056000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "600",
+    "deal_create_date": "2025-05-09T19:21:07.189Z",
+    "deal_close_date": "2025-05-09T19:21:07.189Z",
+    "contacts": [
+      {
+        "email": "matt@blackwellengineeringllc.com",
+        "name": "Matt Blackwell",
+        "created": "2025-10-03T02:30:40.056000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "matt@blackwellengineeringllc.com",
+        "name": "Matthew Blackwell",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-09T17:14:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Blackwell Engineering - Sales",
+        "stage": "Closed Won",
+        "amount": "600",
+        "created": "2025-05-09T19:21:07.189Z",
+        "closed": "2025-05-09T19:21:07.189Z"
+      }
+    ]
+  },
+  {
+    "company": "Henson Home, Arda",
+    "tenant_id": "c35bb200-ce7f-4280-9108-f61227127a98",
+    "first_touch": "2025-05-09T17:14:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "lead",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-09-04T15:18:53.555000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "250.00",
+    "deal_create_date": "2026-01-02T19:00:52.366Z",
+    "deal_close_date": "2026-01-02T19:00:55.314Z",
+    "contacts": [
+      {
+        "email": "khenson99@gmail.com",
+        "name": "Kyle Henson",
+        "created": "2025-09-04T15:20:22.828000+00:00"
+      },
+      {
+        "email": "shenson1161@gmail.com",
+        "name": "Susan Henson",
+        "created": "2025-09-04T15:18:53.555000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "khenson99@gmail.com",
+        "name": "Kyle Henson",
+        "lifecycle": "lead",
+        "first_touch": "2025-05-09T17:14:00Z",
+        "source": "OFFLINE"
+      },
+      {
+        "email": "shenson1161@gmail.com",
+        "name": "Susan Henson",
+        "lifecycle": "other",
+        "first_touch": "2025-05-10T01:34:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Henson Home - Friends & Family",
+        "stage": "Churn",
+        "amount": "3500",
+        "created": "2025-05-09T19:22:11.170Z",
+        "closed": "2025-05-09T19:22:11.170Z"
+      },
+      {
+        "name": "Arda - Friends & Family",
+        "stage": "Internal+Friends and Family",
+        "amount": "3500",
+        "created": "2025-05-09T19:22:13.371Z",
+        "closed": "2025-05-09T19:22:13.371Z"
+      },
+      {
+        "name": "Arda Cloud +1 more via Payment Link",
+        "stage": "Closed Won",
+        "amount": "250.00",
+        "created": "2026-01-02T19:00:52.366Z",
+        "closed": "2026-01-02T19:00:55.314Z"
+      },
+      {
+        "name": "Arda Cloud +1 more via Payment Link",
+        "stage": "Closed Won",
+        "amount": "250.00",
+        "created": "2026-01-23T23:08:42.537Z",
+        "closed": "2026-01-23T23:08:44.534Z"
+      }
+    ]
+  },
+  {
+    "company": "Feldman Tool Co.",
+    "tenant_id": "6c2ecae2-14f2-45ef-a5d0-202271f70bd5",
+    "first_touch": "2025-05-09T17:18:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "lead",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-25T01:47:24.269000+00:00",
+    "deal_stage": "Freemium",
+    "deal_amount": "3500",
+    "deal_create_date": "2025-05-09T19:25:17.475Z",
+    "deal_close_date": "2025-12-25T17:57:32.960Z",
+    "contacts": [
+      {
+        "email": "B@feldmantoolco.com",
+        "name": "None",
+        "created": "2025-11-25T01:47:24.269000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "b@feldmantoolco.com",
+        "name": "Brandyn Feldman",
+        "lifecycle": "lead",
+        "first_touch": "2025-05-09T17:18:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Feldman Tool Co. - Friends & Family",
+        "stage": "Freemium",
+        "amount": "3500",
+        "created": "2025-05-09T19:25:17.475Z",
+        "closed": "2025-12-25T17:57:32.960Z"
+      }
+    ]
+  },
+  {
+    "company": "Reachable Technology LLC",
+    "tenant_id": "9db131b9-da94-4c20-bcab-0f70e079bd0d",
+    "first_touch": "2025-05-09T17:18:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-08T19:20:04.469000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "600",
+    "deal_create_date": "2025-05-09T19:26:02.686Z",
+    "deal_close_date": "2025-05-09T19:26:02.686Z",
+    "contacts": [
+      {
+        "email": "will@reachable-tech.com",
+        "name": "None",
+        "created": "2025-12-08T19:20:04.469000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "will@reachable-tech.com",
+        "name": "William Muter",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-09T17:18:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Reachable Technology LLC - Sales",
+        "stage": "Closed Won",
+        "amount": "600",
+        "created": "2025-05-09T19:26:02.686Z",
+        "closed": "2025-05-09T19:26:02.686Z"
+      },
+      {
+        "name": "Reachable Technology LLC",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:07.065Z",
+        "closed": "2025-08-23T18:35:06.861Z"
+      }
+    ]
+  },
+  {
+    "company": "Austere Manufacturing",
+    "tenant_id": "40f933b7-eb84-4fbf-b7a7-8fb330116234",
+    "first_touch": "2025-05-10T01:13:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-05T00:14:01.231000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "0",
+    "deal_create_date": "2025-05-09T19:21:43.764Z",
+    "deal_close_date": "2025-05-09T19:21:43.764Z",
+    "contacts": [
+      {
+        "email": "Sam@austeremfg.com",
+        "name": "Sam",
+        "created": "2025-11-05T00:14:01.231000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "sam@austeremfg.com",
+        "name": "Sam Froines",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-05-10T01:13:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Austere MFG - Sales",
+        "stage": "Closed Won",
+        "amount": "0",
+        "created": "2025-05-09T19:21:43.764Z",
+        "closed": "2025-05-09T19:21:43.764Z"
+      },
+      {
+        "name": "Focus Manufacturing - Scheduled Demo",
+        "stage": "Demo Follow-Up",
+        "amount": "3600",
+        "created": "2025-05-09T19:27:31.512Z",
+        "closed": null
+      },
+      {
+        "name": "Unicorn Manufacturing - Churn",
+        "stage": "Churn",
+        "amount": "3500",
+        "created": "2025-05-09T19:21:26.578Z",
+        "closed": "2025-05-09T19:21:26.578Z"
+      },
+      {
+        "name": "Crips Manufacturing",
+        "stage": "Unlikely",
+        "amount": null,
+        "created": "2025-05-21T16:46:01.150Z",
+        "closed": "2025-05-31T16:45:34.298Z"
+      },
+      {
+        "name": "Sound Manufacturing",
+        "stage": "Closed Won",
+        "amount": "3598",
+        "created": "2025-06-10T16:36:52.699Z",
+        "closed": "2025-06-20T17:30:52.013Z"
+      },
+      {
+        "name": "Wirtz Manufacturing LLC - New Deal",
+        "stage": "Freemium",
+        "amount": "3500",
+        "created": "2025-07-21T16:47:41.494Z",
+        "closed": "2025-07-31T16:47:27.628Z"
+      },
+      {
+        "name": "ZEMAN MANUFACTURING",
+        "stage": "Demo Follow-Up",
+        "amount": "3598.00",
+        "created": "2025-09-08T19:54:47.171Z",
+        "closed": "2025-09-22T19:54:46.715Z"
+      },
+      {
+        "name": "Houghton Manufacturing",
+        "stage": "No-Show/Reschedule Demo",
+        "amount": "3598.00",
+        "created": "2025-09-14T21:56:58.116Z",
+        "closed": "2025-09-28T21:56:57.692Z"
+      },
+      {
+        "name": "Toyota Motor Manufacturing Missouri",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-24T20:21:29.532Z",
+        "closed": "2025-10-08T20:21:28.960Z"
+      },
+      {
+        "name": "Bemis Manufacturing Company",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-11-04T17:47:30.937Z",
+        "closed": "2025-11-18T17:47:30.108Z"
+      },
+      {
+        "name": "Technical Manufacturing West",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2026-01-07T16:47:51.859Z",
+        "closed": "2026-01-21T16:47:51.230Z"
+      }
+    ]
+  },
+  {
+    "company": "Austere Manufacturing",
+    "tenant_id": "8d53c9a0-3e9c-4f5a-9dbe-ad06b56bc3e4",
+    "first_touch": "2025-05-10T01:13:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-05T19:58:58.086000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "0",
+    "deal_create_date": "2025-05-09T19:21:43.764Z",
+    "deal_close_date": "2025-05-09T19:21:43.764Z",
+    "contacts": [
+      {
+        "email": "sam@austeremfg.com",
+        "name": "Sam",
+        "created": "2025-11-05T19:58:58.086000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "sam@austeremfg.com",
+        "name": "Sam Froines",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-05-10T01:13:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Austere MFG - Sales",
+        "stage": "Closed Won",
+        "amount": "0",
+        "created": "2025-05-09T19:21:43.764Z",
+        "closed": "2025-05-09T19:21:43.764Z"
+      },
+      {
+        "name": "Focus Manufacturing - Scheduled Demo",
+        "stage": "Demo Follow-Up",
+        "amount": "3600",
+        "created": "2025-05-09T19:27:31.512Z",
+        "closed": null
+      },
+      {
+        "name": "Unicorn Manufacturing - Churn",
+        "stage": "Churn",
+        "amount": "3500",
+        "created": "2025-05-09T19:21:26.578Z",
+        "closed": "2025-05-09T19:21:26.578Z"
+      },
+      {
+        "name": "Crips Manufacturing",
+        "stage": "Unlikely",
+        "amount": null,
+        "created": "2025-05-21T16:46:01.150Z",
+        "closed": "2025-05-31T16:45:34.298Z"
+      },
+      {
+        "name": "Sound Manufacturing",
+        "stage": "Closed Won",
+        "amount": "3598",
+        "created": "2025-06-10T16:36:52.699Z",
+        "closed": "2025-06-20T17:30:52.013Z"
+      },
+      {
+        "name": "Wirtz Manufacturing LLC - New Deal",
+        "stage": "Freemium",
+        "amount": "3500",
+        "created": "2025-07-21T16:47:41.494Z",
+        "closed": "2025-07-31T16:47:27.628Z"
+      },
+      {
+        "name": "ZEMAN MANUFACTURING",
+        "stage": "Demo Follow-Up",
+        "amount": "3598.00",
+        "created": "2025-09-08T19:54:47.171Z",
+        "closed": "2025-09-22T19:54:46.715Z"
+      },
+      {
+        "name": "Houghton Manufacturing",
+        "stage": "No-Show/Reschedule Demo",
+        "amount": "3598.00",
+        "created": "2025-09-14T21:56:58.116Z",
+        "closed": "2025-09-28T21:56:57.692Z"
+      },
+      {
+        "name": "Toyota Motor Manufacturing Missouri",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-24T20:21:29.532Z",
+        "closed": "2025-10-08T20:21:28.960Z"
+      },
+      {
+        "name": "Bemis Manufacturing Company",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-11-04T17:47:30.937Z",
+        "closed": "2025-11-18T17:47:30.108Z"
+      },
+      {
+        "name": "Technical Manufacturing West",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2026-01-07T16:47:51.859Z",
+        "closed": "2026-01-21T16:47:51.230Z"
+      }
+    ]
+  },
+  {
+    "company": "Northstar Chemical",
+    "tenant_id": "6fa02301-2cd9-4cfa-a258-40474b828945",
+    "first_touch": "2025-05-10T01:15:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-18T00:23:43.351000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3500",
+    "deal_create_date": "2025-05-10T01:32:30.223Z",
+    "deal_close_date": "2025-10-01T09:29:56.423Z",
+    "contacts": [
+      {
+        "email": "abrock@northstarchemical.com",
+        "name": "Aaron",
+        "created": "2025-11-18T00:23:43.351000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "abrock@northstarchemical.com",
+        "name": "Aaron Brock",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-10T01:15:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Northstar Chemical - Demo Follow-Up",
+        "stage": "Closed Won",
+        "amount": "3500",
+        "created": "2025-05-10T01:32:30.223Z",
+        "closed": "2025-10-01T09:29:56.423Z"
+      }
+    ]
+  },
+  {
+    "company": "Neff Machine",
+    "tenant_id": "1193d42d-ef80-4bc8-ab11-84e5c8046892",
+    "first_touch": "2025-05-10T01:34:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-28T03:25:14.106000+00:00",
+    "deal_stage": "Demo Scheduled",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-08-09T18:35:06.377Z",
+    "deal_close_date": "2025-08-23T18:35:05.756Z",
+    "contacts": [
+      {
+        "email": "ty@neffmachine.com",
+        "name": "Ty",
+        "created": "2025-10-28T03:25:14.106000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "ty@neffmachine.com",
+        "name": "Ty Neff",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-10T01:34:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Neff Machine",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:06.377Z",
+        "closed": "2025-08-23T18:35:05.756Z"
+      }
+    ]
+  },
+  {
+    "company": "Bluewater Sportfishing Boats",
+    "tenant_id": "2d7a820e-f4e4-48bc-8c6d-4307a151b5cc",
+    "first_touch": "2025-05-10T01:35:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 970690",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-02T19:50:08.186000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3000",
+    "deal_create_date": "2025-05-09T19:26:26.936Z",
+    "deal_close_date": "2025-05-09T19:26:26.936Z",
+    "contacts": [
+      {
+        "email": "ryan@bluewatersportfishingboats.com",
+        "name": "None",
+        "created": "2025-12-02T19:50:08.186000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "ryan@bluewatersportfishingboats.com",
+        "name": "Ryan March",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-10T01:35:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Bluewater Sportfishing Boats - Sales",
+        "stage": "Closed Won",
+        "amount": "3000",
+        "created": "2025-05-09T19:26:26.936Z",
+        "closed": "2025-05-09T19:26:26.936Z"
+      },
+      {
+        "name": "Bluewater Sportfishing Boats",
+        "stage": "Closed Won",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:07.064Z",
+        "closed": "2025-09-15T19:32:28.603Z"
+      }
+    ]
+  },
+  {
+    "company": "RoamRig",
+    "tenant_id": "a9e3aef7-86aa-4199-bfa7-0e29d05b2774",
+    "first_touch": "2025-05-11T19:21:00Z",
+    "source": "OFFLINE",
+    "source_detail": "IMPORT 144703853",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-05T23:03:48.682000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "meg@roamrig.com",
+        "name": "Meg Myers",
+        "created": "2025-11-05T23:03:48.682000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "meg@roamrig.com",
+        "name": "Meg Myers",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-11T19:21:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Roamrig",
+    "tenant_id": "3a1aa0ea-6611-477f-bb30-36058c40eee8",
+    "first_touch": "2025-05-14T10:07:00Z",
+    "source": "OFFLINE",
+    "source_detail": "MOBILE_IOS userId:78742471",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-05T04:45:16.947000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "aaron@roamrig.com",
+        "name": "None",
+        "created": "2025-12-05T04:45:16.947000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "aaron@roamrig.com",
+        "name": "Roam Rig",
+        "lifecycle": "customer",
+        "first_touch": "2025-05-14T10:07:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Studiorrd",
+    "tenant_id": "bdf57d6c-aad3-40dc-a553-9eb09dbf108e",
+    "first_touch": "2025-07-13T15:18:00Z",
+    "source": "ORGANIC_SEARCH",
+    "source_detail": "Unknown keywords (SSL) GOOGLE",
+    "lifecycle_stage": "lead",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2026-01-08T21:45:49.971000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "steaven@studiorrd.com",
+        "name": "None",
+        "created": "2026-01-20T20:55:49.383000+00:00"
+      },
+      {
+        "email": "max@studiorrd.com",
+        "name": "None",
+        "created": "2026-01-08T21:45:49.971000+00:00"
+      },
+      {
+        "email": "em@studiorrd.com",
+        "name": "None",
+        "created": "2026-01-20T20:55:37.626000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "steaven@studiorrd.com",
+        "name": "None None",
+        "lifecycle": "lead",
+        "first_touch": "2026-02-03T13:47:00Z",
+        "source": "ORGANIC_SEARCH"
+      },
+      {
+        "email": "max@studiorrd.com",
+        "name": "Max Pagel",
+        "lifecycle": "customer",
+        "first_touch": "2025-07-13T15:18:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "GrowthHit",
+    "tenant_id": "60b05ded-492e-46d0-92ee-e9059421e1d1",
+    "first_touch": "2025-07-14T13:55:00Z",
+    "source": "ORGANIC_SEARCH",
+    "source_detail": "Unknown keywords (SSL) GOOGLE",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-22T16:11:54.255000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "0.00",
+    "deal_create_date": "2025-11-25T15:14:59.075Z",
+    "deal_close_date": "2025-11-25T15:14:59.075Z",
+    "contacts": [
+      {
+        "email": "morgan@growthhit.com",
+        "name": "Morgan",
+        "created": "2025-10-22T16:11:54.255000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "morgan@growthhit.com",
+        "name": "Test Davison",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-07-14T13:55:00Z",
+        "source": "ORGANIC_SEARCH"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Growthhit",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-05T17:51:14.759Z",
+        "closed": "2025-09-19T17:51:14.366Z"
+      },
+      {
+        "name": "GrowthHit",
+        "stage": "Closed Won",
+        "amount": "0.00",
+        "created": "2025-11-25T15:14:59.075Z",
+        "closed": "2025-11-25T15:14:59.075Z"
+      },
+      {
+        "name": "GrowthHit",
+        "stage": "Closed Won",
+        "amount": "0.00",
+        "created": "2025-11-25T12:47:06.778Z",
+        "closed": "2025-11-25T12:47:06.778Z"
+      },
+      {
+        "name": "GrowthHit",
+        "stage": "Closed Won",
+        "amount": "0.00",
+        "created": "2025-11-25T15:40:29.035Z",
+        "closed": "2025-11-25T15:40:29.035Z"
+      },
+      {
+        "name": "GrowthHit",
+        "stage": "Closed Won",
+        "amount": "0.00",
+        "created": "2025-11-25T23:16:13.993Z",
+        "closed": "2025-11-25T23:16:13.993Z"
+      },
+      {
+        "name": "GrowthHit",
+        "stage": "Closed Won",
+        "amount": "0.00",
+        "created": "2025-11-25T23:28:26.993Z",
+        "closed": "2025-11-25T23:28:26.993Z"
+      },
+      {
+        "name": "GrowthHit",
+        "stage": "Closed Won",
+        "amount": "0.00",
+        "created": "2025-11-25T23:48:31.548Z",
+        "closed": "2025-11-25T23:48:31.548Z"
+      }
+    ]
+  },
+  {
+    "company": "Fortitude Welding & Fabrication LLC",
+    "tenant_id": "4cd464c4-558b-499f-8185-c6683bfd5c29",
+    "first_touch": "2025-09-09T00:49:00Z",
+    "source": "OFFLINE",
+    "source_detail": "IMPORT 145950897",
+    "lifecycle_stage": "lead",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-19T16:31:50.109000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-09-17T13:51:11.886Z",
+    "deal_close_date": "2025-09-19T18:12:22.641Z",
+    "contacts": [
+      {
+        "email": "fortitudeweldfab@outlook.com",
+        "name": "None",
+        "created": "2025-12-19T16:31:50.109000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "fortitudeweldfab@outlook.com",
+        "name": "Sam Hackman",
+        "lifecycle": "lead",
+        "first_touch": "2025-09-09T00:49:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Fortitude Welding & Fabrication",
+        "stage": "Churn",
+        "amount": "1799",
+        "created": "2025-09-08T16:26:27.365Z",
+        "closed": "2026-02-02T22:43:03.029Z"
+      },
+      {
+        "name": "JEBS WELDING AND FABRICATION",
+        "stage": "Closed Won",
+        "amount": "3598.00",
+        "created": "2025-09-17T13:51:11.886Z",
+        "closed": "2025-09-19T18:12:22.641Z"
+      },
+      {
+        "name": "Assembly Industrial Fabrication - Sales",
+        "stage": "Closed Won",
+        "amount": "5200",
+        "created": "2025-05-09T19:27:51.220Z",
+        "closed": "2025-05-09T19:27:51.220Z"
+      },
+      {
+        "name": "Darkstar Fabrication & Services LLC",
+        "stage": "Free Trial",
+        "amount": "3598.00",
+        "created": "2025-08-21T20:11:36.063Z",
+        "closed": "2025-09-21T05:37:22.772Z"
+      },
+      {
+        "name": "halk marine fabrication & design",
+        "stage": "Closed Lost",
+        "amount": "1799",
+        "created": "2025-09-09T19:39:05.987Z",
+        "closed": "2025-12-08T12:40:53.067Z"
+      },
+      {
+        "name": "Integrated Fabrication amd Machine Inv",
+        "stage": "Demo Follow-Up",
+        "amount": "8995",
+        "created": "2025-09-16T00:20:04.491Z",
+        "closed": "2025-09-30T00:20:04.087Z"
+      },
+      {
+        "name": "MJM Fabrication ",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-29T20:38:50.711Z",
+        "closed": "2025-10-13T20:38:50.217Z"
+      }
+    ]
+  },
+  {
+    "company": "Elliott Equipment Company",
+    "tenant_id": "279ae256-3aef-413c-b735-73bacf172b7d",
+    "first_touch": "2025-09-15T20:32:00Z",
+    "source": "OFFLINE",
+    "source_detail": "CRM_UI userId:159029879",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-18T19:57:27.895000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "8388",
+    "deal_create_date": "2025-09-24T18:33:21.097Z",
+    "deal_close_date": "2025-11-12T00:00:00Z",
+    "contacts": [
+      {
+        "email": "bryan.crosbie@elliottequip.com",
+        "name": "Bryan Crosbie",
+        "created": "2025-11-18T21:09:34.773000+00:00"
+      },
+      {
+        "email": "Brandon.boyd@elliottequip.com",
+        "name": "Brandon",
+        "created": "2025-11-18T21:11:00.427000+00:00"
+      },
+      {
+        "email": "mike.lockhart@elliottequip.com",
+        "name": "None",
+        "created": "2026-01-09T17:43:01.036000+00:00"
+      },
+      {
+        "email": "zach.stowe@elliottequip.com",
+        "name": "Zach Stowe",
+        "created": "2025-11-18T19:57:27.895000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "bryan.crosbie@elliottequip.com",
+        "name": "Bryan Crosbie",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-18T19:22:00Z",
+        "source": "OFFLINE"
+      },
+      {
+        "email": "brandon.boyd@elliottequip.com",
+        "name": "Brandon Boyd",
+        "lifecycle": "customer",
+        "first_touch": "2025-09-15T20:32:00Z",
+        "source": "OFFLINE"
+      },
+      {
+        "email": "mike.lockhart@elliottequip.com",
+        "name": "Mike Lockhart",
+        "lifecycle": "lead",
+        "first_touch": "2026-01-09T16:05:00Z",
+        "source": "OFFLINE"
+      },
+      {
+        "email": "zach.stowe@elliottequip.com",
+        "name": "Zach Stowe",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-18T19:23:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Elliott Equipment Company",
+        "stage": "Closed Won",
+        "amount": "8388",
+        "created": "2025-09-24T18:33:21.097Z",
+        "closed": "2025-11-12T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "company": "Felips Auto Service",
+    "tenant_id": "5a944ca4-88f4-411b-af4c-b579276db05c",
+    "first_touch": "2025-09-19T23:07:00Z",
+    "source": "PAID_SOCIAL",
+    "source_detail": "Facebook gh - leads - calendar schedule",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-29T16:38:16.034000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-09-21T19:39:18.563Z",
+    "deal_close_date": "2025-10-01T01:36:15.619Z",
+    "contacts": [
+      {
+        "email": "felip@felipsautoservice.com",
+        "name": "Felip's Auto Service",
+        "created": "2025-10-29T16:38:16.034000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "felip@felipsautoservice.com",
+        "name": "Philip Hinojosa",
+        "lifecycle": "customer",
+        "first_touch": "2025-09-19T23:07:00Z",
+        "source": "PAID_SOCIAL"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Felips Auto Service",
+        "stage": "Closed Won",
+        "amount": "3598.00",
+        "created": "2025-09-21T19:39:18.563Z",
+        "closed": "2025-10-01T01:36:15.619Z"
+      }
+    ]
+  },
+  {
+    "company": "Kyle Henson",
+    "tenant_id": "7ca2dac5-2493-4dc4-b442-7b860079d853",
+    "first_touch": null,
+    "source": "Unknown",
+    "source_detail": "",
+    "lifecycle_stage": "Unknown",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-03T02:03:45.741000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598",
+    "deal_create_date": "2025-09-25T20:42:30.110Z",
+    "deal_close_date": "2025-09-30T20:41:06.126Z",
+    "contacts": [
+      {
+        "email": "kanbunny1@gmail.com",
+        "name": "Kyle Henson",
+        "created": "2025-10-03T02:03:45.741000+00:00"
+      }
+    ],
+    "hs_contacts": [],
+    "all_deals": [
+      {
+        "name": "Kyle Geenen - Unlikely",
+        "stage": "Unlikely",
+        "amount": "3500",
+        "created": "2025-05-09T19:22:39.460Z",
+        "closed": null
+      },
+      {
+        "name": "Kyle Towns ",
+        "stage": "Closed Won",
+        "amount": "3598",
+        "created": "2025-09-25T20:42:30.110Z",
+        "closed": "2025-09-30T20:41:06.126Z"
+      },
+      {
+        "name": "Kyle Towns Services - New Deal",
+        "stage": "Closed Won",
+        "amount": "3598",
+        "created": "2025-09-25T20:43:18.607Z",
+        "closed": "2025-09-30T20:41:58.262Z"
+      },
+      {
+        "name": "Henson Home - Friends & Family",
+        "stage": "Churn",
+        "amount": "3500",
+        "created": "2025-05-09T19:22:11.170Z",
+        "closed": "2025-05-09T19:22:11.170Z"
+      }
+    ]
+  },
+  {
+    "company": "c4 Manufacturing, LLC",
+    "tenant_id": "6844ee44-149c-41fe-a9fa-b1b9d2411d62",
+    "first_touch": "2025-10-03T18:05:00Z",
+    "source": "PAID_SEARCH",
+    "source_detail": "pmax Unknown keywords (SSL)",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2026-01-23T23:09:02.494000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2026-01-21T15:58:50.162Z",
+    "deal_close_date": "2026-02-14T08:20:19.008Z",
+    "contacts": [
+      {
+        "email": "chance@c4mfg.com",
+        "name": "None",
+        "created": "2026-01-23T23:09:02.494000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "chance@c4mfg.com",
+        "name": "Chance Alley",
+        "lifecycle": "customer",
+        "first_touch": "2025-10-03T18:05:00Z",
+        "source": "PAID_SEARCH"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "c4 Manufacturing, LLC",
+        "stage": "Closed Won",
+        "amount": "3598.00",
+        "created": "2026-01-21T15:58:50.162Z",
+        "closed": "2026-02-14T08:20:19.008Z"
+      }
+    ]
+  },
+  {
+    "company": "Me",
+    "tenant_id": "5f0d4c40-1a78-4ff9-8366-d404eea27d6b",
+    "first_touch": "2025-10-09T17:48:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 199720",
+    "lifecycle_stage": "lead",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2026-01-14T20:34:34.531000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "chu.daisy@me.com",
+        "name": "None",
+        "created": "2026-01-14T20:34:34.531000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "chu.daisy@me.com",
+        "name": "Daisy Chu",
+        "lifecycle": "lead",
+        "first_touch": "2025-10-09T17:48:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Momentum Woodworks",
+    "tenant_id": "93cb3c74-750f-489d-9623-6d75858f64e2",
+    "first_touch": "2025-10-13T18:02:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 622453",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-21T18:19:55.088000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-10-13T18:07:36.404Z",
+    "deal_close_date": "2025-10-27T21:42:03.289Z",
+    "contacts": [
+      {
+        "email": "Brad@momentumwoodworks.com",
+        "name": "Brad Rosenthal",
+        "created": "2025-10-21T18:19:55.088000+00:00"
+      },
+      {
+        "email": "harriet@momentumwoodworks.com",
+        "name": "Harriet",
+        "created": "2025-10-23T00:25:59.810000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "brad@momentumwoodworks.com",
+        "name": "Brad Rosenthal",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-10-14T21:46:00Z",
+        "source": "OFFLINE"
+      },
+      {
+        "email": "harriet@momentumwoodworks.com",
+        "name": "Brad Rosenthal",
+        "lifecycle": "customer",
+        "first_touch": "2025-10-13T18:02:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Momentum Woodworks",
+        "stage": "Closed Won",
+        "amount": "3598.00",
+        "created": "2025-10-13T18:07:36.404Z",
+        "closed": "2025-10-27T21:42:03.289Z"
+      }
+    ]
+  },
+  {
+    "company": "Uriel Personal test",
+    "tenant_id": "ec5f2dd1-33a6-4b5d-95fd-d8fc13eae647",
+    "first_touch": null,
+    "source": "Unknown",
+    "source_detail": "",
+    "lifecycle_stage": "Unknown",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-14T06:31:30.775000+00:00",
+    "deal_stage": "Demo Scheduled",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-09-02T05:24:14.029Z",
+    "deal_close_date": "2025-09-16T05:24:13.554Z",
+    "contacts": [
+      {
+        "email": "u.buzzoff@gmail.com",
+        "name": "Uriel Personal test",
+        "created": "2025-10-14T06:31:30.775000+00:00"
+      }
+    ],
+    "hs_contacts": [],
+    "all_deals": [
+      {
+        "name": "Test",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-02T05:24:14.029Z",
+        "closed": "2025-09-16T05:24:13.554Z"
+      },
+      {
+        "name": "test",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2026-01-29T11:33:20.328Z",
+        "closed": "2026-02-12T11:33:19.911Z"
+      }
+    ]
+  },
+  {
+    "company": "Matt Hager",
+    "tenant_id": "9f6e996f-9510-4da2-bfb8-c28a46601bf9",
+    "first_touch": null,
+    "source": "Unknown",
+    "source_detail": "",
+    "lifecycle_stage": "Unknown",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-14T23:07:28.229000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "matt.hager12@gmail.com",
+        "name": "Matt Hager",
+        "created": "2025-10-14T23:07:28.229000+00:00"
+      }
+    ],
+    "hs_contacts": [],
+    "all_deals": []
+  },
+  {
+    "company": "TenOneTen",
+    "tenant_id": "0e1ad78a-7403-4e8a-9be0-0560553cff62",
+    "first_touch": "2025-10-20T20:08:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "meetings-na2.hubspot.com/kyle-henson/seed-round-meeting-link",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-21T20:13:45.630000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "minnie@tenoneten.net",
+        "name": "Minnie Ingersoll",
+        "created": "2025-10-21T20:13:45.630000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "minnie@tenoneten.net",
+        "name": "Minnie Ingersoll",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-10-20T20:08:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Dallas Makerspace",
+    "tenant_id": "d3600279-0bce-4dd6-9f4c-699ef9cc887d",
+    "first_touch": "2025-10-21T19:20:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "meetings-na2.hubspot.com/kyle-henson/arda-cards-demo",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-21T19:57:22.692000+00:00",
+    "deal_stage": "On Hold",
+    "deal_amount": "1799",
+    "deal_create_date": "2025-12-16T02:40:46.346Z",
+    "deal_close_date": "2026-01-01T02:40:01.635Z",
+    "contacts": [
+      {
+        "email": "ianwilson@dallasmakerspace.org",
+        "name": "Ian Wilson",
+        "created": "2025-10-21T19:57:22.692000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "ianwilson@dallasmakerspace.org",
+        "name": "Ian Wilson",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-10-21T19:20:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Dallas Makerspace -",
+        "stage": "On Hold",
+        "amount": "1799",
+        "created": "2025-12-16T02:40:46.346Z",
+        "closed": "2026-01-01T02:40:01.635Z"
+      }
+    ]
+  },
+  {
+    "company": "Adam Kirkpatrick",
+    "tenant_id": "7bb9f2ed-ef55-4303-b6ee-9ead660bbeed",
+    "first_touch": "2025-10-22T16:33:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 3381121",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-27T18:16:15.892000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "adamkirkpatrick@winn-marion.com",
+        "name": "Adam Kirkpatrick",
+        "created": "2025-10-27T18:16:15.892000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "adamkirkpatrick@winn-marion.com",
+        "name": "Adam Kirkpatrick",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-10-22T16:33:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Landis Electric",
+    "tenant_id": "6c792c85-161a-46a5-a127-90476daa2b20",
+    "first_touch": "2025-10-23T20:15:00Z",
+    "source": "PAID_SOCIAL",
+    "source_detail": "Facebook gh - leads - calendar schedule",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-04T19:08:30.909000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-10-23T22:01:59.177Z",
+    "deal_close_date": "2025-11-04T19:15:03.871Z",
+    "contacts": [
+      {
+        "email": "office@landiselectrickc.com",
+        "name": "Christopher Landis",
+        "created": "2025-11-04T19:08:30.909000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "office@landiselectrickc.com",
+        "name": "Landis Electric",
+        "lifecycle": "customer",
+        "first_touch": "2025-10-23T20:15:00Z",
+        "source": "PAID_SOCIAL"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Landis Electric",
+        "stage": "Closed Won",
+        "amount": "3598.00",
+        "created": "2025-10-23T22:01:59.177Z",
+        "closed": "2025-11-04T19:15:03.871Z"
+      }
+    ]
+  },
+  {
+    "company": "SmartCon Solutions",
+    "tenant_id": "e24408eb-69b3-477d-9090-97e314113996",
+    "first_touch": "2025-10-24T22:22:00Z",
+    "source": "OFFLINE",
+    "source_detail": "CRM_UI userId:159029674",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2026-01-06T17:04:12.781000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "250.00",
+    "deal_create_date": "2026-01-06T17:02:42.376Z",
+    "deal_close_date": "2026-01-06T17:02:42.376Z",
+    "contacts": [
+      {
+        "email": "jparry@smartconsolutions.com",
+        "name": "None",
+        "created": "2026-01-06T17:04:12.781000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "jparry@smartconsolutions.com",
+        "name": "Jamie-Anne Parry",
+        "lifecycle": "customer",
+        "first_touch": "2025-10-24T22:22:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "SmartCon Solutions",
+        "stage": "Closed Won",
+        "amount": "250.00",
+        "created": "2026-01-06T17:02:42.376Z",
+        "closed": "2026-01-06T17:02:42.376Z"
+      }
+    ]
+  },
+  {
+    "company": "Douglas Anderson",
+    "tenant_id": "a6867980-c285-4d1b-80fb-5df62f14a993",
+    "first_touch": "2025-10-27T17:14:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "meetings-na2.hubspot.com/mat-hager/onboardingtoarda",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-30T18:33:08.210000+00:00",
+    "deal_stage": "Demo Scheduled",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-09-11T18:24:02.990Z",
+    "deal_close_date": "2025-09-25T18:24:02.317Z",
+    "contacts": [
+      {
+        "email": "Doug.Anderson@medela.com",
+        "name": "Douglas Anderson",
+        "created": "2025-10-30T18:33:08.210000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "doug.anderson@medela.com",
+        "name": "Douglas Anderson",
+        "lifecycle": "customer",
+        "first_touch": "2025-10-27T17:14:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Anderson Custom Boats - Churn",
+        "stage": "Churn",
+        "amount": "3500",
+        "created": "2025-05-09T19:21:33.423Z",
+        "closed": "2025-05-09T19:21:33.423Z"
+      },
+      {
+        "name": "Jordon Anderson Racing",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-11T18:24:02.990Z",
+        "closed": "2025-09-25T18:24:02.317Z"
+      }
+    ]
+  },
+  {
+    "company": "ELIZABETH EATON",
+    "tenant_id": "61cbcbe8-5db5-4c6d-b65c-3d338d00dae0",
+    "first_touch": "2025-10-27T22:31:00Z",
+    "source": "OFFLINE",
+    "source_detail": "CRM_UI userId:159029674",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-03T15:28:14.058000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "elizabeth@americancompletiontools.com",
+        "name": "ELIZABETH EATON",
+        "created": "2025-11-03T15:28:14.058000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "elizabeth@americancompletiontools.com",
+        "name": "Elizabeth Eaton",
+        "lifecycle": "customer",
+        "first_touch": "2025-10-27T22:31:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Account at Gimbel Group",
+    "tenant_id": "9189acf9-4f89-46cd-9760-0d4933d58c67",
+    "first_touch": null,
+    "source": "Unknown",
+    "source_detail": "",
+    "lifecycle_stage": "Unknown",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-28T03:32:51.898000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3600",
+    "deal_create_date": "2025-05-09T19:27:00.486Z",
+    "deal_close_date": "2025-08-04T12:34:51.569Z",
+    "contacts": [
+      {
+        "email": "accounts@gimbel.group",
+        "name": "Account at Gimbel Group",
+        "created": "2025-10-28T03:32:51.898000+00:00"
+      }
+    ],
+    "hs_contacts": [],
+    "all_deals": [
+      {
+        "name": "Gimbel Group - Sales",
+        "stage": "Closed Won",
+        "amount": "3600",
+        "created": "2025-05-09T19:27:00.486Z",
+        "closed": "2025-08-04T12:34:51.569Z"
+      },
+      {
+        "name": "Reut Group From Vision To Reality - Sales",
+        "stage": "Closed Won",
+        "amount": "600",
+        "created": "2025-05-09T19:25:28.239Z",
+        "closed": "2025-05-09T19:25:28.239Z"
+      },
+      {
+        "name": "Mission Control Group - Scheduled Demo",
+        "stage": "Demo Follow-Up",
+        "amount": "3500",
+        "created": "2025-05-10T01:32:57.313Z",
+        "closed": null
+      },
+      {
+        "name": "ZEISS Group",
+        "stage": "Lead",
+        "amount": "3500",
+        "created": "2025-05-21T23:34:34.837Z",
+        "closed": "2025-05-31T23:34:08.142Z"
+      },
+      {
+        "name": "Mission Control Group",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:07.063Z",
+        "closed": "2025-08-23T18:35:06.861Z"
+      },
+      {
+        "name": "Reut Group From Vision To Reality",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:06.376Z",
+        "closed": "2025-08-23T18:35:05.756Z"
+      },
+      {
+        "name": "Autocraft Group Inc.",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-04T17:03:46.800Z",
+        "closed": "2025-09-18T17:03:46.285Z"
+      },
+      {
+        "name": "Comeco group Inc.",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-08T15:26:05.596Z",
+        "closed": "2025-09-22T15:26:04.804Z"
+      },
+      {
+        "name": "Jacobi crist group",
+        "stage": "No-Show/Reschedule Demo",
+        "amount": "3598.00",
+        "created": "2025-09-12T03:56:50.247Z",
+        "closed": "2025-09-26T03:56:49.650Z"
+      },
+      {
+        "name": "Precision Products Group",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-12-25T13:19:02.279Z",
+        "closed": "2026-01-08T13:19:01.765Z"
+      },
+      {
+        "name": "Vidor Group",
+        "stage": "No-Show/Reschedule Demo",
+        "amount": "3598.00",
+        "created": "2026-01-21T16:30:28.098Z",
+        "closed": "2026-02-04T16:30:27.631Z"
+      }
+    ]
+  },
+  {
+    "company": "Motorola Solutions",
+    "tenant_id": "39af20af-18ee-4985-9390-d037c0f994a1",
+    "first_touch": "2025-10-28T07:02:00Z",
+    "source": "OTHER_CAMPAIGNS",
+    "source_detail": "",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-04T23:52:59.611000+00:00",
+    "deal_stage": "Demo Follow-Up",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-10-22T16:14:59.700Z",
+    "deal_close_date": "2025-11-05T17:14:59.236Z",
+    "contacts": [
+      {
+        "email": "jovany.falcon@motorolasolutions.com",
+        "name": "Jovany Falcon",
+        "created": "2025-11-04T23:52:59.611000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "jovany.falcon@motorolasolutions.com",
+        "name": "Jovany Falcon",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-10-28T07:02:00Z",
+        "source": "OTHER_CAMPAIGNS"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Motorola Solutions",
+        "stage": "Demo Follow-Up",
+        "amount": "3598.00",
+        "created": "2025-10-22T16:14:59.700Z",
+        "closed": "2025-11-05T17:14:59.236Z"
+      },
+      {
+        "name": "Motorola Solutions",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-12-09T09:54:52.324Z",
+        "closed": "2025-12-23T09:54:52.008Z"
+      }
+    ]
+  },
+  {
+    "company": "Forager Cycles",
+    "tenant_id": "dc517d59-0ba1-421f-9e0d-5aa5641862d0",
+    "first_touch": "2025-10-28T18:02:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "www.arda.cards/",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-22T01:48:42.972000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "1799.00",
+    "deal_create_date": "2025-11-20T05:28:05.324Z",
+    "deal_close_date": "2025-11-20T05:28:05.324Z",
+    "contacts": [
+      {
+        "email": "dan@foragercycles.com",
+        "name": "Daniel Stranahan",
+        "created": "2025-11-22T01:48:42.972000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "dan@foragercycles.com",
+        "name": "Daniel Stranahan",
+        "lifecycle": "customer",
+        "first_touch": "2025-10-28T18:02:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Forager Cycles",
+        "stage": "Closed Won",
+        "amount": "1799.00",
+        "created": "2025-11-20T05:28:05.324Z",
+        "closed": "2025-11-20T05:28:05.324Z"
+      }
+    ]
+  },
+  {
+    "company": "Kent Silk",
+    "tenant_id": "1fa48bf2-3ef9-4d08-8858-29e71504a1ed",
+    "first_touch": "2025-10-28T20:41:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 622453",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-15T02:18:01.526000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "info@texassidecars.com",
+        "name": "Kent Silk",
+        "created": "2025-11-15T02:18:01.526000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "info@texassidecars.com",
+        "name": "Ana Silk",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-10-28T20:41:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Oliviero Pinotti",
+    "tenant_id": "6d75f348-65cd-4066-9174-879fad4e6bf1",
+    "first_touch": "2025-10-31T17:34:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 226062",
+    "lifecycle_stage": "lead",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-02T19:00:43.065000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "oliviero@solstis.ai",
+        "name": "Oliviero Pinotti",
+        "created": "2025-11-02T19:00:43.065000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "oliviero@solstis.ai",
+        "name": "Oliviero Pinotti None",
+        "lifecycle": "lead",
+        "first_touch": "2025-10-31T17:34:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Uriel",
+    "tenant_id": "f065cc32-6370-4e23-88a6-ee602638e89f",
+    "first_touch": null,
+    "source": "Unknown",
+    "source_detail": "",
+    "lifecycle_stage": "Unknown",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-04T23:31:23.495000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "uriel@austeremfg.com",
+        "name": "Uriel",
+        "created": "2025-11-04T23:31:23.495000+00:00"
+      }
+    ],
+    "hs_contacts": [],
+    "all_deals": []
+  },
+  {
+    "company": "Caliper Studio",
+    "tenant_id": "0bf2aaf7-eeeb-4664-a25f-9945428941fd",
+    "first_touch": "2025-11-05T21:45:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/s9npmwvhhdtrnq",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-05T21:46:25.684000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "2148.00",
+    "deal_create_date": "2025-11-05T21:45:57.908Z",
+    "deal_close_date": "2025-11-05T21:45:57.908Z",
+    "contacts": [
+      {
+        "email": "ameyers@caliperstudio.com",
+        "name": "Aaron Meyers",
+        "created": "2025-11-05T21:46:25.684000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "ameyers@caliperstudio.com",
+        "name": "Aaron Meyers",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-05T21:45:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Caliper Studio",
+        "stage": "Closed Won",
+        "amount": "2148.00",
+        "created": "2025-11-05T21:45:57.908Z",
+        "closed": "2025-11-05T21:45:57.908Z"
+      }
+    ]
+  },
+  {
+    "company": "Casey Case",
+    "tenant_id": "f556bbb9-e9b6-4d57-929e-5e0bb7dac712",
+    "first_touch": null,
+    "source": "Unknown",
+    "source_detail": "",
+    "lifecycle_stage": "Unknown",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-10T18:51:27.397000+00:00",
+    "deal_stage": "Demo Scheduled",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-11-10T18:51:41.533Z",
+    "deal_close_date": "2025-11-24T18:51:40.994Z",
+    "contacts": [
+      {
+        "email": "office@thewoodworksny.com",
+        "name": "Casey Case",
+        "created": "2025-11-11T16:41:54.772000+00:00"
+      },
+      {
+        "email": "office@caseconstruction.net",
+        "name": "Casey Case",
+        "created": "2025-11-10T18:51:27.397000+00:00"
+      }
+    ],
+    "hs_contacts": [],
+    "all_deals": [
+      {
+        "name": "Case Enviromental",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-11-10T18:51:41.533Z",
+        "closed": "2025-11-24T18:51:40.994Z"
+      }
+    ]
+  },
+  {
+    "company": "Shop Tool Company",
+    "tenant_id": "73951365-1cbe-46ac-9b80-6ac44982983b",
+    "first_touch": "2025-11-10T20:15:00Z",
+    "source": "ORGANIC_SEARCH",
+    "source_detail": "Unknown keywords (SSL) BING",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-22T17:28:33.431000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "1799",
+    "deal_create_date": "2025-12-19T23:20:50.709Z",
+    "deal_close_date": "2025-12-22T17:50:40.953Z",
+    "contacts": [
+      {
+        "email": "steven@shoptoolco.com",
+        "name": "None",
+        "created": "2025-12-22T17:28:33.431000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "steven@shoptoolco.com",
+        "name": "Steven",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-10T20:15:00Z",
+        "source": "ORGANIC_SEARCH"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Shop Tool Company",
+        "stage": "Closed Won",
+        "amount": "1799",
+        "created": "2025-12-19T23:20:50.709Z",
+        "closed": "2025-12-22T17:50:40.953Z"
+      }
+    ]
+  },
+  {
+    "company": "boost manufacturing",
+    "tenant_id": "4c8715ff-67ee-4d4d-a227-9feb2d14a8e7",
+    "first_touch": "2025-11-11T15:39:00Z",
+    "source": "ORGANIC_SEARCH",
+    "source_detail": "Unknown keywords (SSL) GOOGLE",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-12T21:14:57.411000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598",
+    "deal_create_date": "2025-06-10T16:36:52.699Z",
+    "deal_close_date": "2025-06-20T17:30:52.013Z",
+    "contacts": [
+      {
+        "email": "info@boostmanufacturing.com",
+        "name": "thomas seaman",
+        "created": "2025-11-12T21:14:57.411000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "info@boostmanufacturing.com",
+        "name": "Boost Manufacturing",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-11T15:39:00Z",
+        "source": "ORGANIC_SEARCH"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Focus Manufacturing - Scheduled Demo",
+        "stage": "Demo Follow-Up",
+        "amount": "3600",
+        "created": "2025-05-09T19:27:31.512Z",
+        "closed": null
+      },
+      {
+        "name": "Unicorn Manufacturing - Churn",
+        "stage": "Churn",
+        "amount": "3500",
+        "created": "2025-05-09T19:21:26.578Z",
+        "closed": "2025-05-09T19:21:26.578Z"
+      },
+      {
+        "name": "Crips Manufacturing",
+        "stage": "Unlikely",
+        "amount": null,
+        "created": "2025-05-21T16:46:01.150Z",
+        "closed": "2025-05-31T16:45:34.298Z"
+      },
+      {
+        "name": "Sound Manufacturing",
+        "stage": "Closed Won",
+        "amount": "3598",
+        "created": "2025-06-10T16:36:52.699Z",
+        "closed": "2025-06-20T17:30:52.013Z"
+      },
+      {
+        "name": "Wirtz Manufacturing LLC - New Deal",
+        "stage": "Freemium",
+        "amount": "3500",
+        "created": "2025-07-21T16:47:41.494Z",
+        "closed": "2025-07-31T16:47:27.628Z"
+      },
+      {
+        "name": "ZEMAN MANUFACTURING",
+        "stage": "Demo Follow-Up",
+        "amount": "3598.00",
+        "created": "2025-09-08T19:54:47.171Z",
+        "closed": "2025-09-22T19:54:46.715Z"
+      },
+      {
+        "name": "Houghton Manufacturing",
+        "stage": "No-Show/Reschedule Demo",
+        "amount": "3598.00",
+        "created": "2025-09-14T21:56:58.116Z",
+        "closed": "2025-09-28T21:56:57.692Z"
+      },
+      {
+        "name": "Toyota Motor Manufacturing Missouri",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-09-24T20:21:29.532Z",
+        "closed": "2025-10-08T20:21:28.960Z"
+      },
+      {
+        "name": "Bemis Manufacturing Company",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-11-04T17:47:30.937Z",
+        "closed": "2025-11-18T17:47:30.108Z"
+      },
+      {
+        "name": "Technical Manufacturing West",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2026-01-07T16:47:51.859Z",
+        "closed": "2026-01-21T16:47:51.230Z"
+      }
+    ]
+  },
+  {
+    "company": "The Label Factory",
+    "tenant_id": "21ee51b8-2ec8-4adc-879e-8f0cd3dd804a",
+    "first_touch": "2025-11-13T08:59:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/yfxwy4gcmfjqyk",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-17T02:26:08.787000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "2148.00",
+    "deal_create_date": "2025-11-17T02:25:36.018Z",
+    "deal_close_date": "2025-11-17T02:25:36.018Z",
+    "contacts": [
+      {
+        "email": "sales@thelabelfactory.com.au",
+        "name": "Stuart Fsyh",
+        "created": "2025-11-17T02:26:08.787000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "sales@thelabelfactory.com.au",
+        "name": "The Label Factory",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-13T08:59:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "The Label Factory",
+        "stage": "Closed Won",
+        "amount": "2148.00",
+        "created": "2025-11-17T02:25:36.018Z",
+        "closed": "2025-11-17T02:25:36.018Z"
+      }
+    ]
+  },
+  {
+    "company": "Parker Plastics Maryland",
+    "tenant_id": "43effb1d-e6cb-466f-a82b-1a003bc9fffd",
+    "first_touch": "2025-11-13T18:20:00Z",
+    "source": "OFFLINE",
+    "source_detail": "CRM_UI userId:159029674",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-13T22:15:22.079000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "2148",
+    "deal_create_date": "2025-10-12T02:47:37.424Z",
+    "deal_close_date": "2025-12-03T01:06:20.291Z",
+    "contacts": [
+      {
+        "email": "mgonzalez@parkerplastics.net",
+        "name": "Parker Plastics Maryland",
+        "created": "2025-11-13T22:15:22.079000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "mgonzalez@parkerplastics.net",
+        "name": "Mariela Gonzalez",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-13T18:20:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Parker Plastics Inc",
+        "stage": "Closed Won",
+        "amount": "2148",
+        "created": "2025-10-12T02:47:37.424Z",
+        "closed": "2025-12-03T01:06:20.291Z"
+      },
+      {
+        "name": "Parker Plastics",
+        "stage": "Closed Won",
+        "amount": "2148.00",
+        "created": "2025-11-13T22:13:22.137Z",
+        "closed": "2025-11-13T22:13:22.137Z"
+      }
+    ]
+  },
+  {
+    "company": "Capital Stainless",
+    "tenant_id": "b4ec12e7-766d-499e-82a7-1b71aa84ceaf",
+    "first_touch": "2025-11-13T22:26:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "www.arda.cards/create-kanban-cards",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-20T22:29:45.406000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "1799.00",
+    "deal_create_date": "2025-11-20T22:29:26.905Z",
+    "deal_close_date": "2025-11-20T22:29:26.905Z",
+    "contacts": [
+      {
+        "email": "jay@capitalstainless.com",
+        "name": "Jay Olson",
+        "created": "2025-11-20T22:29:45.406000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "jay@capitalstainless.com",
+        "name": "Jay Olson",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-13T22:26:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Capital Stainless",
+        "stage": "Closed Won",
+        "amount": "1799.00",
+        "created": "2025-11-20T22:29:26.905Z",
+        "closed": "2025-11-20T22:29:26.905Z"
+      }
+    ]
+  },
+  {
+    "company": "Bella+Canvas",
+    "tenant_id": "82024bd8-6f95-49bd-a578-d0cdc47ea510",
+    "first_touch": "2025-11-14T22:49:00Z",
+    "source": "PAID_SEARCH",
+    "source_detail": "Auto-tagged PPC Unknown keywords (SSL)",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-19T12:46:12.258000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "8388",
+    "deal_create_date": "2025-11-14T22:52:24.846Z",
+    "deal_close_date": "2025-11-20T02:53:24.672Z",
+    "contacts": [
+      {
+        "email": "luis.becerril@bellacanvas.com",
+        "name": "Luis Becerril",
+        "created": "2025-11-19T12:46:12.258000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "luis.becerril@bellacanvas.com",
+        "name": "Luis Becerril",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-14T22:49:00Z",
+        "source": "PAID_SEARCH"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Bella+Canvas",
+        "stage": "Closed Won",
+        "amount": "8388",
+        "created": "2025-11-14T22:52:24.846Z",
+        "closed": "2025-11-20T02:53:24.672Z"
+      }
+    ]
+  },
+  {
+    "company": "Perfect Catch",
+    "tenant_id": "d535ff7b-d278-4711-a94f-cd47b3c59596",
+    "first_touch": "2025-11-15T23:41:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/s9npmwvhhdtrnq",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-15T23:46:31.034000+00:00",
+    "deal_stage": "Demo Scheduled",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2025-11-15T23:47:45.668Z",
+    "deal_close_date": "2025-11-29T23:47:45.063Z",
+    "contacts": [
+      {
+        "email": "yanni@callperfectcatch.com",
+        "name": "yanni",
+        "created": "2025-11-15T23:50:21.392000+00:00"
+      },
+      {
+        "email": "Yanni@callperfectcatch.com",
+        "name": "Yanni",
+        "created": "2025-11-15T23:46:31.034000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "yanni@callperfectcatch.com",
+        "name": "Yanni",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-15T23:41:00Z",
+        "source": "DIRECT_TRAFFIC"
+      },
+      {
+        "email": "yanni@callperfectcatch.com",
+        "name": "Yanni",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-15T23:41:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Perfect Catch",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-11-15T23:47:45.668Z",
+        "closed": "2025-11-29T23:47:45.063Z"
+      },
+      {
+        "name": "Perfect Catch",
+        "stage": "Churn",
+        "amount": "2148.00",
+        "created": "2025-11-15T23:46:14.070Z",
+        "closed": "2026-01-15T02:07:35.251Z"
+      }
+    ]
+  },
+  {
+    "company": "Nora ",
+    "tenant_id": "7bf4ecac-f8dd-45ef-be63-9a0cbeb677c0",
+    "first_touch": "2025-11-18T12:29:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/yfxwy4gcmfjqyk",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-18T13:45:53.051000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "mariamaier7908@gmail.com",
+        "name": "Nora ",
+        "created": "2025-11-18T13:45:53.051000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "mariamaier7908@gmail.com",
+        "name": "Duck Clean",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-18T12:29:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Graham",
+    "tenant_id": "baa1f883-ecfa-4912-b5be-d5784d8b96a4",
+    "first_touch": "2025-11-19T23:40:00Z",
+    "source": "ORGANIC_SEARCH",
+    "source_detail": "Unknown keywords (SSL) GOOGLE",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-20T01:02:50.145000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "graham@lightsoutmfg.com",
+        "name": "Graham",
+        "created": "2025-11-20T01:02:50.145000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "graham@lightsoutmfg.com",
+        "name": "Graham Francis",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-19T23:40:00Z",
+        "source": "ORGANIC_SEARCH"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Cheo",
+    "tenant_id": "8bb65454-cddb-4665-b5d4-bad9f04f82af",
+    "first_touch": "2025-11-24T20:14:00Z",
+    "source": "OFFLINE",
+    "source_detail": "BCC_TO_CRM",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-25T13:34:34.434000+00:00",
+    "deal_stage": "Free Trial",
+    "deal_amount": "8388",
+    "deal_create_date": "2025-11-24T02:25:32.015Z",
+    "deal_close_date": "2025-12-08T02:25:31.479Z",
+    "contacts": [
+      {
+        "email": "twilson@cheo.on.ca",
+        "name": "None",
+        "created": "2025-11-25T13:34:34.434000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "twilson@cheo.on.ca",
+        "name": "Trevor Wilson",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-11-24T20:14:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "CHEO",
+        "stage": "Free Trial",
+        "amount": "8388",
+        "created": "2025-11-24T02:25:32.015Z",
+        "closed": "2025-12-08T02:25:31.479Z"
+      }
+    ]
+  },
+  {
+    "company": "Unknown (calebd0716@icloud.com)",
+    "tenant_id": "f3691efa-7fc0-4007-99ce-8a37ed591153",
+    "first_touch": "2025-11-30T19:09:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/yfxwy4gcmfjqyk",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-11-30T19:12:48.186000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "calebd0716@icloud.com",
+        "name": "None",
+        "created": "2025-11-30T19:12:48.186000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "calebd0716@icloud.com",
+        "name": "Caleb Dicks",
+        "lifecycle": "customer",
+        "first_touch": "2025-11-30T19:09:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Woodworking",
+    "tenant_id": "d7c3a99e-fc62-4214-b13e-343a0d838ad9",
+    "first_touch": "2025-12-02T07:10:00Z",
+    "source": "PAID_SOCIAL",
+    "source_detail": "Facebook gh - leads - calendar schedule",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-08T08:08:04.966000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "myemail.brian@gmail.com",
+        "name": "None",
+        "created": "2025-12-08T08:08:04.966000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "myemail.brian@gmail.com",
+        "name": "Brian Nguyen",
+        "lifecycle": "customer",
+        "first_touch": "2025-12-02T07:10:00Z",
+        "source": "PAID_SOCIAL"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Shenker & Fragasso GbR",
+    "tenant_id": "d1b73191-9036-4fcd-a60b-0b2b2d700ca1",
+    "first_touch": "2025-12-05T10:52:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "www.arda.cards/create-kanban-cards",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-09T14:04:20.183000+00:00",
+    "deal_stage": "Churn",
+    "deal_amount": "2148.00",
+    "deal_create_date": "2025-12-09T14:03:53.055Z",
+    "deal_close_date": "2025-12-16T02:55:40.706Z",
+    "contacts": [
+      {
+        "email": "ausgeknipst@gmail.com",
+        "name": "None",
+        "created": "2025-12-09T14:04:20.183000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "ausgeknipst@gmail.com",
+        "name": "Vladislav Shenker",
+        "lifecycle": "customer",
+        "first_touch": "2025-12-05T10:52:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Shenker & Fragasso ",
+        "stage": "Churn",
+        "amount": "2148.00",
+        "created": "2025-12-09T14:03:53.055Z",
+        "closed": "2025-12-16T02:55:40.706Z"
+      }
+    ]
+  },
+  {
+    "company": "Hartwig-Exhibit",
+    "tenant_id": "fba0e961-8433-4c00-b42f-84e7b1dc822b",
+    "first_touch": "2025-12-06T03:12:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/yfxwy4gcmfjqyk",
+    "lifecycle_stage": "2750415560",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-06T03:15:57.658000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "goran@hartwig-exhibit.com",
+        "name": "None",
+        "created": "2025-12-06T03:15:57.658000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "goran@hartwig-exhibit.com",
+        "name": "Goran Vlatkovic",
+        "lifecycle": "2750415560",
+        "first_touch": "2025-12-06T03:12:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Usoffsite",
+    "tenant_id": "fbc86cb5-afdd-4abf-a225-49cd2a42eb20",
+    "first_touch": null,
+    "source": "Unknown",
+    "source_detail": "",
+    "lifecycle_stage": "Unknown",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-09T14:27:35.633000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "purchasing@usoffsite.com",
+        "name": "None",
+        "created": "2025-12-09T14:27:35.633000+00:00"
+      }
+    ],
+    "hs_contacts": [],
+    "all_deals": []
+  },
+  {
+    "company": "Stabbdesigns",
+    "tenant_id": "7d6e8191-989e-4ebe-98d8-f0b83f942c5f",
+    "first_touch": "2025-12-12T05:06:00Z",
+    "source": "OFFLINE",
+    "source_detail": "BCC_TO_CRM",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-15T13:39:57.108000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "Justin@stabbdesigns.com",
+        "name": "None",
+        "created": "2025-12-15T13:39:57.108000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "justin@stabbdesigns.com",
+        "name": "Justin Stabb",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-12-12T05:06:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Deer Valley Machine Works",
+    "tenant_id": "331467a1-6c14-46e8-8398-f71465c2df62",
+    "first_touch": "2025-12-13T20:12:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/yfxwy4gcmfjqyk",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-13T20:14:25.728000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3000",
+    "deal_create_date": "2025-05-09T19:26:16.479Z",
+    "deal_close_date": "2025-05-09T19:26:16.479Z",
+    "contacts": [
+      {
+        "email": "deervalleymachineworks@gmail.com",
+        "name": "None",
+        "created": "2025-12-13T20:14:25.728000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "deervalleymachineworks@gmail.com",
+        "name": "Josh Clark",
+        "lifecycle": "customer",
+        "first_touch": "2025-12-13T20:12:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Rift Valley Rovers",
+        "stage": "Payment Link Sent",
+        "amount": "3598",
+        "created": "2025-05-27T21:45:07.852Z",
+        "closed": "2025-05-31T21:44:25.002Z"
+      },
+      {
+        "name": "Revolute Machine - Sales",
+        "stage": "Closed Won",
+        "amount": "3000",
+        "created": "2025-05-09T19:26:16.479Z",
+        "closed": "2025-05-09T19:26:16.479Z"
+      },
+      {
+        "name": "Novotny Machine Works - Demo Follow-Up",
+        "stage": "Demo Follow-Up",
+        "amount": "3600",
+        "created": "2025-05-09T19:22:45.878Z",
+        "closed": null
+      },
+      {
+        "name": "Art Verkler Machine - Prospect",
+        "stage": "Unlikely",
+        "amount": null,
+        "created": "2025-05-10T01:13:35.089Z",
+        "closed": null
+      },
+      {
+        "name": "Belfanti Machine Works - Sales",
+        "stage": "Closed Won",
+        "amount": "3500",
+        "created": "2025-05-09T19:26:31.696Z",
+        "closed": "2025-05-09T19:26:31.696Z"
+      },
+      {
+        "name": "A & E Machine - Prospect",
+        "stage": "Unlikely",
+        "amount": null,
+        "created": "2025-05-10T01:13:22.676Z",
+        "closed": null
+      },
+      {
+        "name": "Asap Machine & Tool - Prospect",
+        "stage": "Unlikely",
+        "amount": null,
+        "created": "2025-05-10T01:13:37.220Z",
+        "closed": null
+      },
+      {
+        "name": "Ballard Machine Company - Prospect",
+        "stage": "Unlikely",
+        "amount": null,
+        "created": "2025-05-10T01:13:51.501Z",
+        "closed": null
+      },
+      {
+        "name": "Neff Machine",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:06.377Z",
+        "closed": "2025-08-23T18:35:05.756Z"
+      },
+      {
+        "name": "Novotny Machine Works",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-08-09T18:35:06.373Z",
+        "closed": "2025-08-23T18:35:05.756Z"
+      },
+      {
+        "name": "Integrated Fabrication amd Machine Inv",
+        "stage": "Demo Follow-Up",
+        "amount": "8995",
+        "created": "2025-09-16T00:20:04.491Z",
+        "closed": "2025-09-30T00:20:04.087Z"
+      },
+      {
+        "name": "Bel air machine",
+        "stage": "No-Show/Reschedule Demo",
+        "amount": "3598.00",
+        "created": "2025-09-24T04:05:20.312Z",
+        "closed": "2025-10-08T04:05:19.713Z"
+      },
+      {
+        "name": "J&J Machine - New Deal",
+        "stage": "Closed Won",
+        "amount": "3500",
+        "created": "2025-07-17T20:57:26.825Z",
+        "closed": "2025-10-01T08:44:25.623Z"
+      },
+      {
+        "name": "Pacific Adventure Works",
+        "stage": "Demo Scheduled",
+        "amount": "0",
+        "created": "2025-06-28T07:31:05.213Z",
+        "closed": "2025-07-10T07:29:07.747Z"
+      },
+      {
+        "name": "Ellis Works",
+        "stage": "Demo Follow-Up",
+        "amount": "3598.00",
+        "created": "2025-09-22T20:47:55.603Z",
+        "closed": "2025-10-06T20:47:55.131Z"
+      },
+      {
+        "name": "Baz Works LLC",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2025-10-23T18:46:41.275Z",
+        "closed": "2025-11-06T19:46:40.592Z"
+      }
+    ]
+  },
+  {
+    "company": "Trace Audio",
+    "tenant_id": "75980a19-64ec-4f1a-a2ea-0446ea937b16",
+    "first_touch": "2025-12-15T15:12:00Z",
+    "source": "PAID_SEARCH",
+    "source_detail": "23196459585 Unknown keywords (SSL)",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2026-01-02T19:01:09.847000+00:00",
+    "deal_stage": "Payment Link Sent",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2026-01-01T14:42:13.218Z",
+    "deal_close_date": "2026-01-15T14:42:12.690Z",
+    "contacts": [
+      {
+        "email": "Zach.rose@traceaudio.com",
+        "name": "None",
+        "created": "2026-01-09T07:10:20.744000+00:00"
+      },
+      {
+        "email": "Connor.Wang@traceaudio.com",
+        "name": "None",
+        "created": "2026-01-09T07:09:20.226000+00:00"
+      },
+      {
+        "email": "Tate.Bailey@traceaudio.com",
+        "name": "None",
+        "created": "2026-01-09T07:08:44.874000+00:00"
+      },
+      {
+        "email": "Orders@traceaudio.com",
+        "name": "None",
+        "created": "2026-01-09T07:11:11.704000+00:00"
+      },
+      {
+        "email": "admin@traceaudio.com",
+        "name": "None",
+        "created": "2026-01-09T07:11:51.370000+00:00"
+      },
+      {
+        "email": "ben@traceaudio.com",
+        "name": "None",
+        "created": "2026-01-02T19:01:09.847000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "ben@traceaudio.com",
+        "name": "Ben Sabin",
+        "lifecycle": "opportunity",
+        "first_touch": "2025-12-15T15:12:00Z",
+        "source": "PAID_SEARCH"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Trace Audio LLC",
+        "stage": "Payment Link Sent",
+        "amount": "3598.00",
+        "created": "2026-01-01T14:42:13.218Z",
+        "closed": "2026-01-15T14:42:12.690Z"
+      }
+    ]
+  },
+  {
+    "company": "NexGen Manufacturing, LLC",
+    "tenant_id": "724ffc0f-ff6b-4e63-9e33-f6de613cc885",
+    "first_touch": "2025-12-23T19:12:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/yfxwy4gcmfjqyk",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-12-23T19:19:33.551000+00:00",
+    "deal_stage": "Closed Won",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2026-01-21T15:58:50.162Z",
+    "deal_close_date": "2026-02-14T08:20:19.008Z",
+    "contacts": [
+      {
+        "email": "gunnar@nexgenmfg.net",
+        "name": "None",
+        "created": "2025-12-23T19:19:33.551000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "gunnar@nexgenmfg.net",
+        "name": "Gunnar Eisele",
+        "lifecycle": "customer",
+        "first_touch": "2025-12-23T19:12:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "c4 Manufacturing, LLC",
+        "stage": "Closed Won",
+        "amount": "3598.00",
+        "created": "2026-01-21T15:58:50.162Z",
+        "closed": "2026-02-14T08:20:19.008Z"
+      }
+    ]
+  },
+  {
+    "company": "Wilsonmanifolds",
+    "tenant_id": "77b6d789-a446-4c10-8fd0-9ba32595a8bc",
+    "first_touch": "2025-12-29T18:52:00Z",
+    "source": "DIRECT_TRAFFIC",
+    "source_detail": "payments-na2.hubspot.com/payments/s9npmwvhhdtrnq",
+    "lifecycle_stage": "customer",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2026-01-06T16:05:50.129000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "arda@wilsonmanifolds.com",
+        "name": "None",
+        "created": "2026-01-06T16:05:50.129000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "arda@wilsonmanifolds.com",
+        "name": "Keith Wilson",
+        "lifecycle": "customer",
+        "first_touch": "2025-12-29T18:52:00Z",
+        "source": "DIRECT_TRAFFIC"
+      }
+    ],
+    "all_deals": []
+  },
+  {
+    "company": "Titan Architectural Products, LLC",
+    "tenant_id": "9bd4adb9-e173-4a5b-8b5a-678c4502e673",
+    "first_touch": "2026-01-12T18:24:00Z",
+    "source": "PAID_SEARCH",
+    "source_detail": "Auto-tagged PPC Unknown keywords (SSL)",
+    "lifecycle_stage": "opportunity",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2026-01-12T22:23:30.943000+00:00",
+    "deal_stage": "Demo Scheduled",
+    "deal_amount": "3598.00",
+    "deal_create_date": "2026-01-12T18:58:50.831Z",
+    "deal_close_date": "2026-01-26T18:58:50.180Z",
+    "contacts": [
+      {
+        "email": "Jeremy@titanap.com",
+        "name": "None",
+        "created": "2026-01-12T22:23:30.943000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "jeremy@titanap.com",
+        "name": "Jeremy Trimmer",
+        "lifecycle": "opportunity",
+        "first_touch": "2026-01-12T18:24:00Z",
+        "source": "PAID_SEARCH"
+      }
+    ],
+    "all_deals": [
+      {
+        "name": "Titan Architectural Products, LLC",
+        "stage": "Demo Scheduled",
+        "amount": "3598.00",
+        "created": "2026-01-12T18:58:50.831Z",
+        "closed": "2026-01-26T18:58:50.180Z"
+      }
+    ]
+  },
+  {
+    "company": "Darren Luvaas",
+    "tenant_id": "d4edf385-4a99-4e5b-b83a-9dab30a5a5cc",
+    "first_touch": "2026-02-06T01:34:00Z",
+    "source": "OFFLINE",
+    "source_detail": "INTEGRATION 226062",
+    "lifecycle_stage": "lead",
+    "lead_date": null,
+    "opportunity_date": null,
+    "customer_date": null,
+    "cognito_signup": "2025-10-05T17:03:37.471000+00:00",
+    "deal_stage": null,
+    "deal_amount": null,
+    "deal_create_date": null,
+    "deal_close_date": null,
+    "contacts": [
+      {
+        "email": "darren@luvaas.com",
+        "name": "Darren Luvaas",
+        "created": "2025-10-05T17:03:37.471000+00:00"
+      }
+    ],
+    "hs_contacts": [
+      {
+        "email": "darren@luvaas.com",
+        "name": "Darren Luvaas Luvaas",
+        "lifecycle": "lead",
+        "first_touch": "2026-02-06T01:34:00Z",
+        "source": "OFFLINE"
+      }
+    ],
+    "all_deals": []
+  }
+]
