@@ -116,6 +116,12 @@ export interface ArdaActor {
   tenantId?: string;
 }
 
+interface ProvisionAttemptError {
+  endpoint: string;
+  status: number;
+  message: string;
+}
+
 // PageResult interface available for paginated API calls
 // interface PageResult {
 //   thisPage: string;
@@ -181,6 +187,157 @@ async function ardaFetch<T>(
 
   const data = await response.json() as T;
   return data;
+}
+
+function findFirstMatchingString(
+  source: unknown,
+  keys: Set<string>
+): string | null {
+  if (!source || typeof source !== 'object') return null;
+
+  const queue: unknown[] = [source];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object') continue;
+
+    for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
+      const normalizedKey = key.toLowerCase();
+      if (typeof value === 'string' && keys.has(normalizedKey) && value.trim()) {
+        return value.trim();
+      }
+      if (value && typeof value === 'object') {
+        queue.push(value);
+      }
+    }
+  }
+
+  return null;
+}
+
+function getProvisionEndpoints(): string[] {
+  const configured = process.env.ARDA_USER_PROVISION_ENDPOINTS;
+  if (configured) {
+    return configured
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  return [
+    '/v1/account/user-account',
+    '/v1/account/account-user',
+    '/v1/user/user-account',
+  ];
+}
+
+function getProvisionPayloads(email: string): Array<Record<string, unknown>> {
+  const displayName = email.split('@')[0] || 'OrderPulse User';
+
+  return [
+    {
+      email,
+      name: displayName,
+    },
+    {
+      payload: {
+        email,
+        name: displayName,
+      },
+    },
+    {
+      user: {
+        email,
+        name: displayName,
+      },
+    },
+  ];
+}
+
+// Attempt to create an Arda account for the given email and return resolved actor credentials.
+export async function provisionUserForEmail(email: string): Promise<ArdaActor | null> {
+  if (!ARDA_API_KEY) {
+    console.warn('⚠️ Skipping auto-provision: ARDA_API_KEY is not configured');
+    return null;
+  }
+
+  const endpoints = getProvisionEndpoints();
+  const payloads = getProvisionPayloads(email);
+  const attemptErrors: ProvisionAttemptError[] = [];
+  const systemAuthor = process.env.ARDA_SYSTEM_AUTHOR || 'orderpulse-system';
+
+  for (const endpoint of endpoints) {
+    const url = `${ARDA_BASE_URL}${endpoint}`;
+
+    for (const payload of payloads) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ARDA_API_KEY}`,
+            'X-Author': systemAuthor,
+            'X-Request-ID': uuidv4(),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        // Treat 409 as success when account already exists.
+        if (!response.ok && response.status !== 409) {
+          let message = `HTTP ${response.status}`;
+          try {
+            const parsed = await response.json() as { message?: string; responseMessage?: string };
+            message = parsed.responseMessage || parsed.message || message;
+          } catch {
+            // keep fallback
+          }
+          attemptErrors.push({ endpoint, status: response.status, message });
+          continue;
+        }
+
+        let data: unknown = null;
+        try {
+          data = await response.json();
+        } catch {
+          data = null;
+        }
+
+        const tenantId = findFirstMatchingString(
+          data,
+          new Set(['tenantid', 'tenant_id', 'tenantguid', 'tenant_guid'])
+        );
+        const author = findFirstMatchingString(
+          data,
+          new Set(['author', 'sub', 'usersub', 'user_sub', 'cognitosub', 'cognito_sub'])
+        );
+
+        if (tenantId) {
+          return {
+            author: author || email,
+            email,
+            tenantId,
+          };
+        }
+
+        // Successful response but no tenant details - continue trying other formats/endpoints.
+      } catch (error) {
+        attemptErrors.push({
+          endpoint,
+          status: 0,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  if (attemptErrors.length > 0) {
+    const sample = attemptErrors
+      .slice(0, 3)
+      .map((entry) => `${entry.endpoint} (${entry.status}): ${entry.message}`)
+      .join('; ');
+    console.warn(`⚠️ Auto-provision failed for ${email}. Attempts: ${sample}`);
+  }
+
+  return null;
 }
 
 // Look up tenant ID from user email via Cognito user cache
@@ -454,6 +611,7 @@ export const ardaService = {
   createKanbanCard,
   createOrder,
   getTenantByEmail,
+  provisionUserForEmail,
   isMockMode,
   createItemFromVelocity,
   syncVelocityToArda,

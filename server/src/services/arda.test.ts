@@ -168,4 +168,37 @@ describe('arda service', () => {
       expect(headers['X-Tenant-Id']).toBe('legacy-tenant');
     });
   });
+
+  describe('provisionUserForEmail', () => {
+    it('returns null when ARDA_API_KEY is missing', async () => {
+      delete process.env.ARDA_API_KEY;
+      const { provisionUserForEmail } = await import('./arda.js');
+
+      await expect(provisionUserForEmail('new@example.com')).resolves.toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('returns actor credentials when provisioning endpoint returns tenant and author', async () => {
+      process.env.ARDA_API_KEY = 'valid-key';
+
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          payload: {
+            tenantId: 'tenant-created',
+            sub: 'author-created',
+          },
+        }),
+      });
+
+      const { provisionUserForEmail } = await import('./arda.js');
+      const actor = await provisionUserForEmail('new@example.com');
+
+      expect(actor).toEqual({
+        author: 'author-created',
+        email: 'new@example.com',
+        tenantId: 'tenant-created',
+      });
+    });
+  });
 });

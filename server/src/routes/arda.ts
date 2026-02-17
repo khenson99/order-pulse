@@ -30,6 +30,7 @@ async function getUserCredentials(req: Request): Promise<{
   tenantId: string | null;
   author: string | null;
   isAuthenticated: boolean;
+  autoProvisioned?: boolean;
 }> {
   const isAuthenticated = Boolean(req.session?.userId);
   let email = '';
@@ -42,6 +43,20 @@ async function getUserCredentials(req: Request): Promise<{
 
   // Look up user in Cognito
   let cognitoUser = email ? cognitoService.getUserByEmail(email) : null;
+
+  // Authenticated user missing in Cognito cache: attempt account auto-provision in Arda.
+  if (isAuthenticated && email && !cognitoUser) {
+    const provisionedActor = await ardaService.provisionUserForEmail(email);
+    if (provisionedActor?.tenantId && provisionedActor.author) {
+      return {
+        email,
+        tenantId: provisionedActor.tenantId,
+        author: provisionedActor.author,
+        isAuthenticated,
+        autoProvisioned: true,
+      };
+    }
+  }
   
   // Fallback only for unauthenticated demo requests in mock mode
   if (!cognitoUser && !isAuthenticated && process.env.ARDA_MOCK_MODE === 'true') {
@@ -58,6 +73,7 @@ async function getUserCredentials(req: Request): Promise<{
     tenantId: cognitoUser?.tenantId || null,
     author: cognitoUser?.sub || null,
     isAuthenticated,
+    autoProvisioned: false,
   };
 }
 

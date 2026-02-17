@@ -15,6 +15,7 @@ const mockCreateOrder = vi.fn();
 const mockCreateItemFromVelocity = vi.fn();
 const mockNamedSyncVelocityToArda = vi.fn();
 const mockServiceSyncVelocityToArda = vi.fn();
+const mockProvisionUserForEmail = vi.fn();
 
 vi.mock('./auth.js', () => ({
   getUserEmail: mockGetUserEmail,
@@ -40,6 +41,7 @@ vi.mock('../services/arda.js', () => ({
     createKanbanCard: mockCreateKanbanCard,
     createOrder: mockCreateOrder,
     syncVelocityToArda: mockServiceSyncVelocityToArda,
+    provisionUserForEmail: mockProvisionUserForEmail,
   },
   createItemFromVelocity: mockCreateItemFromVelocity,
   syncVelocityToArda: mockNamedSyncVelocityToArda,
@@ -82,6 +84,7 @@ describe('arda routes credential resolution', () => {
     mockCreateItemFromVelocity.mockResolvedValue({ rId: 'record-4' });
     mockNamedSyncVelocityToArda.mockResolvedValue([]);
     mockServiceSyncVelocityToArda.mockResolvedValue([]);
+    mockProvisionUserForEmail.mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -118,8 +121,38 @@ describe('arda routes credential resolution', () => {
     expect(data.success).toBe(false);
     expect(data.details?.email).toBe('auth-user@example.com');
     expect(mockCreateItem).not.toHaveBeenCalled();
+    expect(mockProvisionUserForEmail).toHaveBeenCalledWith('auth-user@example.com');
     expect(mockGetUserByEmail).toHaveBeenCalledWith('auth-user@example.com');
     expect(mockGetUserByEmail.mock.calls.some(([email]) => email === 'kyle@arda.cards')).toBe(false);
+  });
+
+  it('auto-provisions authenticated missing users and proceeds with the provisioned tenant', async () => {
+    mockGetUserEmail.mockResolvedValue('new-user@example.com');
+    mockGetUserByEmail.mockReturnValue(null);
+    mockProvisionUserForEmail.mockResolvedValue({
+      author: 'provisioned-sub',
+      email: 'new-user@example.com',
+      tenantId: 'provisioned-tenant',
+    });
+
+    ({ server, baseUrl } = await startTestServer('session-user-id'));
+
+    const response = await fetch(`${baseUrl}/api/arda/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Auto Item', primarySupplier: 'Auto Supplier' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockProvisionUserForEmail).toHaveBeenCalledWith('new-user@example.com');
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Auto Item', primarySupplier: 'Auto Supplier' }),
+      {
+        author: 'provisioned-sub',
+        email: 'new-user@example.com',
+        tenantId: 'provisioned-tenant',
+      }
+    );
   });
 
   it('allows unauthenticated demo fallback only in mock mode', async () => {
