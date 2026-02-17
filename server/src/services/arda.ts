@@ -110,6 +110,12 @@ export interface EntityRecord {
   retired: boolean;
 }
 
+export interface ArdaActor {
+  author: string;
+  email?: string;
+  tenantId?: string;
+}
+
 // PageResult interface available for paginated API calls
 // interface PageResult {
 //   thisPage: string;
@@ -191,27 +197,43 @@ export async function getTenantByEmail(email: string): Promise<string | null> {
   return null;
 }
 
-// Get tenant ID - from env, or look up from Cognito cache
-async function resolveTenantId(author: string): Promise<string> {
-  // First priority: environment variable
+function getConfiguredTenantId(): string | null {
   if (ARDA_TENANT_ID && ARDA_TENANT_ID !== 'your_tenant_uuid_here') {
     return ARDA_TENANT_ID;
   }
+  return null;
+}
 
-  // Second: try Cognito lookup
-  const cognitoTenant = await getTenantByEmail(author);
-  if (cognitoTenant) {
-    return cognitoTenant;
+// Resolve tenant using actor context:
+// 1) explicit actor tenant, 2) email->Cognito mapping, 3) env fallback for legacy non-email flows, 4) mock fallback
+async function resolveTenantId(actor: ArdaActor): Promise<string> {
+  if (actor.tenantId) {
+    return actor.tenantId;
   }
 
-  // Check if we're in mock mode
+  if (actor.email) {
+    const cognitoTenant = await getTenantByEmail(actor.email);
+    if (cognitoTenant) {
+      return cognitoTenant;
+    }
+
+    throw new Error(
+      `No tenant mapping found for authenticated email ${actor.email}. ` +
+      'Ensure this Google account is present in Cognito sync data.'
+    );
+  }
+
+  const configuredTenantId = getConfiguredTenantId();
+  if (configuredTenantId) {
+    return configuredTenantId;
+  }
+
   if (process.env.ARDA_MOCK_MODE === 'true') {
     return 'mock-tenant-id';
   }
 
   throw new Error(
-    `ARDA_TENANT_ID not configured and no tenant found for ${author}. ` +
-    'Please set ARDA_TENANT_ID in .env or ensure user is in Cognito.'
+    'Unable to resolve tenant ID: no authenticated email mapping and ARDA_TENANT_ID is not configured.'
   );
 }
 
@@ -257,9 +279,9 @@ function mapToArdaOrderMethod(mechanism?: string): ItemSupplyValue['orderMethod'
 // Maps our simplified ItemInput to Arda's Item.Entity schema
 export async function createItem(
   item: ItemInput,
-  author: string
+  actor: ArdaActor
 ): Promise<EntityRecord> {
-  const tenantId = await resolveTenantId(author);
+  const tenantId = await resolveTenantId(actor);
 
   // Build Arda Item.Entity structure
   const ardaItem: ArdaItemEntity = {
@@ -306,7 +328,7 @@ export async function createItem(
   return ardaFetch<EntityRecord>('/v1/item/item', {
     method: 'POST',
     body: ardaItem,
-    author,
+    author: actor.author,
     tenantId,
   });
 }
@@ -314,14 +336,14 @@ export async function createItem(
 // Create a Kanban card in Arda
 export async function createKanbanCard(
   card: KanbanCardInput,
-  author: string
+  actor: ArdaActor
 ): Promise<EntityRecord> {
-  const tenantId = await resolveTenantId(author);
+  const tenantId = await resolveTenantId(actor);
 
   return ardaFetch<EntityRecord>('/v1/kanban/kanban-card', {
     method: 'POST',
     body: card,
-    author,
+    author: actor.author,
     tenantId,
   });
 }
@@ -329,14 +351,14 @@ export async function createKanbanCard(
 // Create an order in Arda
 export async function createOrder(
   order: OrderHeaderInput,
-  author: string
+  actor: ArdaActor
 ): Promise<EntityRecord> {
-  const tenantId = await resolveTenantId(author);
+  const tenantId = await resolveTenantId(actor);
 
   return ardaFetch<EntityRecord>('/v1/order/order', {
     method: 'POST',
     body: order,
-    author,
+    author: actor.author,
     tenantId,
   });
 }
@@ -367,7 +389,7 @@ export interface VelocitySyncResult {
 // Calculates kanban parameters and sets order mechanism based on velocity
 export async function createItemFromVelocity(
   profile: ItemVelocityProfileInput,
-  author: string
+  actor: ArdaActor
 ): Promise<EntityRecord> {
   // Calculate kanban parameters
   const minQty = profile.recommendedMin;
@@ -391,7 +413,7 @@ export async function createItemFromVelocity(
       primarySupplierLink: profile.primarySupplierLink,
       imageUrl: profile.imageUrl,
     },
-    author
+    actor
   );
 }
 
@@ -399,13 +421,13 @@ export async function createItemFromVelocity(
 // Creates items for each profile and returns results with success/failure status
 export async function syncVelocityToArda(
   profiles: ItemVelocityProfileInput[],
-  author: string
+  actor: ArdaActor
 ): Promise<VelocitySyncResult[]> {
   const results: VelocitySyncResult[] = [];
 
   for (const profile of profiles) {
     try {
-      const result = await createItemFromVelocity(profile, author);
+      const result = await createItemFromVelocity(profile, actor);
       
       // Extract item ID from the result (assuming it's in the payload)
       const itemId = (result.payload as { itemId?: string })?.itemId || result.rId;

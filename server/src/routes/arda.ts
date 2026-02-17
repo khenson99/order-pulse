@@ -2,6 +2,7 @@
 import { Router, Request, Response } from 'express';
 import { 
   ardaService, 
+  ArdaActor,
   ItemInput, 
   KanbanCardInput, 
   OrderHeaderInput,
@@ -23,21 +24,27 @@ declare module 'express-session' {
 }
 
 // Get user credentials from session - returns email, tenantId, and author (sub)
-// Falls back to first Cognito user for demo mode when not authenticated
-async function getUserCredentials(req: Request): Promise<{ email: string; tenantId: string | null; author: string | null }> {
+// Falls back to demo user only when unauthenticated and mock mode is enabled.
+async function getUserCredentials(req: Request): Promise<{
+  email: string;
+  tenantId: string | null;
+  author: string | null;
+  isAuthenticated: boolean;
+}> {
+  const isAuthenticated = Boolean(req.session?.userId);
   let email = '';
   
   // Try to get from session first
-  if (req.session?.userId) {
-    const sessionEmail = await getUserEmail(req.session.userId);
+  if (isAuthenticated) {
+    const sessionEmail = await getUserEmail(req.session.userId!);
     if (sessionEmail) email = sessionEmail;
   }
 
   // Look up user in Cognito
   let cognitoUser = email ? cognitoService.getUserByEmail(email) : null;
   
-  // Fallback: use kyle@arda.cards for demo mode if no session
-  if (!cognitoUser) {
+  // Fallback only for unauthenticated demo requests in mock mode
+  if (!cognitoUser && !isAuthenticated && process.env.ARDA_MOCK_MODE === 'true') {
     const fallbackEmail = 'kyle@arda.cards';
     cognitoUser = cognitoService.getUserByEmail(fallbackEmail);
     if (cognitoUser) {
@@ -48,9 +55,113 @@ async function getUserCredentials(req: Request): Promise<{ email: string; tenant
   
   return {
     email,
-    tenantId: cognitoUser?.tenantId || process.env.ARDA_TENANT_ID || null,
+    tenantId: cognitoUser?.tenantId || null,
     author: cognitoUser?.sub || null,
+    isAuthenticated,
   };
+}
+
+function credentialFailureResponse(credentials: {
+  email: string;
+  tenantId: string | null;
+  author: string | null;
+  isAuthenticated: boolean;
+}) {
+  const cognitoStatus = cognitoService.getSyncStatus();
+
+  if (credentials.isAuthenticated) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: 'Missing Cognito credentials for authenticated Arda sync',
+        details: {
+          email: credentials.email,
+          authorFound: !!credentials.author,
+          tenantIdFound: !!credentials.tenantId,
+          cognitoUsersLoaded: cognitoStatus.userCount,
+          message: credentials.email
+            ? `No Cognito mapping found for logged-in email ${credentials.email}. Ensure the user exists in Arda and run POST /api/cognito/sync.`
+            : 'Authenticated session has no email. Re-authenticate with Google and retry.',
+        },
+      },
+    };
+  }
+
+  return {
+    status: 400,
+    body: {
+      success: false,
+      error: 'Missing credentials for Arda sync',
+      details: {
+        email: credentials.email,
+        authorFound: !!credentials.author,
+        tenantIdFound: !!credentials.tenantId,
+        cognitoUsersLoaded: cognitoStatus.userCount,
+        message: 'Provide author credentials, configure ARDA_TENANT_ID, or enable ARDA_MOCK_MODE for demo usage.',
+      },
+    },
+  };
+}
+
+function buildActor(
+  credentials: {
+    email: string;
+    tenantId: string | null;
+    author: string | null;
+    isAuthenticated: boolean;
+  },
+  providedAuthor?: string | null
+): { actor?: ArdaActor; error?: { status: number; body: unknown } } {
+  if (providedAuthor !== undefined && providedAuthor !== null && typeof providedAuthor !== 'string') {
+    return {
+      error: {
+        status: 400,
+        body: { success: false, error: 'author must be a string when provided' },
+      },
+    };
+  }
+
+  if (credentials.isAuthenticated) {
+    if (!credentials.author || !credentials.tenantId || !credentials.email) {
+      return { error: credentialFailureResponse(credentials) };
+    }
+
+    if (providedAuthor && providedAuthor !== credentials.author) {
+      return {
+        error: {
+          status: 400,
+          body: {
+            success: false,
+            error: 'Provided author does not match authenticated user',
+            details: {
+              providedAuthor,
+              authenticatedAuthor: credentials.author,
+              email: credentials.email,
+            },
+          },
+        },
+      };
+    }
+
+    return {
+      actor: {
+        author: credentials.author,
+        email: credentials.email,
+        tenantId: credentials.tenantId,
+      },
+    };
+  }
+
+  const author = providedAuthor || credentials.author;
+  if (!author) {
+    return { error: credentialFailureResponse(credentials) };
+  }
+
+  const actor: ArdaActor = { author };
+  if (credentials.email) actor.email = credentials.email;
+  if (credentials.tenantId) actor.tenantId = credentials.tenantId;
+  return { actor };
 }
 
 // Check if Arda is configured
@@ -111,9 +222,11 @@ router.get('/lookup-tenant', async (req: Request, res: Response) => {
 router.post('/items', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
-    if (!credentials.author) {
-      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
+    const actorResult = buildActor(credentials);
+    if (actorResult.error) {
+      return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+
     const itemData: Omit<ItemInput, 'externalGuid'> = req.body;
 
     // Validate required fields
@@ -151,7 +264,7 @@ router.post('/items', async (req: Request, res: Response) => {
       color: (itemData as any).color,
     };
 
-    const result = await ardaService.createItem(item, credentials.author!);
+    const result = await ardaService.createItem(item, actorResult.actor!);
     res.json({ success: true, record: result });
   } catch (error) {
     console.error('Arda create item error:', error);
@@ -165,9 +278,11 @@ router.post('/items', async (req: Request, res: Response) => {
 router.post('/kanban-cards', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
-    if (!credentials.author) {
-      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
+    const actorResult = buildActor(credentials);
+    if (actorResult.error) {
+      return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+
     const cardData: KanbanCardInput = req.body;
 
     // Validate required fields
@@ -177,7 +292,7 @@ router.post('/kanban-cards', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await ardaService.createKanbanCard(cardData, credentials.author!);
+    const result = await ardaService.createKanbanCard(cardData, actorResult.actor!);
     res.json({ success: true, record: result });
   } catch (error) {
     console.error('Arda create kanban card error:', error);
@@ -191,9 +306,11 @@ router.post('/kanban-cards', async (req: Request, res: Response) => {
 router.post('/orders', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
-    if (!credentials.author) {
-      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
+    const actorResult = buildActor(credentials);
+    if (actorResult.error) {
+      return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+
     const orderData = req.body;
 
     // Map OrderPulse order to Arda OrderHeaderInput
@@ -214,7 +331,7 @@ router.post('/orders', async (req: Request, res: Response) => {
       order.deliverBy = { utcTimestamp: new Date(orderData.deliverBy).getTime() };
     }
 
-    const result = await ardaService.createOrder(order, credentials.author!);
+    const result = await ardaService.createOrder(order, actorResult.actor!);
     res.json({ success: true, record: result });
   } catch (error) {
     console.error('Arda create order error:', error);
@@ -228,6 +345,11 @@ router.post('/orders', async (req: Request, res: Response) => {
 router.post('/items/bulk', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
+    const actorResult = buildActor(credentials);
+    if (actorResult.error) {
+      return res.status(actorResult.error.status).json(actorResult.error.body);
+    }
+
     const items: Array<Omit<ItemInput, 'externalGuid'>> = req.body.items;
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -238,31 +360,12 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
       });
     }
 
-    // Check if we have valid Cognito credentials
-    if (!credentials.author || !credentials.tenantId) {
-      // Try to provide helpful error message
-      const cognitoStatus = cognitoService.getSyncStatus();
-      return res.status(400).json({
-        success: false,
-        error: 'Missing Cognito credentials for Arda sync',
-        details: {
-          email: credentials.email,
-          authorFound: !!credentials.author,
-          tenantIdFound: !!credentials.tenantId,
-          cognitoUsersLoaded: cognitoStatus.userCount,
-          message: !credentials.author 
-            ? `User ${credentials.email} not found in Cognito cache. Ensure user is in Arda and run POST /api/cognito/sync.`
-            : `Tenant ID not found. Set ARDA_TENANT_ID in env or ensure user has tenant in Cognito.`
-        }
-      });
-    }
-
     console.log(`📤 Syncing ${items.length} items to Arda for user ${credentials.email}`);
-    console.log(`   Author: ${credentials.author}, Tenant: ${credentials.tenantId}`);
+    console.log(`   Author: ${actorResult.actor?.author}, Tenant: ${actorResult.actor?.tenantId}`);
 
     // Sync each item with proper author from Cognito
     const results = await Promise.allSettled(
-      items.map((item) => ardaService.createItem(item, credentials.author!))
+      items.map((item) => ardaService.createItem(item, actorResult.actor!))
     );
 
     const successful = results.filter((r) => r.status === 'fulfilled').length;
@@ -272,8 +375,8 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
       success: failed === 0,
       credentials: {
         email: credentials.email,
-        author: credentials.author,
-        tenantId: credentials.tenantId,
+        author: actorResult.actor?.author,
+        tenantId: actorResult.actor?.tenantId || null,
       },
       summary: { total: items.length, successful, failed },
       results: results.map((r, i) => ({
@@ -297,10 +400,6 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
 router.post('/sync-velocity', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
-    if (!credentials.author) {
-      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
-    }
-
     const { profiles, author } = req.body;
 
     // Validate request body
@@ -310,10 +409,9 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
       });
     }
 
-    if (!author || typeof author !== 'string') {
-      return res.status(400).json({
-        error: 'author string is required',
-      });
+    const actorResult = buildActor(credentials, author);
+    if (actorResult.error) {
+      return res.status(actorResult.error.status).json(actorResult.error.body);
     }
 
     // Validate each profile
@@ -327,9 +425,7 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
 
     console.log(`📤 Syncing ${profiles.length} velocity profiles to Arda for user ${credentials.email}`);
 
-    // Use the provided author or fall back to credentials author
-    const syncAuthor = author || credentials.author!;
-    const results = await syncVelocityToArda(profiles, syncAuthor);
+    const results = await syncVelocityToArda(profiles, actorResult.actor!);
 
     res.json({ results });
   } catch (error) {
@@ -344,8 +440,9 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
 router.post('/push-velocity', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
-    if (!credentials.author) {
-      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
+    const actorResult = buildActor(credentials);
+    if (actorResult.error) {
+      return res.status(actorResult.error.status).json(actorResult.error.body);
     }
 
     const { items } = req.body;
@@ -369,10 +466,9 @@ router.post('/push-velocity', async (req: Request, res: Response) => {
     }
 
     console.log(`📤 Pushing ${items.length} velocity items to Arda for user ${credentials.email}`);
-    console.log(`   Author: ${credentials.author}, Tenant: ${credentials.tenantId}`);
+    console.log(`   Author: ${actorResult.actor?.author}, Tenant: ${actorResult.actor?.tenantId}`);
 
-    // Call syncVelocityToArda with items and credentials author
-    const results = await ardaService.syncVelocityToArda(items, credentials.author);
+    const results = await ardaService.syncVelocityToArda(items, actorResult.actor!);
 
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
@@ -396,10 +492,6 @@ router.post('/push-velocity', async (req: Request, res: Response) => {
 router.post('/sync-item', async (req: Request, res: Response) => {
   try {
     const credentials = await getUserCredentials(req);
-    if (!credentials.author) {
-      return res.status(400).json({ success: false, error: `User ${credentials.email} not found in Cognito` });
-    }
-
     const { author, ...profileData } = req.body;
 
     // Validate required fields
@@ -409,12 +501,14 @@ router.post('/sync-item', async (req: Request, res: Response) => {
       });
     }
 
-    // Use the provided author or fall back to credentials author
-    const syncAuthor = author || credentials.author!;
+    const actorResult = buildActor(credentials, author);
+    if (actorResult.error) {
+      return res.status(actorResult.error.status).json(actorResult.error.body);
+    }
 
     console.log(`📤 Syncing item "${profileData.displayName}" to Arda for user ${credentials.email}`);
 
-    const result = await createItemFromVelocity(profileData as ItemVelocityProfileInput, syncAuthor);
+    const result = await createItemFromVelocity(profileData as ItemVelocityProfileInput, actorResult.actor!);
     res.json({ success: true, record: result });
   } catch (error) {
     console.error('Arda sync item error:', error);
