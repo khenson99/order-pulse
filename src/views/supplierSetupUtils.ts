@@ -112,3 +112,32 @@ export function calculateProgressPercent(progress?: JobProgress | null): number 
   }
   return Math.min(100, Math.max(0, percent));
 }
+
+interface PrioritySummaryParams {
+  error: string | null;
+  isComplete: boolean;
+  processedEmails: number;
+  totalEmails: number;
+  orderCount: number;
+  itemCount: number;
+}
+
+export function getPrioritySummaryText({
+  error,
+  isComplete,
+  processedEmails,
+  totalEmails,
+  orderCount,
+  itemCount,
+}: PrioritySummaryParams): string {
+  if (error) {
+    return error;
+  }
+  if (!isComplete) {
+    return `Analyzing ${processedEmails}/${totalEmails} emails • found ${itemCount} items across ${orderCount} orders`;
+  }
+  if (itemCount === 0) {
+    return `Analyzed ${processedEmails}/${totalEmails} emails, no line items extracted.`;
+  }
+  return `${itemCount} items from ${orderCount} orders`;
+}

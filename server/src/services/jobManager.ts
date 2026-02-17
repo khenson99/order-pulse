@@ -223,6 +223,15 @@ export function addJobOrder(jobId: string, order: ProcessedOrder): void {
   }
 }
 
+export function replaceJobOrders(jobId: string, orders: ProcessedOrder[]): void {
+  const job = jobs.get(jobId);
+  if (job) {
+    job.orders = [...orders];
+    job.updatedAt = new Date();
+    persistJob(job);
+  }
+}
+
 export function setJobCurrentEmail(jobId: string, email: EmailPreview | null): void {
   const job = jobs.get(jobId);
   if (job) {
@@ -290,6 +299,7 @@ export const jobManager = {
   updateJob,
   addJobLog,
   addJobOrder,
+  replaceJobOrders,
   setJobCurrentEmail,
   updateJobProgress,
   cleanupOldJobs,

@@ -7,6 +7,7 @@ import {
   buildSupplierGridItems,
   canonicalizePrioritySupplierDomain,
   calculateProgressPercent,
+  getPrioritySummaryText,
   getMilestoneMessage,
   isPrioritySupplierDomain,
   MILESTONES,
@@ -521,7 +522,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       const status = await jobsApi.getStatus(priorityJobId);
       setPriorityStatus(status);
       
-      if (status.orders && status.orders.length > 0) {
+      if (Array.isArray(status.orders)) {
         const convertedOrders: ExtractedOrder[] = status.orders.map(o => ({
           id: o.id,
           originalEmailId: o.id,
@@ -534,7 +535,11 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
         setPriorityOrders(convertedOrders);
       }
       
-      if (status.status === 'completed' || status.status === 'failed') {
+      if (status.status === 'failed') {
+        setPriorityError(status.error || 'Failed to process McMaster-Carr & Uline emails');
+        setIsPriorityComplete(true);
+        priorityPollAbortRef.current.cancelled = true;
+      } else if (status.status === 'completed') {
         setIsPriorityComplete(true);
         priorityPollAbortRef.current.cancelled = true;
       }
@@ -783,6 +788,21 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     () => calculateProgressPercent(priorityProgress),
     [priorityProgress],
   );
+  const priorityOrderCount = priorityOrders.length;
+  const priorityItemCount = useMemo(
+    () => priorityOrders.reduce((sum, order) => sum + order.items.length, 0),
+    [priorityOrders],
+  );
+  const priorityProcessedEmails = priorityProgress?.processed ?? 0;
+  const priorityTotalEmails = priorityProgress?.total ?? 0;
+  const prioritySummaryText = getPrioritySummaryText({
+    error: priorityError,
+    isComplete: isPriorityComplete,
+    processedEmails: priorityProcessedEmails,
+    totalEmails: priorityTotalEmails,
+    orderCount: priorityOrderCount,
+    itemCount: priorityItemCount,
+  });
 
   // Amazon progress
   const amazonProgress = amazonStatus?.progress;
@@ -847,7 +867,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           </p>
         </div>
       )}
-
 
       {/* Lean Wisdom - Always visible */}
       <div>
@@ -1039,9 +1058,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
         priorityError
           ? 'bg-red-50 border-red-200'
           : isPriorityComplete 
-            ? priorityOrders.length > 0 
-              ? 'bg-green-50 border-green-300 shadow-md' 
-              : 'bg-gray-50 border-gray-200'
+            ? 'bg-green-50 border-green-300 shadow-md'
             : 'bg-blue-50 border-blue-200 shadow-sm'
       }`}>
         <div className="flex items-center justify-between mb-4">
@@ -1059,8 +1076,8 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
             </div>
             <div>
               <h3 className="text-xl font-bold text-arda-text-primary">Industrial Suppliers</h3>
-              <p className="text-sm text-arda-text-secondary">
-                McMaster-Carr, Uline, and more
+              <p className={`text-sm ${priorityError ? 'text-red-600' : 'text-arda-text-secondary'}`}>
+                {prioritySummaryText}
               </p>
             </div>
           </div>

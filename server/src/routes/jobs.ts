@@ -27,6 +27,10 @@ import {
   getSupplierLookbackMonths,
   sanitizeSupplierDomains,
 } from './jobsQueryUtils.js';
+import {
+  buildFinalOrderSnapshot,
+  buildLiveOrderSnapshot,
+} from './jobsProcessingUtils.js';
 
 const router = Router();
 
@@ -1058,9 +1062,9 @@ async function processEmailsInBackground(
             snippet: email.body.substring(0, 100) + '...',
           });
           
-          jobManager.updateJobProgress(jobId, { 
+          jobManager.updateJobProgress(jobId, {
             processed: totalProcessed,
-            currentTask: `${vendorName}: ${emailInfo.subject.substring(0, 40)}...`
+            currentTask: `${vendorName}: ${emailInfo.subject.substring(0, 40)}...`,
           });
 
           // Analyze with AI
@@ -1095,6 +1099,12 @@ async function processEmailsInBackground(
             };
             
             rawOrders.push(rawOrder);
+
+            if (jobType === 'priority') {
+              const liveSnapshot = buildLiveOrderSnapshot(rawOrders);
+              jobManager.replaceJobOrders(jobId, liveSnapshot.orders);
+              jobManager.updateJobProgress(jobId, { success: liveSnapshot.success });
+            }
             
             // Log email type for visibility
             const emailType = detectEmailType(email.subject);
@@ -1110,9 +1120,7 @@ async function processEmailsInBackground(
               jobManager.addJobLog(jobId, `   ... and ${result.items.length - 3} more items`);
             }
           }
-          
-          totalProcessed++;
-          
+
           // Small delay between requests to avoid rate limits
           await delay(100);
           
@@ -1123,6 +1131,12 @@ async function processEmailsInBackground(
             jobManager.addJobLog(jobId, `   ⚠️ Rate limited - waiting...`);
             await delay(2000);
           }
+        } finally {
+          totalProcessed++;
+          jobManager.updateJobProgress(jobId, {
+            processed: totalProcessed,
+            success: rawOrders.length,
+          });
         }
       }
       
@@ -1153,37 +1167,15 @@ async function processEmailsInBackground(
       jobManager.addJobLog(jobId, `   ⏱️ ${ordersWithLeadTime.length} orders with lead time data (avg ${avgLeadTime.toFixed(1)} days)`);
     }
     
-    // Add consolidated orders to job
-    for (const consolidated of consolidatedOrders) {
-      const order: ProcessedOrder = {
-        id: consolidated.id,
-        supplier: consolidated.supplier,
-        orderDate: consolidated.orderDate,
-        totalAmount: consolidated.totalAmount || 0,
-        items: consolidated.items.map(item => ({
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitPrice: item.unitPrice || 0,
-          asin: item.asin,
-          sku: item.sku,
-          productUrl: item.productUrl,
-          imageUrl: item.imageUrl,
-          amazonEnriched: item.amazonEnriched,
-        })),
-        confidence: consolidated.confidence,
-      };
-      
-      jobManager.addJobOrder(jobId, order);
-    }
+    const finalSnapshot = buildFinalOrderSnapshot(consolidatedOrders);
+    jobManager.replaceJobOrders(jobId, finalSnapshot.orders);
 
     // Complete
     jobManager.updateJob(jobId, { status: 'completed' });
     jobManager.setJobCurrentEmail(jobId, null);
     jobManager.updateJobProgress(jobId, { 
       processed: totalProcessed,
-      success: consolidatedOrders.length,
+      success: finalSnapshot.success,
       currentTask: '✅ Complete' 
     });
     jobManager.addJobLog(jobId, `🎉 Complete: ${consolidatedOrders.length} unique orders from ${totalProcessed} emails across ${sortedVendors.length} vendors`);

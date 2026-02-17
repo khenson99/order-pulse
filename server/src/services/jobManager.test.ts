@@ -7,6 +7,7 @@ import {
   updateJob, 
   addJobLog, 
   addJobOrder,
+  replaceJobOrders,
   setJobCurrentEmail,
   updateJobProgress,
   cleanupOldJobs 
@@ -162,6 +163,51 @@ describe('jobManager', () => {
       const updated = getJob(job.id);
       expect(updated?.orders.length).toBe(1);
       expect(updated?.orders[0].supplier).toBe('Test Supplier');
+    });
+  });
+
+  describe('replaceJobOrders', () => {
+    it('should replace all existing orders in a job', () => {
+      const job = createJob('user-replace-orders');
+      addJobOrder(job.id, {
+        id: 'order-1',
+        supplier: 'Supplier A',
+        orderDate: '2024-01-01',
+        totalAmount: 10,
+        items: [],
+        confidence: 0.9,
+      });
+
+      replaceJobOrders(job.id, [{
+        id: 'order-2',
+        supplier: 'Supplier B',
+        orderDate: '2024-02-01',
+        totalAmount: 20,
+        items: [],
+        confidence: 0.95,
+      }]);
+
+      const updated = getJob(job.id);
+      expect(updated?.orders).toHaveLength(1);
+      expect(updated?.orders[0].id).toBe('order-2');
+      expect(updated?.orders[0].supplier).toBe('Supplier B');
+    });
+
+    it('should support replacing with an empty order list', () => {
+      const job = createJob('user-replace-empty');
+      addJobOrder(job.id, {
+        id: 'order-1',
+        supplier: 'Supplier A',
+        orderDate: '2024-01-01',
+        totalAmount: 10,
+        items: [],
+        confidence: 0.9,
+      });
+
+      replaceJobOrders(job.id, []);
+
+      const updated = getJob(job.id);
+      expect(updated?.orders).toEqual([]);
     });
   });
 

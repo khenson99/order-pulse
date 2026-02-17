@@ -4,6 +4,7 @@ import {
   buildSupplierGridItems,
   calculateProgressPercent,
   canonicalizePrioritySupplierDomain,
+  getPrioritySummaryText,
   getMilestoneMessage,
   isPrioritySupplierDomain,
   PRIORITY_SUPPLIER_SCAN_DOMAINS,
@@ -87,5 +88,51 @@ describe('supplierSetupUtils', () => {
 
     const unknown = getMilestoneMessage('not-real');
     expect(unknown.title).toMatch(/Milestone/);
+  });
+
+  it('builds industrial card status text for running, complete, empty, and error states', () => {
+    expect(
+      getPrioritySummaryText({
+        error: null,
+        isComplete: false,
+        processedEmails: 3,
+        totalEmails: 12,
+        orderCount: 2,
+        itemCount: 7,
+      }),
+    ).toContain('Analyzing 3/12 emails');
+
+    expect(
+      getPrioritySummaryText({
+        error: null,
+        isComplete: true,
+        processedEmails: 12,
+        totalEmails: 12,
+        orderCount: 4,
+        itemCount: 9,
+      }),
+    ).toBe('9 items from 4 orders');
+
+    expect(
+      getPrioritySummaryText({
+        error: null,
+        isComplete: true,
+        processedEmails: 12,
+        totalEmails: 12,
+        orderCount: 0,
+        itemCount: 0,
+      }),
+    ).toContain('no line items extracted');
+
+    expect(
+      getPrioritySummaryText({
+        error: 'Boom',
+        isComplete: false,
+        processedEmails: 0,
+        totalEmails: 0,
+        orderCount: 0,
+        itemCount: 0,
+      }),
+    ).toBe('Boom');
   });
 });
