@@ -1,7 +1,16 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
-import { discoverApi, jobsApi, JobStatus, DiscoveredSupplier, isSessionExpiredError } from '../services/api';
+import {
+  discoverApi,
+  jobsApi,
+  JobStatus,
+  DiscoveredSupplier,
+  isSessionExpiredError,
+  integrationsApi,
+  IntegrationConnection,
+  IntegrationSyncRun,
+} from '../services/api';
 import { mergeSuppliers } from '../utils/supplierUtils';
 import {
   buildSupplierGridItems,
@@ -194,16 +203,131 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [otherOrders, setOtherOrders] = useState<ExtractedOrder[]>(initialState?.otherOrders || []);
+  const [otherScanError, setOtherScanError] = useState<string | null>(null);
   const otherPollAbortRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   const [hasStartedOtherImport, setHasStartedOtherImport] = useState<boolean>(
     initialState?.hasStartedOtherImport || false,
   );
+  const [showContinueAnytimePopup, setShowContinueAnytimePopup] = useState(false);
+  const [hasShownContinueAnytimePopup, setHasShownContinueAnytimePopup] = useState(false);
+  const [integrationConnections, setIntegrationConnections] = useState<IntegrationConnection[]>([]);
+  const [integrationRunsByConnection, setIntegrationRunsByConnection] = useState<Record<string, IntegrationSyncRun | undefined>>({});
+  const [integrationNotice, setIntegrationNotice] = useState<string | null>(null);
+  const [integrationError, setIntegrationError] = useState<string | null>(null);
+  const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(false);
+  const [integrationActionKey, setIntegrationActionKey] = useState<string | null>(null);
 
   const getErrorMessage = useCallback((error: unknown, fallback: string): string => {
     if (isSessionExpiredError(error)) {
       return SESSION_EXPIRED_MESSAGE;
     }
     return error instanceof Error && error.message ? error.message : fallback;
+  }, []);
+
+  const loadIntegrations = useCallback(async () => {
+    setIsLoadingIntegrations(true);
+    setIntegrationError(null);
+
+    try {
+      const { connections } = await integrationsApi.listConnections();
+      setIntegrationConnections(connections);
+
+      const runPairs = await Promise.all(
+        connections.map(async (connection) => {
+          try {
+            const { runs } = await integrationsApi.getConnectionRuns(connection.id);
+            return [connection.id, runs[0]] as const;
+          } catch {
+            return [connection.id, undefined] as const;
+          }
+        }),
+      );
+
+      const nextRuns: Record<string, IntegrationSyncRun | undefined> = {};
+      runPairs.forEach(([connectionId, run]) => {
+        nextRuns[connectionId] = run;
+      });
+      setIntegrationRunsByConnection(nextRuns);
+    } catch (error) {
+      const message = getErrorMessage(error, 'Failed to load accounting integrations.');
+      if (!message.toLowerCase().includes('disabled')) {
+        setIntegrationError(message);
+      }
+      setIntegrationConnections([]);
+      setIntegrationRunsByConnection({});
+    } finally {
+      setIsLoadingIntegrations(false);
+    }
+  }, [getErrorMessage]);
+
+  const handleConnectIntegration = useCallback(async (provider: 'quickbooks' | 'xero') => {
+    setIntegrationActionKey(`connect:${provider}`);
+    setIntegrationError(null);
+    setIntegrationNotice(null);
+    try {
+      const { authUrl } = await integrationsApi.connectProvider(provider);
+      window.location.assign(authUrl);
+    } catch (error) {
+      setIntegrationError(getErrorMessage(error, `Failed to connect ${provider}.`));
+    } finally {
+      setIntegrationActionKey(null);
+    }
+  }, [getErrorMessage]);
+
+  const handleDisconnectIntegration = useCallback(async (connectionId: string) => {
+    setIntegrationActionKey(`disconnect:${connectionId}`);
+    setIntegrationError(null);
+    try {
+      await integrationsApi.disconnectConnection(connectionId);
+      setIntegrationNotice('Integration disconnected.');
+      await loadIntegrations();
+    } catch (error) {
+      setIntegrationError(getErrorMessage(error, 'Failed to disconnect integration.'));
+    } finally {
+      setIntegrationActionKey(null);
+    }
+  }, [getErrorMessage, loadIntegrations]);
+
+  const handleSyncIntegration = useCallback(async (connectionId: string) => {
+    setIntegrationActionKey(`sync:${connectionId}`);
+    setIntegrationError(null);
+    try {
+      await integrationsApi.syncConnection(connectionId);
+      setIntegrationNotice('Sync started. Refreshing status shortly...');
+      window.setTimeout(() => {
+        void loadIntegrations();
+      }, 2500);
+    } catch (error) {
+      setIntegrationError(getErrorMessage(error, 'Failed to start provider sync.'));
+    } finally {
+      setIntegrationActionKey(null);
+    }
+  }, [getErrorMessage, loadIntegrations]);
+
+  useEffect(() => {
+    void loadIntegrations();
+  }, [loadIntegrations]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const provider = params.get('integration_provider');
+    const status = params.get('integration_status');
+    const reason = params.get('integration_reason');
+
+    if (!provider || !status) return;
+
+    if (status === 'connected') {
+      setIntegrationNotice(`${provider === 'quickbooks' ? 'QuickBooks' : 'Xero'} connected. Initial backfill started.`);
+    } else {
+      setIntegrationError(reason || `Failed to connect ${provider}.`);
+    }
+
+    params.delete('integration_provider');
+    params.delete('integration_status');
+    params.delete('integration_reason');
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+    window.history.replaceState({}, document.title, nextUrl);
   }, []);
 
   // Computed values for the experience
@@ -566,20 +690,16 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [priorityJobId, isPriorityComplete, pollPriorityStatus]);
 
-  // Notify parent when user can leave email step
-  // User can proceed if: discovery is done AND (no other suppliers to select, OR they've selected some)
+  // Notify parent when user can leave email step.
+  // If additional suppliers exist, require explicit import start before proceeding.
   useEffect(() => {
-    // If no other suppliers were discovered, can proceed once discovery is done
-    // If there are other suppliers, can proceed once user has selected at least one
-    // (they don't need to start scanning - they can skip to continue and scan in background)
-    const canProceed = hasDiscovered && (!hasSelectableOtherSuppliers || selectedOtherCount > 0 || hasStartedOtherImport);
+    const canProceed = hasDiscovered && (!hasSelectableOtherSuppliers || hasStartedOtherImport);
 
     onCanProceed?.(canProceed);
   }, [
     hasSelectableOtherSuppliers,
     hasDiscovered,
     hasStartedOtherImport,
-    selectedOtherCount,
     onCanProceed,
   ]);
 
@@ -665,17 +785,12 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     }
   }, [currentJobId, otherOrders.length, hasStartedOtherImport]);
 
-  // Auto-start other supplier import when we have prior selections and discovery is done
-  const shouldAutoStartOtherImport =
-    hasDiscovered &&
-    !isScanning &&
-    !currentJobId &&
-    !hasStartedOtherImport &&
-    selectedOtherCount > 0 &&
-    selectableOtherSuppliers.length > 0;
-
   // Scan selected suppliers
   const handleScanSuppliers = useCallback(async () => {
+    if (isScanning || currentJobId || hasStartedOtherImport) {
+      return;
+    }
+
     // Filter to only non-Amazon, non-priority enabled suppliers
     const domainsToScan = Array.from(
       new Set(Array.from(enabledSuppliers).map((domain) => canonicalizePrioritySupplierDomain(domain))),
@@ -684,26 +799,33 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     if (domainsToScan.length === 0) {
       return; // Nothing additional to scan
     }
+
+    if (!hasShownContinueAnytimePopup) {
+      setShowContinueAnytimePopup(true);
+      setHasShownContinueAnytimePopup(true);
+    }
     
     setIsScanning(true);
     setJobStatus(null);
-    setHasStartedOtherImport(true);
+    setOtherScanError(null);
     
     try {
       const response = await jobsApi.startJob(domainsToScan, 'other');
       setCurrentJobId(response.jobId);
+      setHasStartedOtherImport(true);
     } catch (error) {
       console.error('Scan error:', error);
+      setOtherScanError(getErrorMessage(error, 'Failed to start selected supplier import.'));
       setIsScanning(false);
     }
-  }, [enabledSuppliers]);
-
-  // Auto-start other supplier import when we have prior selections and discovery is done
-  useEffect(() => {
-    if (shouldAutoStartOtherImport) {
-      handleScanSuppliers();
-    }
-  }, [shouldAutoStartOtherImport, handleScanSuppliers]);
+  }, [
+    enabledSuppliers,
+    getErrorMessage,
+    hasShownContinueAnytimePopup,
+    hasStartedOtherImport,
+    currentJobId,
+    isScanning,
+  ]);
 
   const handleToggleSupplier = useCallback((domain: string) => {
     const normalizedDomain = canonicalizePrioritySupplierDomain(domain);
@@ -716,6 +838,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       }
       return next;
     });
+    setOtherScanError(null);
   }, []);
 
   // Keep parent updated with collected orders as they come in
@@ -816,6 +939,16 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     [selectableOtherSuppliers, enabledSuppliers],
   );
 
+  const connectionByProvider = useMemo(() => {
+    const map = new Map<'quickbooks' | 'xero', IntegrationConnection>();
+    for (const connection of integrationConnections) {
+      if (connection.provider === 'quickbooks' || connection.provider === 'xero') {
+        map.set(connection.provider, connection);
+      }
+    }
+    return map;
+  }, [integrationConnections]);
+
   return (
     <div className="max-w-5xl mx-auto p-6 pb-32 space-y-6 relative">
       
@@ -867,42 +1000,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           </p>
         </div>
       )}
-
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <Icons.Clock className="w-4 h-4 text-blue-700" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-blue-900">Continue anytime</p>
-            <p className="text-sm text-blue-800 mt-1">
-              Email import keeps running in the background after you move to the next step. We’ll keep adding items as scans finish.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Lean Wisdom - Always visible */}
-      <div>
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
-              <Icons.Lightbulb className="w-5 h-5 text-amber-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-amber-900 mb-1">
-                {isAnyProcessing ? 'While you wait, a word about batching...' : 'A word about batching...'}
-              </p>
-              <blockquote className="text-amber-800 italic text-sm leading-relaxed">
-                "{LEAN_WISDOM[wisdomIndex].quote}"
-              </blockquote>
-              <p className="text-xs text-amber-600 mt-2 font-medium">
-                {LEAN_WISDOM[wisdomIndex].attribution}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Live Stats Bar - The "wow" moment */}
       {(allItems.length > 0 || totalOrders > 0) && (
@@ -960,6 +1057,120 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           </button>
         </div>
       )}
+
+      <div className="border-2 border-emerald-200 bg-emerald-50 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-bold text-arda-text-primary">Accounting Integrations</h3>
+            <p className="text-sm text-arda-text-secondary">
+              Import purchase orders from QuickBooks and Xero into Orders.
+            </p>
+          </div>
+          {isLoadingIntegrations && (
+            <div className="flex items-center gap-2 text-emerald-700 text-sm">
+              <Icons.Loader2 className="w-4 h-4 animate-spin" />
+              Refreshing
+            </div>
+          )}
+        </div>
+
+        {integrationNotice && (
+          <div className="bg-emerald-100 border border-emerald-300 rounded-lg px-3 py-2 text-sm text-emerald-800">
+            {integrationNotice}
+          </div>
+        )}
+
+        {integrationError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+            {integrationError}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(['quickbooks', 'xero'] as const).map(provider => {
+            const connection = connectionByProvider.get(provider);
+            const latestRun = connection ? (integrationRunsByConnection[connection.id] || connection.lastRun) : undefined;
+            const providerLabel = provider === 'quickbooks' ? 'QuickBooks' : 'Xero';
+            const isConnected = Boolean(connection && connection.status === 'connected');
+            const statusText = !connection
+              ? 'Not connected'
+              : connection.status === 'connected'
+                ? `Connected${connection.tenantName ? ` • ${connection.tenantName}` : ''}`
+                : connection.status === 'reauth_required'
+                  ? 'Reconnect required'
+                  : connection.status;
+            const runSummary = latestRun
+              ? latestRun.status === 'failed'
+                ? latestRun.error || 'Last sync failed'
+                : latestRun.status === 'running'
+                  ? 'Sync in progress'
+                  : (() => {
+                    const orders = typeof (latestRun as any).ordersUpserted === 'number' ? (latestRun as any).ordersUpserted : undefined;
+                    const items = typeof (latestRun as any).itemsUpserted === 'number' ? (latestRun as any).itemsUpserted : undefined;
+                    if (orders !== undefined || items !== undefined) {
+                      return `Last sync: ${orders ?? 0} orders, ${items ?? 0} items`;
+                    }
+                    return 'Last sync completed';
+                  })()
+              : 'No sync runs yet';
+
+            const connectActionKey = `connect:${provider}`;
+            const syncActionKey = connection ? `sync:${connection.id}` : '';
+            const disconnectActionKey = connection ? `disconnect:${connection.id}` : '';
+
+            return (
+              <div key={provider} className="bg-white border border-emerald-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Icons.Link className="w-4 h-4 text-emerald-700" />
+                    <span className="font-semibold text-arda-text-primary">{providerLabel}</span>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    isConnected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {statusText}
+                  </span>
+                </div>
+
+                <p className="text-xs text-arda-text-secondary">{runSummary}</p>
+
+                <div className="flex items-center gap-2">
+                  {!isConnected ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectIntegration(provider)}
+                      disabled={integrationActionKey !== null}
+                      className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {integrationActionKey === connectActionKey ? 'Connecting...' : connection?.status === 'reauth_required' ? `Reconnect ${providerLabel}` : `Connect ${providerLabel}`}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => connection && void handleSyncIntegration(connection.id)}
+                        disabled={integrationActionKey !== null}
+                        className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1"
+                      >
+                        <Icons.RefreshCw className={`w-3.5 h-3.5 ${integrationActionKey === syncActionKey ? 'animate-spin' : ''}`} />
+                        {integrationActionKey === syncActionKey ? 'Syncing...' : 'Sync now'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => connection && void handleDisconnectIntegration(connection.id)}
+                        disabled={integrationActionKey !== null}
+                        className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-arda-text-secondary hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {integrationActionKey === disconnectActionKey ? 'Disconnecting...' : 'Disconnect'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Amazon Processing Card - Premium look */}
       <div className={`border-2 rounded-2xl p-6 transition-all ${
@@ -1161,6 +1372,28 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
         )}
       </div>
 
+      {/* Lean Wisdom - Always visible */}
+      <div>
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+              <Icons.Lightbulb className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-900 mb-1">
+                {isAnyProcessing ? 'While you wait, a word about batching...' : 'A word about batching...'}
+              </p>
+              <blockquote className="text-amber-800 italic text-sm leading-relaxed">
+                "{LEAN_WISDOM[wisdomIndex].quote}"
+              </blockquote>
+              <p className="text-xs text-amber-600 mt-2 font-medium">
+                {LEAN_WISDOM[wisdomIndex].attribution}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Additional Suppliers Section */}
       <div className="border-2 border-gray-200 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
@@ -1169,28 +1402,48 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
             <p className="text-sm text-arda-text-secondary">
               {isDiscovering 
                 ? 'Discovering...' 
-                : `${supplierCount} additional suppliers found`}
+                : hasStartedOtherImport
+                  ? 'Import started. Continue when ready.'
+                  : `${supplierCount} additional suppliers found`}
             </p>
           </div>
           
           {hasDiscovered && !isScanning && hasSelectableOtherSuppliers && (
             <button
               onClick={handleScanSuppliers}
-              disabled={selectedOtherCount === 0}
+              disabled={selectedOtherCount === 0 || hasStartedOtherImport}
               className={[
                 "px-5 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2",
-                selectedOtherCount > 0
+                selectedOtherCount > 0 && !hasStartedOtherImport
                   ? "bg-arda-accent hover:bg-arda-accent-hover text-white"
                   : "bg-arda-border text-arda-text-muted cursor-not-allowed"
               ].join(" ")}
             >
               <Icons.Download className="w-4 h-4" />
-              {selectedOtherCount > 0
+              {hasStartedOtherImport
+                ? 'Import started'
+                : selectedOtherCount > 0
                 ? `Import ${selectedOtherCount} Supplier${selectedOtherCount === 1 ? '' : 's'}`
                 : 'Select suppliers to import'}
             </button>
           )}
         </div>
+
+        {otherScanError && !isScanning && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <Icons.AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <div>
+                <span className="font-medium text-red-700">
+                  {otherScanError}
+                </span>
+                <p className="text-sm text-red-600 mt-1">
+                  Continue stays disabled until supplier import starts. Select suppliers and try again.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Scanning Progress */}
         {isScanning && jobStatus && (
@@ -1376,6 +1629,51 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
                   <div className="text-xs text-arda-text-muted">Find savings opportunities</div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showContinueAnytimePopup && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="continue-anytime-title"
+            className="bg-white rounded-2xl shadow-xl border border-blue-100 w-full max-w-md p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <Icons.Clock className="w-4 h-4 text-blue-700" />
+                </div>
+                <div>
+                  <h2 id="continue-anytime-title" className="text-base font-semibold text-blue-900">
+                    Continue anytime
+                  </h2>
+                  <p className="text-sm text-blue-800 mt-1">
+                    Email import keeps running in the background after you move to the next step. We’ll keep adding
+                    items as scans finish.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close continue anytime popup"
+                onClick={() => setShowContinueAnytimePopup(false)}
+                className="text-arda-text-muted hover:text-arda-text-primary transition-colors"
+              >
+                <Icons.X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowContinueAnytimePopup(false)}
+                className="px-4 py-2 rounded-lg bg-arda-accent hover:bg-arda-accent-hover text-white font-medium transition-colors"
+              >
+                Got it
+              </button>
             </div>
           </div>
         </div>

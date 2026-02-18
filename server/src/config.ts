@@ -26,10 +26,23 @@ const envSchema = z.object({
   AMAZON_ACCESS_KEY: z.string().optional(),
   AMAZON_SECRET_KEY: z.string().optional(),
   AMAZON_PARTNER_TAG: z.string().optional(),
+  POSTMARK_INBOUND_USERNAME: z.string().optional(),
+  POSTMARK_INBOUND_PASSWORD: z.string().optional(),
+  INBOUND_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
+  INBOUND_PROCESS_BATCH_SIZE: z.coerce.number().min(1).max(100).optional(),
+  INBOUND_MAX_RETRIES: z.coerce.number().min(1).max(20).optional(),
+  INBOUND_RETENTION_DAYS: z.coerce.number().min(1).max(365).optional(),
   BARCODE_LOOKUP_API_KEY: z.string().optional(),
   BARCODE_LOOKUP_USER_AGENT: z.string().optional(),
   UPCITEMDB_USER_KEY: z.string().optional(),
   UPCITEMDB_KEY_TYPE: z.enum(['3scale', 'rapidapi', 'rapidapi-free']).optional(),
+  ENABLE_ACCOUNTING_CONNECTORS: z.enum(['true', 'false']).optional(),
+  ACCOUNTING_SYNC_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).optional(),
+  QUICKBOOKS_CLIENT_ID: z.string().optional(),
+  QUICKBOOKS_CLIENT_SECRET: z.string().optional(),
+  QUICKBOOKS_WEBHOOK_VERIFIER_TOKEN: z.string().optional(),
+  XERO_CLIENT_ID: z.string().optional(),
+  XERO_CLIENT_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -62,3 +75,5 @@ export const rateLimitConfig = {
 };
 
 export const requireRedis = isProduction && !allowInMemoryStorage;
+export const enableAccountingConnectors = env.ENABLE_ACCOUNTING_CONNECTORS === 'true';
+export const accountingSyncIntervalMinutes = env.ACCOUNTING_SYNC_INTERVAL_MINUTES ?? 15;

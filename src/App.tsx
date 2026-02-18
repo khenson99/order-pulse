@@ -3,7 +3,7 @@ import { LoginScreen } from './views/LoginScreen';
 import { OnboardingFlow } from './views/OnboardingFlow';
 import { MobileScanner } from './views/MobileScanner';
 import { GoogleUserProfile } from './types';
-import { authApi } from './services/api';
+import { authApi, SESSION_EXPIRED_EVENT } from './services/api';
 import { Icons } from './components/Icons';
 
 export default function App() {
@@ -14,6 +14,20 @@ export default function App() {
   // Track if user has completed onboarding
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [importedItemCount, setImportedItemCount] = useState(0);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setUserProfile(null);
+      setHasCompletedOnboarding(false);
+      setImportedItemCount(0);
+      localStorage.removeItem('orderPulse_onboardingComplete');
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    };
+  }, []);
 
   // Check auth on mount
   useEffect(() => {
@@ -81,7 +95,7 @@ export default function App() {
   };
 
   const handleOpenArda = () => {
-    window.open('https://app.arda.cards', '_blank');
+    window.open('https://live.app.arda.cards', '_blank');
   };
 
   // Check for mobile scanner routes (no auth required for scanning)

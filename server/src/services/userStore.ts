@@ -45,8 +45,22 @@ async function ensureTable() {
   `)
 }
 
-// Run table creation once on module load
-void ensureTable()
+let ensureTablePromise: Promise<void> | null = null
+
+async function ensureTableReady(): Promise<void> {
+  if (!ensureTablePromise) {
+    ensureTablePromise = ensureTable().catch((error) => {
+      ensureTablePromise = null
+      throw error
+    })
+  }
+  return ensureTablePromise
+}
+
+// Kick table creation on module load, but do not crash process if DB is temporarily unavailable.
+void ensureTableReady().catch((error) => {
+  console.error('Failed to ensure auth users table on startup:', error)
+})
 
 async function cacheUser(user: StoredUser) {
   if (!redisClient) return
@@ -54,6 +68,7 @@ async function cacheUser(user: StoredUser) {
 }
 
 export async function saveUser(user: StoredUser): Promise<void> {
+  await ensureTableReady()
   await pool.query(
     `INSERT INTO users (id, google_id, email, name, picture, access_token, refresh_token, expires_at, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
@@ -82,6 +97,7 @@ export async function saveUser(user: StoredUser): Promise<void> {
 }
 
 export async function deleteUser(userId: string): Promise<void> {
+  await ensureTableReady()
   await pool.query('DELETE FROM users WHERE id = $1', [userId])
   if (redisClient) {
     await redisClient.del(CACHE_KEY(userId))
@@ -89,6 +105,7 @@ export async function deleteUser(userId: string): Promise<void> {
 }
 
 export async function getUserById(userId: string): Promise<StoredUser | null> {
+  await ensureTableReady()
   // Redis cache first
   if (redisClient) {
     const cached = await redisClient.get(CACHE_KEY(userId))

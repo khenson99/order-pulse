@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 
 // CSV item with approval status
@@ -44,11 +44,19 @@ interface ColumnMapping {
 interface CSVUploadStepProps {
   onComplete: (approvedItems: CSVItem[]) => void;
   onBack?: () => void;
+  onFooterStateChange?: (state: CSVFooterState) => void;
+}
+
+export interface CSVFooterState {
+  approvedCount: number;
+  canContinue: boolean;
+  onSkip: () => void;
+  onContinue: () => void;
 }
 
 export const CSVUploadStep: React.FC<CSVUploadStepProps> = ({
   onComplete,
-  onBack: _onBack,
+  onFooterStateChange,
 }) => {
   // CSV parsing state
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
@@ -253,39 +261,27 @@ export const CSVUploadStep: React.FC<CSVUploadStepProps> = ({
     rejected: items.filter(i => i.isRejected).length,
   };
 
+  const handleSkip = useCallback(() => {
+    onComplete([]);
+  }, [onComplete]);
+
   // Handle completion
-  const handleComplete = () => {
+  const handleComplete = useCallback(() => {
     const approvedItems = items.filter(item => item.isApproved);
     onComplete(approvedItems);
-  };
+  }, [items, onComplete]);
+
+  useEffect(() => {
+    onFooterStateChange?.({
+      approvedCount: stats.approved,
+      canContinue: stats.approved > 0,
+      onSkip: handleSkip,
+      onContinue: handleComplete,
+    });
+  }, [handleComplete, handleSkip, onFooterStateChange, stats.approved]);
 
   return (
     <div className="space-y-6">
-      {/* Actions (footer Continue is hidden on this step) */}
-      <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => onComplete([])}
-          className="btn-arda-outline"
-        >
-          Skip CSV
-        </button>
-        <button
-          type="button"
-          onClick={handleComplete}
-          disabled={stats.approved === 0}
-          className={[
-            'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-            stats.approved > 0
-              ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
-              : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-          ].join(' ')}
-        >
-          <Icons.Check className="w-4 h-4" />
-          Add {stats.approved} item{stats.approved === 1 ? '' : 's'}
-        </button>
-      </div>
-
       {/* Upload area or items list */}
       {items.length === 0 ? (
         <div className="bg-white rounded-arda-lg border-2 border-dashed border-arda-border p-12 shadow-arda">

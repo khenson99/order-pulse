@@ -346,6 +346,67 @@ export const ordersApi = {
     fetchApi<{ success: boolean }>(`/api/orders/${id}`, { method: 'DELETE' }),
 };
 
+export type IntegrationProvider = 'quickbooks' | 'xero';
+export type IntegrationConnectionStatus = 'connected' | 'reauth_required' | 'error' | 'disconnected';
+export type IntegrationSyncTrigger = 'manual' | 'scheduled' | 'webhook' | 'backfill';
+export type IntegrationSyncStatus = 'running' | 'success' | 'failed';
+
+export interface IntegrationConnection {
+  id: string;
+  provider: IntegrationProvider;
+  tenantId: string;
+  tenantName?: string;
+  status: IntegrationConnectionStatus;
+  tokenExpiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  lastRun?: {
+    id: string;
+    status: IntegrationSyncStatus;
+    trigger: IntegrationSyncTrigger;
+    startedAt: string;
+    finishedAt?: string;
+    error?: string;
+  };
+}
+
+export interface IntegrationSyncRun {
+  id: string;
+  connectionId: string;
+  trigger: IntegrationSyncTrigger;
+  status: IntegrationSyncStatus;
+  ordersUpserted: number;
+  ordersDeleted: number;
+  itemsUpserted: number;
+  apiCalls: number;
+  startedAt: string;
+  finishedAt?: string;
+  error?: string;
+}
+
+export const integrationsApi = {
+  connectProvider: (provider: IntegrationProvider) =>
+    fetchApi<{ authUrl: string }>(`/api/integrations/${provider}/connect`, {
+      method: 'POST',
+    }),
+
+  listConnections: () =>
+    fetchApi<{ connections: IntegrationConnection[] }>('/api/integrations/connections'),
+
+  disconnectConnection: (connectionId: string) =>
+    fetchApi<{ success: boolean }>(`/api/integrations/connections/${connectionId}`, {
+      method: 'DELETE',
+    }),
+
+  syncConnection: (connectionId: string) =>
+    fetchApi<{ success: boolean; runId: string }>(`/api/integrations/connections/${connectionId}/sync`, {
+      method: 'POST',
+    }),
+
+  getConnectionRuns: (connectionId: string) =>
+    fetchApi<{ runs: IntegrationSyncRun[] }>(`/api/integrations/connections/${connectionId}/runs`),
+};
+
 export { API_BASE_URL };
 
 // Arda API

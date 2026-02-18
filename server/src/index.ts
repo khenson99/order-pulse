@@ -18,11 +18,13 @@ import cognitoRouter from './routes/cognito.js';
 import scanRouter from './routes/scan.js';
 import photoRouter from './routes/photo.js';
 import { urlIngestionRouter } from './routes/urlIngestion.js';
+import { integrationsRouter } from './routes/integrations.js';
 import { cognitoService } from './services/cognito.js';
 import { initializeJobManager, shutdownJobManager } from './services/jobManager.js';
 import { startCognitoSyncScheduler, stopCognitoSyncScheduler } from './services/cognitoScheduler.js';
 import inboundEmailRouter from './routes/inboundEmail.js';
 import { startInboundReceiptWorker, stopInboundReceiptWorker } from './services/inboundReceiptWorker.js';
+import { startProviderSyncScheduler, stopProviderSyncScheduler } from './services/integrations/syncScheduler.js';
 import { appLogger, requestLogger } from './middleware/requestLogger.js';
 import { securityHeaders } from './middleware/securityHeaders.js';
 import { defaultLimiter, authLimiter } from './middleware/rateLimiter.js';
@@ -96,7 +98,12 @@ app.use(cors({
 }));
 app.use(compression());
 // Increase body parser limit for large email payloads (500 emails can be ~10MB)
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+  limit: '50mb',
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf.toString('utf8');
+  },
+}));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Session configuration
@@ -133,6 +140,7 @@ app.use('/api/barcode', scanRouter); // Also mount at /api/barcode for lookup en
 app.use('/api/photo', photoRouter);
 app.use('/api/url-ingestion', defaultLimiter, urlIngestionRouter);
 app.use('/api/inbound', inboundEmailRouter);
+app.use('/api/integrations', defaultLimiter, integrationsRouter);
 
 // Error handler
 app.use(errorHandler);
@@ -145,6 +153,7 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
 
   stopCognitoSyncScheduler();
   stopInboundReceiptWorker();
+  stopProviderSyncScheduler();
   shutdownJobManager();
 
   // Stop accepting new connections
@@ -174,6 +183,7 @@ async function startServer() {
     
     startCognitoSyncScheduler();
     startInboundReceiptWorker();
+    startProviderSyncScheduler();
     
     const status = cognitoService.getSyncStatus();
     appLogger.info(`👥 Cognito users: ${status.userCount} loaded`);
