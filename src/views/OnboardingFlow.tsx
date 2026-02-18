@@ -3,11 +3,13 @@ import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
 import { buildVelocityProfiles, normalizeItemName } from '../utils/inventoryLogic';
 import { SupplierSetup, EmailScanState } from './SupplierSetup';
+import { UrlScrapeStep } from './UrlScrapeStep';
 import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
 import { CSVUploadStep, CSVItem, CSVFooterState } from './CSVUploadStep';
 import { MasterListStep, MasterListItem, MasterListFooterState } from './MasterListStep';
 import { IntegrationsStep } from './IntegrationsStep';
+import { UrlScrapedItem } from '../services/api';
 
 // Simple email item for onboarding (before full InventoryItem processing)
 interface EmailItem {
@@ -25,7 +27,7 @@ interface EmailItem {
 }
 
 // Onboarding step definitions
-export type OnboardingStep = 'email' | 'integrations' | 'barcode' | 'photo' | 'csv' | 'masterlist';
+export type OnboardingStep = 'email' | 'integrations' | 'url' | 'barcode' | 'photo' | 'csv' | 'masterlist';
 
 interface StepConfig {
   id: OnboardingStep;
@@ -51,29 +53,36 @@ const ONBOARDING_STEPS: StepConfig[] = [
     icon: 'Building2',
   },
   {
-    id: 'barcode',
+    id: 'url',
     number: 3,
+    title: 'URLs',
+    description: 'Import products from links',
+    icon: 'Link',
+  },
+  {
+    id: 'barcode',
+    number: 4,
     title: 'UPCs',
     description: 'Scan UPC/EAN codes in your shop',
     icon: 'Barcode',
   },
   {
     id: 'photo',
-    number: 4,
+    number: 5,
     title: 'Images',
     description: 'Photograph items with labels',
     icon: 'Camera',
   },
   {
     id: 'csv',
-    number: 5,
+    number: 6,
     title: 'CSV',
     description: 'Import from spreadsheet',
     icon: 'FileSpreadsheet',
   },
   {
     id: 'masterlist',
-    number: 6,
+    number: 7,
     title: 'Review',
     description: 'Review and sync items',
     icon: 'ListChecks',
@@ -200,16 +209,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onSkip,
   userProfile,
 }) => {
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>('email');
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('integration_provider') && params.get('integration_status')) {
+      return 'integrations';
+    }
+    return 'email';
+  });
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
   
   // Data from each step
   const [emailOrders, setEmailOrders] = useState<ExtractedOrder[]>([]);
   const emailItems = useMemo(() => buildEmailItemsFromOrders(emailOrders), [emailOrders]);
+  const [urlItems, setUrlItems] = useState<UrlScrapedItem[]>([]);
   const [scannedBarcodes, setScannedBarcodes] = useState<ScannedBarcode[]>([]);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const [csvItems, setCsvItems] = useState<CSVItem[]>([]);
-  const [urlItems] = useState([]);
   const [csvFooterState, setCsvFooterState] = useState<CSVFooterState>({
     approvedCount: 0,
     canContinue: false,
@@ -246,8 +261,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   );
 
   const totalItems = useMemo(
-    () => emailItems.length + scannedBarcodes.length + capturedPhotoCount + csvItems.length,
-    [emailItems.length, scannedBarcodes.length, capturedPhotoCount, csvItems.length],
+    () => emailItems.length + urlItems.length + scannedBarcodes.length + capturedPhotoCount + csvItems.length,
+    [emailItems.length, urlItems.length, scannedBarcodes.length, capturedPhotoCount, csvItems.length],
   );
 
   const { currentStepIndex, currentStepConfig } = useMemo(() => {
@@ -493,6 +508,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       {currentStep === 'integrations' && (
         <IntegrationsStep />
       )}
+
+      {currentStep === 'url' && (
+        <UrlScrapeStep
+          importedItems={urlItems}
+          onImportItems={setUrlItems}
+        />
+      )}
       
       {currentStep === 'barcode' && (
         <BarcodeScanStep
@@ -500,7 +522,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           scannedBarcodes={scannedBarcodes}
           onBarcodeScanned={handleBarcodeScanned}
           onComplete={() => handleStepComplete('barcode')}
-          onBack={() => setCurrentStep('integrations')}
+          onBack={() => setCurrentStep('url')}
         />
       )}
       
@@ -573,6 +595,12 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 <span className="inline-flex items-center gap-1">
                   <Icons.Barcode className="w-3 h-3" />
                   {scannedBarcodes.length} scanned
+                </span>
+              )}
+              {urlItems.length > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <Icons.Link className="w-3 h-3" />
+                  {urlItems.length} URLs
                 </span>
               )}
               {capturedPhotoCount > 0 && (

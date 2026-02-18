@@ -7,9 +7,6 @@ import {
   JobStatus,
   DiscoveredSupplier,
   isSessionExpiredError,
-  integrationsApi,
-  IntegrationConnection,
-  IntegrationSyncRun,
 } from '../services/api';
 import { mergeSuppliers } from '../utils/supplierUtils';
 import {
@@ -210,124 +207,12 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   );
   const [showContinueAnytimePopup, setShowContinueAnytimePopup] = useState(false);
   const [hasShownContinueAnytimePopup, setHasShownContinueAnytimePopup] = useState(false);
-  const [integrationConnections, setIntegrationConnections] = useState<IntegrationConnection[]>([]);
-  const [integrationRunsByConnection, setIntegrationRunsByConnection] = useState<Record<string, IntegrationSyncRun | undefined>>({});
-  const [integrationNotice, setIntegrationNotice] = useState<string | null>(null);
-  const [integrationError, setIntegrationError] = useState<string | null>(null);
-  const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(false);
-  const [integrationActionKey, setIntegrationActionKey] = useState<string | null>(null);
 
   const getErrorMessage = useCallback((error: unknown, fallback: string): string => {
     if (isSessionExpiredError(error)) {
       return SESSION_EXPIRED_MESSAGE;
     }
     return error instanceof Error && error.message ? error.message : fallback;
-  }, []);
-
-  const loadIntegrations = useCallback(async () => {
-    setIsLoadingIntegrations(true);
-    setIntegrationError(null);
-
-    try {
-      const { connections } = await integrationsApi.listConnections();
-      setIntegrationConnections(connections);
-
-      const runPairs = await Promise.all(
-        connections.map(async (connection) => {
-          try {
-            const { runs } = await integrationsApi.getConnectionRuns(connection.id);
-            return [connection.id, runs[0]] as const;
-          } catch {
-            return [connection.id, undefined] as const;
-          }
-        }),
-      );
-
-      const nextRuns: Record<string, IntegrationSyncRun | undefined> = {};
-      runPairs.forEach(([connectionId, run]) => {
-        nextRuns[connectionId] = run;
-      });
-      setIntegrationRunsByConnection(nextRuns);
-    } catch (error) {
-      const message = getErrorMessage(error, 'Failed to load accounting integrations.');
-      if (!message.toLowerCase().includes('disabled')) {
-        setIntegrationError(message);
-      }
-      setIntegrationConnections([]);
-      setIntegrationRunsByConnection({});
-    } finally {
-      setIsLoadingIntegrations(false);
-    }
-  }, [getErrorMessage]);
-
-  const handleConnectIntegration = useCallback(async (provider: 'quickbooks' | 'xero') => {
-    setIntegrationActionKey(`connect:${provider}`);
-    setIntegrationError(null);
-    setIntegrationNotice(null);
-    try {
-      const { authUrl } = await integrationsApi.connectProvider(provider);
-      window.location.assign(authUrl);
-    } catch (error) {
-      setIntegrationError(getErrorMessage(error, `Failed to connect ${provider}.`));
-    } finally {
-      setIntegrationActionKey(null);
-    }
-  }, [getErrorMessage]);
-
-  const handleDisconnectIntegration = useCallback(async (connectionId: string) => {
-    setIntegrationActionKey(`disconnect:${connectionId}`);
-    setIntegrationError(null);
-    try {
-      await integrationsApi.disconnectConnection(connectionId);
-      setIntegrationNotice('Integration disconnected.');
-      await loadIntegrations();
-    } catch (error) {
-      setIntegrationError(getErrorMessage(error, 'Failed to disconnect integration.'));
-    } finally {
-      setIntegrationActionKey(null);
-    }
-  }, [getErrorMessage, loadIntegrations]);
-
-  const handleSyncIntegration = useCallback(async (connectionId: string) => {
-    setIntegrationActionKey(`sync:${connectionId}`);
-    setIntegrationError(null);
-    try {
-      await integrationsApi.syncConnection(connectionId);
-      setIntegrationNotice('Sync started. Refreshing status shortly...');
-      window.setTimeout(() => {
-        void loadIntegrations();
-      }, 2500);
-    } catch (error) {
-      setIntegrationError(getErrorMessage(error, 'Failed to start provider sync.'));
-    } finally {
-      setIntegrationActionKey(null);
-    }
-  }, [getErrorMessage, loadIntegrations]);
-
-  useEffect(() => {
-    void loadIntegrations();
-  }, [loadIntegrations]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const provider = params.get('integration_provider');
-    const status = params.get('integration_status');
-    const reason = params.get('integration_reason');
-
-    if (!provider || !status) return;
-
-    if (status === 'connected') {
-      setIntegrationNotice(`${provider === 'quickbooks' ? 'QuickBooks' : 'Xero'} connected. Initial backfill started.`);
-    } else {
-      setIntegrationError(reason || `Failed to connect ${provider}.`);
-    }
-
-    params.delete('integration_provider');
-    params.delete('integration_status');
-    params.delete('integration_reason');
-    const nextQuery = params.toString();
-    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
-    window.history.replaceState({}, document.title, nextUrl);
   }, []);
 
   // Computed values for the experience
@@ -939,16 +824,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     [selectableOtherSuppliers, enabledSuppliers],
   );
 
-  const connectionByProvider = useMemo(() => {
-    const map = new Map<'quickbooks' | 'xero', IntegrationConnection>();
-    for (const connection of integrationConnections) {
-      if (connection.provider === 'quickbooks' || connection.provider === 'xero') {
-        map.set(connection.provider, connection);
-      }
-    }
-    return map;
-  }, [integrationConnections]);
-
   return (
     <div className="max-w-5xl mx-auto p-6 pb-32 space-y-6 relative">
       
@@ -1057,120 +932,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           </button>
         </div>
       )}
-
-      <div className="border-2 border-emerald-200 bg-emerald-50 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-xl font-bold text-arda-text-primary">Accounting Integrations</h3>
-            <p className="text-sm text-arda-text-secondary">
-              Import purchase orders from QuickBooks and Xero into Orders.
-            </p>
-          </div>
-          {isLoadingIntegrations && (
-            <div className="flex items-center gap-2 text-emerald-700 text-sm">
-              <Icons.Loader2 className="w-4 h-4 animate-spin" />
-              Refreshing
-            </div>
-          )}
-        </div>
-
-        {integrationNotice && (
-          <div className="bg-emerald-100 border border-emerald-300 rounded-lg px-3 py-2 text-sm text-emerald-800">
-            {integrationNotice}
-          </div>
-        )}
-
-        {integrationError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
-            {integrationError}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {(['quickbooks', 'xero'] as const).map(provider => {
-            const connection = connectionByProvider.get(provider);
-            const latestRun = connection ? (integrationRunsByConnection[connection.id] || connection.lastRun) : undefined;
-            const providerLabel = provider === 'quickbooks' ? 'QuickBooks' : 'Xero';
-            const isConnected = Boolean(connection && connection.status === 'connected');
-            const statusText = !connection
-              ? 'Not connected'
-              : connection.status === 'connected'
-                ? `Connected${connection.tenantName ? ` • ${connection.tenantName}` : ''}`
-                : connection.status === 'reauth_required'
-                  ? 'Reconnect required'
-                  : connection.status;
-            const runSummary = latestRun
-              ? latestRun.status === 'failed'
-                ? latestRun.error || 'Last sync failed'
-                : latestRun.status === 'running'
-                  ? 'Sync in progress'
-                  : (() => {
-                    const orders = typeof (latestRun as any).ordersUpserted === 'number' ? (latestRun as any).ordersUpserted : undefined;
-                    const items = typeof (latestRun as any).itemsUpserted === 'number' ? (latestRun as any).itemsUpserted : undefined;
-                    if (orders !== undefined || items !== undefined) {
-                      return `Last sync: ${orders ?? 0} orders, ${items ?? 0} items`;
-                    }
-                    return 'Last sync completed';
-                  })()
-              : 'No sync runs yet';
-
-            const connectActionKey = `connect:${provider}`;
-            const syncActionKey = connection ? `sync:${connection.id}` : '';
-            const disconnectActionKey = connection ? `disconnect:${connection.id}` : '';
-
-            return (
-              <div key={provider} className="bg-white border border-emerald-200 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Icons.Link className="w-4 h-4 text-emerald-700" />
-                    <span className="font-semibold text-arda-text-primary">{providerLabel}</span>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    isConnected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {statusText}
-                  </span>
-                </div>
-
-                <p className="text-xs text-arda-text-secondary">{runSummary}</p>
-
-                <div className="flex items-center gap-2">
-                  {!isConnected ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleConnectIntegration(provider)}
-                      disabled={integrationActionKey !== null}
-                      className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {integrationActionKey === connectActionKey ? 'Connecting...' : connection?.status === 'reauth_required' ? `Reconnect ${providerLabel}` : `Connect ${providerLabel}`}
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => connection && void handleSyncIntegration(connection.id)}
-                        disabled={integrationActionKey !== null}
-                        className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1"
-                      >
-                        <Icons.RefreshCw className={`w-3.5 h-3.5 ${integrationActionKey === syncActionKey ? 'animate-spin' : ''}`} />
-                        {integrationActionKey === syncActionKey ? 'Syncing...' : 'Sync now'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => connection && void handleDisconnectIntegration(connection.id)}
-                        disabled={integrationActionKey !== null}
-                        className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-arda-text-secondary hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {integrationActionKey === disconnectActionKey ? 'Disconnecting...' : 'Disconnect'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
 
       {/* Amazon Processing Card - Premium look */}
       <div className={`border-2 rounded-2xl p-6 transition-all ${
