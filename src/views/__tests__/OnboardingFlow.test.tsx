@@ -17,6 +17,10 @@ vi.mock('../BarcodeScanStep', () => ({
   BarcodeScanStep: () => <div>barcode-step</div>,
 }));
 
+vi.mock('../UrlScrapeStep', () => ({
+  UrlScrapeStep: () => <div>url-step</div>,
+}));
+
 vi.mock('../PhotoCaptureStep', () => ({
   PhotoCaptureStep: () => <div>photo-step</div>,
 }));
@@ -29,22 +33,19 @@ vi.mock('../MasterListStep', () => ({
   MasterListStep: () => <div>masterlist-step</div>,
 }));
 
-vi.mock('../ArdaSyncStep', () => ({
-  ArdaSyncStep: () => <div>sync-step</div>,
-}));
-
 import { OnboardingFlow } from '../OnboardingFlow';
 
 describe('OnboardingFlow email continuation reminder', () => {
   it('shows the reminder on the email step', () => {
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
 
+    expect(screen.getAllByText('Step 1 of 6').length).toBeGreaterThan(0);
     expect(
       screen.getByText('Continuing won’t stop email scanning. Import keeps running in the background.'),
     ).toBeInTheDocument();
   });
 
-  it('hides the reminder after advancing to barcode step', async () => {
+  it('hides the reminder after advancing to URL step', async () => {
     const user = userEvent.setup();
 
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
@@ -52,7 +53,8 @@ describe('OnboardingFlow email continuation reminder', () => {
     await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(screen.getByText('barcode-step')).toBeInTheDocument();
+    expect(screen.getByText('url-step')).toBeInTheDocument();
+    expect(screen.getAllByText('Step 2 of 6').length).toBeGreaterThan(0);
     expect(
       screen.queryByText('Continuing won’t stop email scanning. Import keeps running in the background.'),
     ).not.toBeInTheDocument();

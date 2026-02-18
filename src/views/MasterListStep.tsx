@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Icons } from '../components/Icons';
+import { API_BASE_URL, UrlScrapedItem } from '../services/api';
 import { ScannedBarcode, CapturedPhoto } from './OnboardingFlow';
 import { CSVItem } from './CSVUploadStep';
 
-// Simple email item from onboarding
 interface EmailItem {
   id: string;
   name: string;
@@ -18,39 +18,30 @@ interface EmailItem {
   recommendedOrderQty?: number;
 }
 
-// Master list item - unified from all sources
 export interface MasterListItem {
   id: string;
-  source: 'email' | 'barcode' | 'photo' | 'csv';
-  // Core fields
+  source: 'email' | 'url' | 'barcode' | 'photo' | 'csv';
   name: string;
   description?: string;
   supplier?: string;
   location?: string;
-  // Identifiers
   barcode?: string;
   sku?: string;
   asin?: string;
-  // Quantities
   minQty?: number;
   orderQty?: number;
   currentQty?: number;
-  // Pricing
   unitPrice?: number;
-  // Media & URLs
   imageUrl?: string;
   productUrl?: string;
-  // Color for Arda
   color?: string;
-  // Status
-  isEditing?: boolean;
-  isVerified: boolean;
   needsAttention: boolean;
   validationErrors?: string[];
 }
 
 interface MasterListStepProps {
   emailItems: EmailItem[];
+  urlItems: UrlScrapedItem[];
   scannedBarcodes: ScannedBarcode[];
   capturedPhotos: CapturedPhoto[];
   csvItems: CSVItem[];
@@ -58,7 +49,20 @@ interface MasterListStepProps {
   onBack: () => void;
 }
 
-// Editable cell component for spreadsheet-like editing
+type RowSyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+
+interface RowSyncState {
+  status: RowSyncStatus;
+  ardaEntityId?: string;
+  error?: string;
+}
+
+interface SyncResult {
+  success: boolean;
+  ardaEntityId?: string;
+  error?: string;
+}
+
 interface EditableCellProps {
   value: string | number | undefined;
   onChange: (value: string) => void;
@@ -67,12 +71,12 @@ interface EditableCellProps {
   className?: string;
 }
 
-const EditableCell: React.FC<EditableCellProps> = ({ 
-  value, 
-  onChange, 
-  type = 'text', 
+const EditableCell: React.FC<EditableCellProps> = ({
+  value,
+  onChange,
+  type = 'text',
   placeholder = '',
-  className = ''
+  className = '',
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [localValue, setLocalValue] = useState(String(value ?? ''));
@@ -125,12 +129,26 @@ const EditableCell: React.FC<EditableCellProps> = ({
       onClick={() => setIsEditing(true)}
       className={`px-2 py-1 text-sm cursor-text hover:bg-orange-50 rounded min-h-[28px] ${className} ${!value ? 'text-arda-text-muted italic' : ''}`}
     >
-      {value !== undefined && value !== '' ? (type === 'number' ? value : value) : placeholder || '—'}
+      {value !== undefined && value !== '' ? value : placeholder || '—'}
     </div>
   );
 };
 
-// Color picker dropdown
+const toExternalUrl = (value?: string): string | null => {
+  const raw = value?.trim();
+  if (!raw || raw.startsWith('data:')) return null;
+
+  try {
+    return new URL(raw).toString();
+  } catch {
+    try {
+      return new URL(`https://${raw}`).toString();
+    } catch {
+      return null;
+    }
+  }
+};
+
 const ColorPicker: React.FC<{ value?: string; onChange: (color: string) => void }> = ({ value, onChange }) => {
   const colors = [
     { id: 'BLUE', label: 'Blue', bg: 'bg-blue-500' },
@@ -149,6 +167,7 @@ const ColorPicker: React.FC<{ value?: string; onChange: (color: string) => void 
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-orange-50 rounded min-h-[28px] w-full"
       >
@@ -166,7 +185,11 @@ const ColorPicker: React.FC<{ value?: string; onChange: (color: string) => void 
           {colors.map(color => (
             <button
               key={color.id}
-              onClick={() => { onChange(color.id); setIsOpen(false); }}
+              type="button"
+              onClick={() => {
+                onChange(color.id);
+                setIsOpen(false);
+              }}
               className={`w-8 h-8 rounded ${color.bg} hover:ring-2 ring-offset-1 ring-arda-accent ${value?.toUpperCase() === color.id ? 'ring-2' : ''}`}
               title={color.label}
             />
@@ -179,17 +202,18 @@ const ColorPicker: React.FC<{ value?: string; onChange: (color: string) => void 
 
 export const MasterListStep: React.FC<MasterListStepProps> = ({
   emailItems,
+  urlItems,
   scannedBarcodes,
   capturedPhotos,
   csvItems,
   onComplete,
   onBack,
 }) => {
-  // Build initial master list from all sources
+  void onBack;
+
   const initialItems = useMemo(() => {
     const items: MasterListItem[] = [];
-    
-    // Add email items
+
     emailItems.forEach(item => {
       items.push({
         id: item.id,
@@ -203,12 +227,26 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
         unitPrice: item.lastPrice,
         imageUrl: item.imageUrl,
         productUrl: item.productUrl,
-        isVerified: false,
         needsAttention: !item.name || item.name.includes('Unknown'),
       });
     });
-    
-    // Add scanned barcodes (that aren't duplicates of email items)
+
+    urlItems.forEach((item, index) => {
+      items.push({
+        id: `url-${index}-${item.sourceUrl}`,
+        source: 'url',
+        name: item.itemName || 'Unknown item',
+        description: item.description,
+        supplier: item.supplier,
+        sku: item.vendorSku,
+        asin: item.asin,
+        unitPrice: item.price,
+        imageUrl: item.imageUrl,
+        productUrl: item.productUrl || item.sourceUrl,
+        needsAttention: item.needsReview || !item.itemName || !item.supplier,
+      });
+    });
+
     scannedBarcodes.forEach(barcode => {
       const existingByBarcode = items.find(i => i.barcode === barcode.barcode);
       if (!existingByBarcode) {
@@ -218,13 +256,11 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
           name: barcode.productName || `Unknown (${barcode.barcode})`,
           barcode: barcode.barcode,
           imageUrl: barcode.imageUrl,
-          isVerified: false,
           needsAttention: !barcode.productName,
         });
       }
     });
-    
-    // Add photo-captured items (include ALL photos, even without analysis)
+
     capturedPhotos.forEach(photo => {
       items.push({
         id: `photo-${photo.id}`,
@@ -232,13 +268,10 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
         name: photo.suggestedName || 'Captured Item (analyzing...)',
         supplier: photo.suggestedSupplier,
         imageUrl: photo.imageData,
-        isVerified: false,
-        // Needs attention if not analyzed yet
         needsAttention: !photo.suggestedName,
       });
     });
-    
-    // Add CSV items
+
     csvItems.forEach(csvItem => {
       items.push({
         id: csvItem.id,
@@ -254,38 +287,37 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
         productUrl: csvItem.productUrl,
         imageUrl: csvItem.imageUrl,
         color: csvItem.color,
-        isVerified: false,
         needsAttention: false,
       });
     });
-    
+
     return items;
-  }, [emailItems, scannedBarcodes, capturedPhotos, csvItems]);
+  }, [emailItems, urlItems, scannedBarcodes, capturedPhotos, csvItems]);
 
   const [items, setItems] = useState<MasterListItem[]>(initialItems);
-  const [filter, setFilter] = useState<'all' | 'needs_attention' | 'verified'>('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'email' | 'barcode' | 'photo' | 'csv'>('all');
+  const [filter, setFilter] = useState<'all' | 'needs_attention' | 'synced' | 'errors'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'email' | 'url' | 'barcode' | 'photo' | 'csv'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [syncStateById, setSyncStateById] = useState<Record<string, RowSyncState>>({});
+  const [isBulkSyncing, setIsBulkSyncing] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
-  // Sync items when new data comes in (e.g., new photos from mobile, updated analysis)
   useEffect(() => {
     setItems(prev => {
       const newItems = [...prev];
       let hasChanges = false;
 
-      // Add or update items from initialItems
       for (const newItem of initialItems) {
         const existingIndex = newItems.findIndex(i => i.id === newItem.id);
         if (existingIndex === -1) {
-          // New item - add it
           newItems.push(newItem);
           hasChanges = true;
         } else {
-          // Existing item - update if analysis has completed
           const existing = newItems[existingIndex];
           if (
-            (!existing.name || existing.name.includes('analyzing')) && 
-            newItem.name && !newItem.name.includes('analyzing')
+            (!existing.name || existing.name.includes('analyzing'))
+            && newItem.name && !newItem.name.includes('analyzing')
           ) {
             newItems[existingIndex] = {
               ...existing,
@@ -302,74 +334,279 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
     });
   }, [initialItems]);
 
-  // Update a field on an item
+  useEffect(() => {
+    const ids = new Set(items.map(item => item.id));
+
+    setSelectedItemIds(prev => {
+      const next = new Set(Array.from(prev).filter(id => ids.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+
+    setSyncStateById(prev => {
+      let changed = false;
+      const next: Record<string, RowSyncState> = {};
+
+      for (const [id, state] of Object.entries(prev)) {
+        if (ids.has(id)) {
+          next[id] = state;
+        } else {
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [items]);
+
   const updateItem = useCallback((id: string, field: keyof MasterListItem, value: string | number | undefined) => {
     setItems(prev => prev.map(item => {
-      if (item.id === id) {
-        const updated = { ...item, [field]: value };
-        // Clear needsAttention if name is now set
-        if (field === 'name' && value && !String(value).includes('Unknown')) {
-          updated.needsAttention = false;
-        }
-        return updated;
+      if (item.id !== id) return item;
+
+      const updated: MasterListItem = { ...item, [field]: value };
+      if (field === 'name' && value && !String(value).includes('Unknown')) {
+        updated.needsAttention = false;
       }
-      return item;
+      return updated;
     }));
+
+    setSyncStateById(prev => {
+      const existing = prev[id];
+      if (!existing || existing.status === 'idle') return prev;
+      return {
+        ...prev,
+        [id]: { status: 'idle' },
+      };
+    });
   }, []);
 
-  // Mark item as verified
-  const verifyItem = useCallback((id: string) => {
-    setItems(prev => prev.map(item => 
-      item.id === id ? { ...item, isVerified: true, needsAttention: false } : item
-    ));
-  }, []);
-
-  // Remove item from list
   const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(item => item.id !== id));
+    setSelectedItemIds(prev => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setSyncStateById(prev => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, []);
 
-  // Verify all items
-  const verifyAll = useCallback(() => {
-    setItems(prev => prev.map(item => ({ ...item, isVerified: true, needsAttention: false })));
-  }, []);
-
-  // Filter items
   const filteredItems = useMemo(() => {
     return items.filter(item => {
+      const rowStatus = syncStateById[item.id]?.status ?? 'idle';
       if (filter === 'needs_attention' && !item.needsAttention) return false;
-      if (filter === 'verified' && !item.isVerified) return false;
+      if (filter === 'synced' && rowStatus !== 'success') return false;
+      if (filter === 'errors' && rowStatus !== 'error') return false;
       if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
-          item.name.toLowerCase().includes(query) ||
-          item.sku?.toLowerCase().includes(query) ||
-          item.barcode?.toLowerCase().includes(query) ||
-          item.supplier?.toLowerCase().includes(query)
+          item.name.toLowerCase().includes(query)
+          || item.sku?.toLowerCase().includes(query)
+          || item.barcode?.toLowerCase().includes(query)
+          || item.supplier?.toLowerCase().includes(query)
         );
       }
       return true;
     });
-  }, [items, filter, sourceFilter, searchQuery]);
+  }, [items, filter, sourceFilter, searchQuery, syncStateById]);
 
-  // Stats
   const stats = useMemo(() => ({
     total: items.length,
-    verified: items.filter(i => i.isVerified).length,
+    synced: items.filter(item => (syncStateById[item.id]?.status ?? 'idle') === 'success').length,
+    errors: items.filter(item => (syncStateById[item.id]?.status ?? 'idle') === 'error').length,
     needsAttention: items.filter(i => i.needsAttention).length,
-    bySource: {
-      email: items.filter(i => i.source === 'email').length,
-      barcode: items.filter(i => i.source === 'barcode').length,
-      photo: items.filter(i => i.source === 'photo').length,
-      csv: items.filter(i => i.source === 'csv').length,
-    },
+  }), [items, syncStateById]);
+
+  const sourceCounts = useMemo(() => ({
+    email: items.filter(item => item.source === 'email').length,
+    url: items.filter(item => item.source === 'url').length,
+    barcode: items.filter(item => item.source === 'barcode').length,
+    photo: items.filter(item => item.source === 'photo').length,
+    csv: items.filter(item => item.source === 'csv').length,
   }), [items]);
 
-  // Source icon
+  const selectedCount = selectedItemIds.size;
+
+  const hasSyncInProgress = useMemo(
+    () => isBulkSyncing || Object.values(syncStateById).some(state => state.status === 'syncing'),
+    [isBulkSyncing, syncStateById],
+  );
+
+  const syncedItems = useMemo(
+    () => items.filter(item => (syncStateById[item.id]?.status ?? 'idle') === 'success'),
+    [items, syncStateById],
+  );
+
+  const filteredIds = useMemo(() => filteredItems.map(item => item.id), [filteredItems]);
+  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selectedItemIds.has(id));
+  const someFilteredSelected = filteredIds.some(id => selectedItemIds.has(id));
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = someFilteredSelected && !allFilteredSelected;
+  }, [someFilteredSelected, allFilteredSelected]);
+
+  const uploadImage = useCallback(async (imageData: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/photo/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ imageData }),
+      });
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.imageUrl ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const syncItemToArda = useCallback(async (item: MasterListItem): Promise<SyncResult> => {
+    try {
+      let imageUrl = item.imageUrl;
+      if (imageUrl?.startsWith('data:image/')) {
+        const uploadedUrl = await uploadImage(imageUrl);
+        imageUrl = uploadedUrl || undefined;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/arda/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: item.name,
+          primarySupplier: item.supplier || 'Unknown Supplier',
+          sku: item.sku,
+          barcode: item.barcode,
+          location: item.location,
+          minQty: item.minQty || 1,
+          orderQty: item.orderQty || item.minQty || 1,
+          unitPrice: item.unitPrice,
+          imageUrl,
+          primarySupplierLink: item.productUrl,
+          description: item.description,
+        }),
+      });
+
+      let data: Record<string, unknown> = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
+
+      const errorMessage = typeof data.error === 'string' ? data.error : '';
+      if (response.status === 409 || errorMessage.includes('already exists')) {
+        return { success: true, ardaEntityId: 'already-exists' };
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: errorMessage || 'Failed to sync item',
+        };
+      }
+
+      return {
+        success: true,
+        ardaEntityId: String(
+          (data.record as { rId?: string } | undefined)?.rId
+          || data.entityId
+          || data.rId
+          || '',
+        ) || undefined,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown sync error',
+      };
+    }
+  }, [uploadImage]);
+
+  const syncSingleItem = useCallback(async (id: string): Promise<boolean> => {
+    const item = items.find(entry => entry.id === id);
+    if (!item) return false;
+
+    setSyncStateById(prev => ({
+      ...prev,
+      [id]: { status: 'syncing' },
+    }));
+
+    const result = await syncItemToArda(item);
+
+    if (result.success) {
+      setSyncStateById(prev => ({
+        ...prev,
+        [id]: { status: 'success', ardaEntityId: result.ardaEntityId },
+      }));
+      setItems(prev => prev.map(entry => (
+        entry.id === id ? { ...entry, needsAttention: false } : entry
+      )));
+      return true;
+    }
+
+    setSyncStateById(prev => ({
+      ...prev,
+      [id]: { status: 'error', error: result.error || 'Sync failed' },
+    }));
+    return false;
+  }, [items, syncItemToArda]);
+
+  const syncSelectedItems = useCallback(async () => {
+    const selectedIds = Array.from(selectedItemIds);
+    if (selectedIds.length === 0 || isBulkSyncing) return;
+
+    setIsBulkSyncing(true);
+    try {
+      for (let i = 0; i < selectedIds.length; i += 1) {
+        const id = selectedIds[i];
+        await syncSingleItem(id);
+        if (i < selectedIds.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    } finally {
+      setIsBulkSyncing(false);
+    }
+  }, [selectedItemIds, isBulkSyncing, syncSingleItem]);
+
+  const toggleItemSelected = useCallback((id: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAllFiltered = useCallback(() => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredIds.forEach(id => next.delete(id));
+      } else {
+        filteredIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  }, [allFilteredSelected, filteredIds]);
+
   const getSourceIcon = (source: MasterListItem['source']) => {
     switch (source) {
       case 'email': return <Icons.Mail className="w-3 h-3" />;
+      case 'url': return <Icons.Link className="w-3 h-3" />;
       case 'barcode': return <Icons.Barcode className="w-3 h-3" />;
       case 'photo': return <Icons.Camera className="w-3 h-3" />;
       case 'csv': return <Icons.FileSpreadsheet className="w-3 h-3" />;
@@ -377,47 +614,71 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   };
 
   const handleComplete = useCallback(() => {
-    onComplete(items);
-  }, [items, onComplete]);
+    onComplete(syncedItems);
+  }, [onComplete, syncedItems]);
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 text-sm">
           <span className="font-medium">{stats.total} items</span>
-          <span className="text-green-600">{stats.verified} verified</span>
+          <span className="text-green-600">{stats.synced} synced</span>
+          {stats.errors > 0 && (
+            <span className="text-red-600">{stats.errors} failed</span>
+          )}
           {stats.needsAttention > 0 && (
             <span className="text-orange-600">{stats.needsAttention} need attention</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={verifyAll} className="btn-arda-outline text-sm py-1.5">
-            Verify All
+          <button
+            type="button"
+            onClick={() => void syncSelectedItems()}
+            disabled={selectedCount === 0 || hasSyncInProgress}
+            className="btn-arda-outline text-sm py-1.5 flex items-center gap-2 disabled:opacity-50"
+          >
+            {isBulkSyncing ? <Icons.Loader2 className="w-4 h-4 animate-spin" /> : <Icons.Upload className="w-4 h-4" />}
+            Sync Selected ({selectedCount})
           </button>
           <button
+            type="button"
             onClick={handleComplete}
-            disabled={items.length === 0}
-            className="btn-arda-primary text-sm py-1.5 flex items-center gap-2"
+            disabled={hasSyncInProgress}
+            className="btn-arda-primary text-sm py-1.5 flex items-center gap-2 disabled:opacity-50"
           >
             <Icons.ArrowRight className="w-4 h-4" />
-            Sync to Arda ({items.length})
+            Complete setup ({syncedItems.length} synced)
           </button>
         </div>
       </div>
 
-      {/* Filters */}
       <div className="flex items-center justify-between bg-white rounded-lg border border-arda-border p-2">
         <div className="flex items-center gap-2">
-          {(['all', 'needs_attention', 'verified'] as const).map(f => (
+          {(['all', 'needs_attention', 'synced', 'errors'] as const).map(f => (
             <button
               key={f}
+              type="button"
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded text-sm ${filter === f ? 'bg-arda-accent text-white' : 'hover:bg-gray-100'}`}
             >
-              {f === 'needs_attention' ? 'Needs Attention' : f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === 'needs_attention'
+                ? 'Needs Attention'
+                : f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
+          <select
+            value={sourceFilter}
+            onChange={(event) => setSourceFilter(event.target.value as typeof sourceFilter)}
+            className="ml-2 text-sm border border-arda-border rounded px-2 py-1 bg-white"
+            aria-label="Filter by source"
+          >
+            <option value="all">All sources</option>
+            <option value="email">Email ({sourceCounts.email})</option>
+            <option value="url">URL ({sourceCounts.url})</option>
+            <option value="barcode">Barcode ({sourceCounts.barcode})</option>
+            <option value="photo">Photo ({sourceCounts.photo})</option>
+            <option value="csv">CSV ({sourceCounts.csv})</option>
+          </select>
         </div>
         <div className="relative">
           <Icons.Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -431,12 +692,21 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
         </div>
       </div>
 
-      {/* Spreadsheet table */}
       <div className="bg-white rounded-lg border border-arda-border overflow-hidden">
         <div className="overflow-auto max-h-[60vh]">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-arda-border sticky top-0 z-10">
               <tr>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 w-10">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleSelectAllFiltered}
+                    aria-label="Select all visible items"
+                    className="rounded border-gray-300 text-arda-accent focus:ring-arda-accent"
+                  />
+                </th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-8"></th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-10">Img</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[200px]">Name</th>
@@ -448,165 +718,235 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
                 <th className="px-2 py-2 text-right font-medium text-gray-600 w-20">Price</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-24">Color</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[120px]">Image URL</th>
-                <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[120px]">Product URL</th>
-                <th className="px-2 py-2 text-center font-medium text-gray-600 w-20">Actions</th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[130px]">Product URL</th>
+                <th className="px-2 py-2 text-center font-medium text-gray-600 w-[170px]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredItems.map(item => (
-                <tr 
-                  key={item.id} 
-                  className={`hover:bg-gray-50 ${item.needsAttention ? 'bg-orange-50' : ''} ${item.isVerified ? 'bg-green-50' : ''}`}
-                >
-                  {/* Source icon */}
-                  <td className="px-2 py-1">
-                    <span className="p-1 rounded bg-gray-100 text-gray-500 inline-flex">
-                      {getSourceIcon(item.source)}
-                    </span>
-                  </td>
-                  
-                  {/* Image */}
-                  <td className="px-2 py-1">
-                    {item.imageUrl ? (
-                      <img 
-                        src={item.imageUrl} 
-                        alt="" 
-                        className="w-8 h-8 rounded object-cover"
+              {filteredItems.map(item => {
+                const imageUrl = item.imageUrl?.trim();
+                const imageHref = toExternalUrl(imageUrl);
+                const productHref = toExternalUrl(item.productUrl);
+                const rowSyncState = syncStateById[item.id];
+                const rowStatus = rowSyncState?.status ?? 'idle';
+
+                const rowBackground = rowStatus === 'success'
+                  ? 'bg-green-50'
+                  : rowStatus === 'error'
+                    ? 'bg-red-50'
+                    : item.needsAttention
+                      ? 'bg-orange-50'
+                      : '';
+
+                return (
+                  <tr
+                    key={item.id}
+                    className={`hover:bg-gray-50 ${rowBackground}`}
+                  >
+                    <td className="px-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedItemIds.has(item.id)}
+                        onChange={() => toggleItemSelected(item.id)}
+                        aria-label={`Select ${item.name}`}
+                        className="rounded border-gray-300 text-arda-accent focus:ring-arda-accent"
                       />
-                    ) : (
-                      <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
-                        <Icons.Package className="w-4 h-4 text-gray-400" />
+                    </td>
+
+                    <td className="px-2 py-1">
+                      <span className="p-1 rounded bg-gray-100 text-gray-500 inline-flex">
+                        {getSourceIcon(item.source)}
+                      </span>
+                    </td>
+
+                    <td className="px-2 py-1">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
+                          <Icons.Package className="w-4 h-4 text-gray-400" />
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="px-1 py-1">
+                      <EditableCell
+                        value={item.name}
+                        onChange={(v) => updateItem(item.id, 'name', v)}
+                        placeholder="Item name"
+                      />
+                    </td>
+
+                    <td className="px-1 py-1">
+                      <EditableCell
+                        value={item.supplier}
+                        onChange={(v) => updateItem(item.id, 'supplier', v)}
+                        placeholder="Supplier"
+                      />
+                    </td>
+
+                    <td className="px-1 py-1">
+                      <EditableCell
+                        value={item.location}
+                        onChange={(v) => updateItem(item.id, 'location', v)}
+                        placeholder="Location"
+                      />
+                    </td>
+
+                    <td className="px-1 py-1">
+                      <EditableCell
+                        value={item.sku}
+                        onChange={(v) => updateItem(item.id, 'sku', v)}
+                        placeholder="SKU"
+                      />
+                    </td>
+
+                    <td className="px-1 py-1 text-right">
+                      <EditableCell
+                        value={item.minQty}
+                        onChange={(v) => updateItem(item.id, 'minQty', v ? parseFloat(v) : undefined)}
+                        type="number"
+                        placeholder="0"
+                        className="text-right"
+                      />
+                    </td>
+
+                    <td className="px-1 py-1 text-right">
+                      <EditableCell
+                        value={item.orderQty}
+                        onChange={(v) => updateItem(item.id, 'orderQty', v ? parseFloat(v) : undefined)}
+                        type="number"
+                        placeholder="0"
+                        className="text-right"
+                      />
+                    </td>
+
+                    <td className="px-1 py-1 text-right">
+                      <EditableCell
+                        value={item.unitPrice !== undefined ? item.unitPrice.toFixed(2) : ''}
+                        onChange={(v) => updateItem(item.id, 'unitPrice', v ? parseFloat(v) : undefined)}
+                        type="number"
+                        placeholder="0.00"
+                        className="text-right"
+                      />
+                    </td>
+
+                    <td className="px-1 py-1">
+                      <ColorPicker
+                        value={item.color}
+                        onChange={(v) => updateItem(item.id, 'color', v)}
+                      />
+                    </td>
+
+                    <td className="px-1 py-1">
+                      <div className="space-y-1">
+                        {imageUrl && (
+                          <div className="px-2 py-1 flex items-center gap-2">
+                            <img
+                              src={imageUrl}
+                              alt={`${item.name} preview`}
+                              className="w-14 h-14 rounded border border-arda-border object-cover bg-gray-50"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                            {imageHref && (
+                              <a
+                                href={imageHref}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                              >
+                                Open
+                                <Icons.ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        <EditableCell
+                          value={item.imageUrl}
+                          onChange={(v) => updateItem(item.id, 'imageUrl', v || undefined)}
+                          placeholder="https://..."
+                          className="text-xs text-blue-600 truncate max-w-[120px]"
+                        />
                       </div>
-                    )}
-                  </td>
-                  
-                  {/* Name */}
-                  <td className="px-1 py-1">
-                    <EditableCell
-                      value={item.name}
-                      onChange={(v) => updateItem(item.id, 'name', v)}
-                      placeholder="Item name"
-                    />
-                  </td>
-                  
-                  {/* Supplier */}
-                  <td className="px-1 py-1">
-                    <EditableCell
-                      value={item.supplier}
-                      onChange={(v) => updateItem(item.id, 'supplier', v)}
-                      placeholder="Supplier"
-                    />
-                  </td>
-                  
-                  {/* Location */}
-                  <td className="px-1 py-1">
-                    <EditableCell
-                      value={item.location}
-                      onChange={(v) => updateItem(item.id, 'location', v)}
-                      placeholder="Location"
-                    />
-                  </td>
-                  
-                  {/* SKU */}
-                  <td className="px-1 py-1">
-                    <EditableCell
-                      value={item.sku}
-                      onChange={(v) => updateItem(item.id, 'sku', v)}
-                      placeholder="SKU"
-                    />
-                  </td>
-                  
-                  {/* Min Qty */}
-                  <td className="px-1 py-1 text-right">
-                    <EditableCell
-                      value={item.minQty}
-                      onChange={(v) => updateItem(item.id, 'minQty', v ? parseFloat(v) : undefined)}
-                      type="number"
-                      placeholder="0"
-                      className="text-right"
-                    />
-                  </td>
-                  
-                  {/* Order Qty */}
-                  <td className="px-1 py-1 text-right">
-                    <EditableCell
-                      value={item.orderQty}
-                      onChange={(v) => updateItem(item.id, 'orderQty', v ? parseFloat(v) : undefined)}
-                      type="number"
-                      placeholder="0"
-                      className="text-right"
-                    />
-                  </td>
-                  
-                  {/* Price */}
-                  <td className="px-1 py-1 text-right">
-                    <EditableCell
-                      value={item.unitPrice !== undefined ? item.unitPrice.toFixed(2) : ''}
-                      onChange={(v) => updateItem(item.id, 'unitPrice', v ? parseFloat(v) : undefined)}
-                      type="number"
-                      placeholder="0.00"
-                      className="text-right"
-                    />
-                  </td>
-                  
-                  {/* Color */}
-                  <td className="px-1 py-1">
-                    <ColorPicker
-                      value={item.color}
-                      onChange={(v) => updateItem(item.id, 'color', v)}
-                    />
-                  </td>
-                  
-                  {/* Image URL */}
-                  <td className="px-1 py-1">
-                    <EditableCell
-                      value={item.imageUrl}
-                      onChange={(v) => updateItem(item.id, 'imageUrl', v || undefined)}
-                      placeholder="https://..."
-                      className="text-xs text-blue-600 truncate max-w-[120px]"
-                    />
-                  </td>
-                  
-                  {/* Product URL */}
-                  <td className="px-1 py-1">
-                    <EditableCell
-                      value={item.productUrl}
-                      onChange={(v) => updateItem(item.id, 'productUrl', v || undefined)}
-                      placeholder="https://..."
-                      className="text-xs text-blue-600 truncate max-w-[120px]"
-                    />
-                  </td>
-                  
-                  {/* Actions */}
-                  <td className="px-2 py-1">
-                    <div className="flex items-center justify-center gap-1">
-                      {!item.isVerified && (
+                    </td>
+
+                    <td className="px-1 py-1">
+                      <div className="space-y-1">
                         <button
-                          onClick={() => verifyItem(item.id)}
-                          className="p-1 hover:bg-green-100 rounded text-gray-400 hover:text-green-600"
-                          title="Verify"
+                          type="button"
+                          onClick={() => {
+                            if (!productHref) return;
+                            window.open(productHref, '_blank', 'noopener,noreferrer');
+                          }}
+                          disabled={!productHref}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Icons.Check className="w-4 h-4" />
+                          Open product
+                          <Icons.ExternalLink className="w-3 h-3" />
                         </button>
-                      )}
-                      {item.isVerified && (
-                        <Icons.CheckCircle2 className="w-4 h-4 text-green-500" />
-                      )}
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-600"
-                        title="Remove"
-                      >
-                        <Icons.Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <EditableCell
+                          value={item.productUrl}
+                          onChange={(v) => updateItem(item.id, 'productUrl', v || undefined)}
+                          placeholder="https://..."
+                          className="text-xs text-blue-600 truncate max-w-[120px]"
+                        />
+                      </div>
+                    </td>
+
+                    <td className="px-2 py-1">
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void syncSingleItem(item.id)}
+                            disabled={hasSyncInProgress || rowStatus === 'syncing'}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={rowStatus === 'success' ? 'Resync item' : 'Sync item'}
+                          >
+                            {rowStatus === 'syncing' ? (
+                              <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Icons.Upload className="w-3 h-3" />
+                            )}
+                            {rowStatus === 'success' ? 'Resync' : 'Sync'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-600"
+                            title="Remove"
+                          >
+                            <Icons.Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {rowStatus === 'success' && (
+                          <span className="text-[11px] text-green-700 inline-flex items-center gap-1">
+                            <Icons.CheckCircle2 className="w-3 h-3" />
+                            Synced
+                          </span>
+                        )}
+                        {rowStatus === 'error' && (
+                          <span className="text-[11px] text-red-700 inline-flex items-center gap-1">
+                            <Icons.AlertTriangle className="w-3 h-3" />
+                            {rowSyncState?.error || 'Sync failed'}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-        
+
         {filteredItems.length === 0 && (
           <div className="p-8 text-center text-gray-500">
             <Icons.Package className="w-10 h-10 mx-auto mb-2 opacity-50" />
@@ -614,8 +954,7 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
           </div>
         )}
       </div>
-      
-      {/* Keyboard hint */}
+
       <div className="text-xs text-gray-400 text-center">
         Click any cell to edit. Press Enter to save, Escape to cancel.
       </div>

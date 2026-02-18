@@ -267,6 +267,7 @@ router.post('/items', async (req: Request, res: Response) => {
     // Set defaults and pass all available fields
     const item: ItemInput = {
       name: itemData.name,
+      description: (itemData as any).description,
       primarySupplier: itemData.primarySupplier,
       orderMechanism: itemData.orderMechanism || 'email',
       minQty: itemData.minQty || 1,

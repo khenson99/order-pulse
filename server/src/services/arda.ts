@@ -50,6 +50,7 @@ export interface ArdaItemEntity {
 // Our simplified input that gets mapped to Arda format
 export interface ItemInput {
   name: string;
+  description?: string;
   primarySupplier: string;
   orderMechanism?: string;
   location?: string;
@@ -444,6 +445,7 @@ export async function createItem(
   const ardaItem: ArdaItemEntity = {
     eId: uuidv4(),
     name: item.name,
+    description: item.description || undefined,
     imageUrl: item.imageUrl || undefined,
     internalSKU: item.sku || undefined,
     itemColor: mapToArdaColor(item.color),

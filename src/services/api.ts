@@ -1,14 +1,59 @@
 // API client for backend communication
-// In production on Vercel, use same-origin (empty string) to leverage Vercel rewrites/proxy
-// This avoids cross-origin cookie issues. In development, use the direct API URL.
-//
-// Note: Some deployments may not have Vercel rewrites configured for /auth and /api.
-// Defaulting production builds to the Railway API keeps OAuth/login working even without rewrites.
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || 'https://order-pulse-api-production.up.railway.app';
+// Production defaults to same-origin so Vercel rewrites keep session cookies first-party.
+const DEFAULT_DEV_API_BASE_URL = 'http://localhost:3001';
+const SESSION_EXPIRED_MESSAGE = 'Session expired. Please sign in again.';
+export const SESSION_EXPIRED_EVENT = 'orderpulse:session-expired';
+
+interface ApiBaseUrlConfig {
+  viteApiUrl?: string;
+  isProd: boolean;
+}
+
+export function normalizeApiBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
+  return trimmed.replace(/\/+$/, '');
+}
+
+export function resolveApiBaseUrl({ viteApiUrl, isProd }: ApiBaseUrlConfig): string {
+  if (viteApiUrl !== undefined) {
+    return normalizeApiBaseUrl(viteApiUrl);
+  }
+  return isProd ? '' : DEFAULT_DEV_API_BASE_URL;
+}
+
+const API_BASE_URL = resolveApiBaseUrl({
+  viteApiUrl: import.meta.env.VITE_API_URL as string | undefined,
+  isProd: import.meta.env.PROD,
+});
 
 interface ApiError {
   error: string;
+}
+
+export class SessionExpiredError extends Error {
+  constructor(message = SESSION_EXPIRED_MESSAGE) {
+    super(message);
+    this.name = 'SessionExpiredError';
+  }
+}
+
+export function isSessionExpiredError(error: unknown): error is SessionExpiredError {
+  return error instanceof SessionExpiredError;
+}
+
+let hasNotifiedSessionExpired = false;
+
+function notifySessionExpired(): void {
+  if (hasNotifiedSessionExpired) return;
+  hasNotifiedSessionExpired = true;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+  }
+}
+
+// Test helper for deterministic assertions.
+export function resetSessionExpiredSignalForTests(): void {
+  hasNotifiedSessionExpired = false;
 }
 
 async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -23,6 +68,10 @@ async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise
 
   if (!response.ok) {
     const error: ApiError = await response.json().catch(() => ({ error: 'Request failed' }));
+    if (response.status === 401) {
+      notifySessionExpired();
+      throw new SessionExpiredError();
+    }
     throw new Error(error.error || `HTTP ${response.status}`);
   }
 
@@ -101,17 +150,7 @@ export interface DiscoveredSupplier {
 }
 
 export const discoverApi = {
-  discoverSuppliers: async (): Promise<{ suppliers: DiscoveredSupplier[] }> => {
-    const response = await fetch(`${API_BASE_URL}/api/discover/discover-suppliers`, {
-      credentials: 'include',
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMsg = errorData.error || `HTTP ${response.status}`;
-      throw new Error(errorMsg);
-    }
-    return response.json();
-  },
+  discoverSuppliers: () => fetchApi<{ suppliers: DiscoveredSupplier[] }>('/api/discover/discover-suppliers'),
   
   startJobWithFilter: (supplierDomains?: string[]) =>
     fetchApi<{ jobId: string; status: string; message: string }>('/api/jobs/start', {
@@ -165,43 +204,63 @@ export interface JobStatus {
 
 export const jobsApi = {
   // Start Amazon-first processing immediately
-  startAmazon: async (): Promise<{ jobId: string }> => {
-    const response = await fetch(`${API_BASE_URL}/api/jobs/start-amazon`, {
+  startAmazon: () =>
+    fetchApi<{ jobId: string }>('/api/jobs/start-amazon', {
       method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!response.ok) {
-      const error: ApiError = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
-    }
-    return response.json();
-  },
+    }),
   
   // Start processing for selected suppliers
-  startJob: async (supplierDomains?: string[], jobType?: string): Promise<{ jobId: string }> => {
-    const response = await fetch(`${API_BASE_URL}/api/jobs/start`, {
+  startJob: (supplierDomains?: string[], jobType?: string) =>
+    fetchApi<{ jobId: string }>('/api/jobs/start', {
       method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ supplierDomains, jobType }),
-    });
-    if (!response.ok) {
-      const error: ApiError = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
-    }
-    return response.json();
-  },
+    }),
   
   getStatus: (jobId?: string) =>
     fetchApi<JobStatus>(`/api/jobs/status${jobId ? `?jobId=${jobId}` : ''}`),
   
   getJob: (jobId: string) =>
     fetchApi<JobStatus>(`/api/jobs/${jobId}`),
+};
+
+export interface UrlScrapedItem {
+  sourceUrl: string;
+  productUrl?: string;
+  imageUrl?: string;
+  itemName?: string;
+  supplier?: string;
+  price?: number;
+  currency?: string;
+  description?: string;
+  vendorSku?: string;
+  asin?: string;
+  needsReview: boolean;
+  extractionSource: 'amazon-paapi' | 'html-metadata' | 'hybrid-ai' | 'error';
+  confidence: number;
+}
+
+export interface UrlScrapeResult {
+  sourceUrl: string;
+  normalizedUrl?: string;
+  status: 'success' | 'partial' | 'failed';
+  message?: string;
+  extractionSource: UrlScrapedItem['extractionSource'];
+  item: UrlScrapedItem;
+}
+
+export interface UrlScrapeResponse {
+  requested: number;
+  processed: number;
+  results: UrlScrapeResult[];
+  items: UrlScrapedItem[];
+}
+
+export const urlIngestionApi = {
+  scrapeUrls: (urls: string[]) =>
+    fetchApi<UrlScrapeResponse>('/api/url-ingestion/scrape', {
+      method: 'POST',
+      body: JSON.stringify({ urls }),
+    }),
 };
 
 // Amazon API
@@ -292,6 +351,7 @@ export { API_BASE_URL };
 // Arda API
 export interface ArdaItemInput {
   name: string;
+  description?: string;
   orderMechanism?: string;
   minQty?: number;
   minQtyUnit?: string;
@@ -301,6 +361,9 @@ export interface ArdaItemInput {
   orderQtyUnit?: string;
   primarySupplierLink?: string;
   imageUrl?: string;
+  sku?: string;
+  barcode?: string;
+  unitPrice?: number;
 }
 
 export interface ArdaKanbanCardInput {

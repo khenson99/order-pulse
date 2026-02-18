@@ -31,6 +31,20 @@ import {
   buildFinalOrderSnapshot,
   buildLiveOrderSnapshot,
 } from './jobsProcessingUtils.js';
+import {
+  analyzeEmailWithRetry as analyzeEmailWithRetryShared,
+  createGeminiExtractionModel,
+  normalizeOrderDate as normalizeExtractionOrderDate,
+} from '../services/emailExtraction.js';
+import {
+  extractImageUrlsFromHtml,
+  extractUrlsFromHtml,
+  extractUrlsFromText,
+  isJunkUrl,
+  pickBestImageUrlForItem,
+  pickBestProductUrlForItem,
+  uniqueStrings,
+} from '../utils/urlExtraction.js';
 
 const router = Router();
 
@@ -388,146 +402,6 @@ function stripHtml(html: string): string {
     .replace(/\n\s*\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values));
-}
-
-function cleanUrlCandidate(raw: string): string | null {
-  const v = (raw || '')
-    .trim()
-    .replace(/&amp;/g, '&')
-    .replace(/&#x2F;/g, '/')
-    .replace(/&#47;/g, '/')
-    .replace(/&#x3D;/g, '=')
-    .replace(/&#61;/g, '=')
-    // common trailing punctuation from email text
-    .replace(/[)\],.;]+$/g, '');
-
-  if (!/^https?:\/\//i.test(v)) return null;
-  try {
-    const parsed = new URL(v);
-    // Strip common tracking params
-    const trackingKeys = new Set(['gclid', 'fbclid', 'mc_cid', 'mc_eid']);
-    for (const key of Array.from(parsed.searchParams.keys())) {
-      const lower = key.toLowerCase();
-      if (lower.startsWith('utm_') || trackingKeys.has(lower)) {
-        parsed.searchParams.delete(key);
-      }
-    }
-    parsed.hash = '';
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-function extractUrlsFromText(text: string): string[] {
-  if (!text) return [];
-  const re = /\bhttps?:\/\/[^\s"'<>]+/gi;
-  const matches = Array.from(text.matchAll(re)).map(m => m[0]);
-  const cleaned = matches.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
-  return uniqueStrings(cleaned);
-}
-
-function extractUrlsFromHtml(html: string): string[] {
-  if (!html) return [];
-  const hrefs = Array.from(html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
-  const candidates = [...hrefs, ...extractUrlsFromText(html)];
-  const cleaned = candidates.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
-  return uniqueStrings(cleaned);
-}
-
-function extractImageUrlsFromHtml(html: string): string[] {
-  if (!html) return [];
-  const imgSrcs = Array.from(html.matchAll(/<img[^>]*\ssrc\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
-  const ogImages = Array.from(html.matchAll(/<meta[^>]*property\s*=\s*["']og:image["'][^>]*content\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
-  const candidates = [...imgSrcs, ...ogImages];
-  const cleaned = candidates.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
-  return uniqueStrings(cleaned);
-}
-
-function looksLikeImageUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const p = u.pathname.toLowerCase();
-    return /\.(png|jpe?g|webp|gif|svg)$/.test(p);
-  } catch {
-    return false;
-  }
-}
-
-function isJunkUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  // email / marketing / tracking / account links
-  const junkFragments = [
-    'unsubscribe',
-    'preferences',
-    'privacy',
-    'terms',
-    'support',
-    'help',
-    'account',
-    'login',
-    'signup',
-    'doubleclick',
-    'mailchimp',
-    'mandrillapp',
-    'sendgrid',
-    'constantcontact',
-    'campaign-archive',
-  ];
-  if (junkFragments.some(f => lower.includes(f))) return true;
-  return false;
-}
-
-function pickBestProductUrlForItem(params: { vendorDomain?: string; itemName: string; sku?: string }, urls: string[]): string | undefined {
-  if (urls.length === 0) return undefined;
-  const vendorDomain = (params.vendorDomain || '').toLowerCase();
-  const vendorUrls = vendorDomain && vendorDomain !== 'unknown'
-    ? urls.filter(u => u.toLowerCase().includes(vendorDomain))
-    : urls;
-  const pool = vendorUrls.length > 0 ? vendorUrls : urls;
-
-  const sku = params.sku?.trim();
-  if (sku) {
-    const match = pool.find(u => u.toLowerCase().includes(sku.toLowerCase()));
-    if (match) return match;
-  }
-
-  const tokens = params.itemName
-    .toLowerCase()
-    .split(/[^a-z0-9]+/g)
-    .filter(t => t.length >= 4)
-    .slice(0, 3);
-  for (const token of tokens) {
-    const match = pool.find(u => u.toLowerCase().includes(token));
-    if (match) return match;
-  }
-
-  // Prefer non-root paths when possible
-  const nonRoot = pool.find(u => {
-    try {
-      const parsed = new URL(u);
-      return parsed.pathname && parsed.pathname !== '/';
-    } catch {
-      return false;
-    }
-  });
-  return nonRoot || pool[0];
-}
-
-function pickBestImageUrlForItem(params: { vendorDomain?: string }, urls: string[]): string | undefined {
-  if (urls.length === 0) return undefined;
-  const vendorDomain = (params.vendorDomain || '').toLowerCase();
-  const vendorUrls = vendorDomain && vendorDomain !== 'unknown'
-    ? urls.filter(u => u.toLowerCase().includes(vendorDomain))
-    : urls;
-  const pool = vendorUrls.length > 0 ? vendorUrls : urls;
-  const imagesOnly = pool.filter(looksLikeImageUrl);
-  if (imagesOnly.length > 0) return imagesOnly[0];
-  return pool[0];
 }
 
 // Analyze a single email with retry logic
@@ -968,7 +842,7 @@ async function processEmailsInBackground(
     }
 
     // Initialize Gemini model upfront
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = createGeminiExtractionModel();
 
     // STEP 3: Process vendor by vendor and collect raw orders for consolidation
     let totalProcessed = 0;
@@ -1068,7 +942,7 @@ async function processEmailsInBackground(
           });
 
           // Analyze with AI
-          const result = await analyzeEmailWithRetry(model, email);
+          const result = await analyzeEmailWithRetryShared(model as any, email);
           
           // Collect raw order data for consolidation (instead of adding immediately)
           if (result.isOrder && result.items?.length > 0) {
@@ -1078,7 +952,7 @@ async function processEmailsInBackground(
               subject: email.subject,
               supplier: result.supplier || vendorName,
               orderNumber: extractOrderNumber(email.subject, email.body),
-              orderDate: normalizeOrderDate(result.orderDate, email.date),
+              orderDate: normalizeExtractionOrderDate(result.orderDate, email.date),
               totalAmount: result.totalAmount || 0,
               items: result.items.map((item: any, idx: number) => ({
                 id: `${email.id}-${idx}`,
@@ -1113,7 +987,8 @@ async function processEmailsInBackground(
             // Log each item found for real-time visibility
             for (const item of result.items.slice(0, 3)) {
               const price = item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '';
-              const qty = item.quantity > 1 ? `x${item.quantity}` : '';
+              const quantity = typeof item.quantity === 'number' ? item.quantity : 1;
+              const qty = quantity > 1 ? `x${quantity}` : '';
               jobManager.addJobLog(jobId, `   ${typeEmoji} ${item.name?.substring(0, 50) || 'Item'} ${qty} ${price}`);
             }
             if (result.items.length > 3) {
