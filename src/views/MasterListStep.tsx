@@ -47,6 +47,7 @@ interface MasterListStepProps {
   csvItems: CSVItem[];
   onComplete: (items: MasterListItem[]) => void;
   onBack: () => void;
+  onFooterStateChange?: (state: MasterListFooterState) => void;
 }
 
 type RowSyncStatus = 'idle' | 'syncing' | 'success' | 'error';
@@ -61,6 +62,16 @@ interface SyncResult {
   success: boolean;
   ardaEntityId?: string;
   error?: string;
+}
+
+export interface MasterListFooterState {
+  selectedCount: number;
+  syncedCount: number;
+  canSyncSelected: boolean;
+  canComplete: boolean;
+  isSyncing: boolean;
+  onSyncSelected: () => void;
+  onComplete: () => void;
 }
 
 interface EditableCellProps {
@@ -208,6 +219,7 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   csvItems,
   onComplete,
   onBack,
+  onFooterStateChange,
 }) => {
   void onBack;
 
@@ -617,6 +629,30 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
     onComplete(syncedItems);
   }, [onComplete, syncedItems]);
 
+  const handleSyncSelected = useCallback(() => {
+    void syncSelectedItems();
+  }, [syncSelectedItems]);
+
+  useEffect(() => {
+    onFooterStateChange?.({
+      selectedCount,
+      syncedCount: syncedItems.length,
+      canSyncSelected: selectedCount > 0 && !hasSyncInProgress,
+      canComplete: !hasSyncInProgress,
+      isSyncing: isBulkSyncing,
+      onSyncSelected: handleSyncSelected,
+      onComplete: handleComplete,
+    });
+  }, [
+    handleComplete,
+    handleSyncSelected,
+    hasSyncInProgress,
+    isBulkSyncing,
+    onFooterStateChange,
+    selectedCount,
+    syncedItems.length,
+  ]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -629,26 +665,6 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
           {stats.needsAttention > 0 && (
             <span className="text-orange-600">{stats.needsAttention} need attention</span>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void syncSelectedItems()}
-            disabled={selectedCount === 0 || hasSyncInProgress}
-            className="btn-arda-outline text-sm py-1.5 flex items-center gap-2 disabled:opacity-50"
-          >
-            {isBulkSyncing ? <Icons.Loader2 className="w-4 h-4 animate-spin" /> : <Icons.Upload className="w-4 h-4" />}
-            Sync Selected ({selectedCount})
-          </button>
-          <button
-            type="button"
-            onClick={handleComplete}
-            disabled={hasSyncInProgress}
-            className="btn-arda-primary text-sm py-1.5 flex items-center gap-2 disabled:opacity-50"
-          >
-            <Icons.ArrowRight className="w-4 h-4" />
-            Complete setup ({syncedItems.length} synced)
-          </button>
         </div>
       </div>
 
@@ -709,6 +725,7 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
                 </th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-8"></th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-10">Img</th>
+                <th className="px-2 py-2 text-left font-medium text-gray-600 w-24">Sync</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[200px]">Name</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[120px]">Supplier</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-24">Location</th>
@@ -719,7 +736,7 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-24">Color</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[120px]">Image URL</th>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 min-w-[130px]">Product URL</th>
-                <th className="px-2 py-2 text-center font-medium text-gray-600 w-[170px]">Actions</th>
+                <th className="px-2 py-2 text-center font-medium text-gray-600 w-[90px]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -771,6 +788,37 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
                           <Icons.Package className="w-4 h-4 text-gray-400" />
                         </div>
                       )}
+                    </td>
+
+                    <td className="px-2 py-1">
+                      <div className="flex flex-col items-start gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void syncSingleItem(item.id)}
+                          disabled={isBulkSyncing || rowStatus === 'syncing'}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={rowStatus === 'success' ? 'Resync item' : 'Sync item'}
+                        >
+                          {rowStatus === 'syncing' ? (
+                            <Icons.Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Icons.Upload className="w-3 h-3" />
+                          )}
+                          {rowStatus === 'success' ? 'Resync' : rowStatus === 'syncing' ? 'Syncing' : 'Sync'}
+                        </button>
+                        {rowStatus === 'success' && (
+                          <span className="text-[11px] text-green-700 inline-flex items-center gap-1">
+                            <Icons.CheckCircle2 className="w-3 h-3" />
+                            Synced
+                          </span>
+                        )}
+                        {rowStatus === 'error' && (
+                          <span className="text-[11px] text-red-700 inline-flex items-center gap-1">
+                            <Icons.AlertTriangle className="w-3 h-3" />
+                            {rowSyncState?.error || 'Sync failed'}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="px-1 py-1">
@@ -901,43 +949,15 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
                     </td>
 
                     <td className="px-2 py-1">
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => void syncSingleItem(item.id)}
-                            disabled={hasSyncInProgress || rowStatus === 'syncing'}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={rowStatus === 'success' ? 'Resync item' : 'Sync item'}
-                          >
-                            {rowStatus === 'syncing' ? (
-                              <Icons.Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Icons.Upload className="w-3 h-3" />
-                            )}
-                            {rowStatus === 'success' ? 'Resync' : 'Sync'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item.id)}
-                            className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-600"
-                            title="Remove"
-                          >
-                            <Icons.Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {rowStatus === 'success' && (
-                          <span className="text-[11px] text-green-700 inline-flex items-center gap-1">
-                            <Icons.CheckCircle2 className="w-3 h-3" />
-                            Synced
-                          </span>
-                        )}
-                        {rowStatus === 'error' && (
-                          <span className="text-[11px] text-red-700 inline-flex items-center gap-1">
-                            <Icons.AlertTriangle className="w-3 h-3" />
-                            {rowSyncState?.error || 'Sync failed'}
-                          </span>
-                        )}
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-600"
+                          title="Remove"
+                        >
+                          <Icons.Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
