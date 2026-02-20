@@ -17,7 +17,7 @@ export interface ItemSupplyValue {
   supplier: string;
   name?: string;
   sku?: string;
-  orderMethod?: 'EMAIL' | 'MANUAL' | 'AUTO' | 'FAX' | 'PHONE' | 'WEB' | 'EDI';
+  orderMethod?: 'EMAIL' | 'PHONE';
   url?: string;
   orderQuantity?: QuantityValue;
   unitCost?: { value: number; currency: string };
@@ -403,23 +403,12 @@ function mapToArdaColor(color?: string): ItemColor | undefined {
 // Map order mechanism to Arda OrderMethod enum
 function mapToArdaOrderMethod(mechanism?: string): ItemSupplyValue['orderMethod'] {
   if (!mechanism) return 'EMAIL';
-  const methodMap: Record<string, ItemSupplyValue['orderMethod']> = {
-    'email': 'EMAIL',
-    'manual': 'MANUAL',
-    'auto': 'AUTO',
-    'fax': 'FAX',
-    'phone': 'PHONE',
-    'web': 'WEB',
-    'edi': 'EDI',
-    // Order Pulse review workflow methods
-    'online': 'WEB',
-    'purchase_order': 'EDI',
-    'purchase order': 'EDI',
-    'po': 'EDI',
-    'production': 'AUTO',
-    'shopping': 'MANUAL',
-  };
-  return methodMap[mechanism.toLowerCase()] || 'EMAIL';
+  const normalized = mechanism.trim().toLowerCase();
+  if (normalized === 'phone' || normalized === 'call') {
+    return 'PHONE';
+  }
+  // Arda currently accepts EMAIL/PHONE for Item orderMethod.
+  return 'EMAIL';
 }
 
 function normalizeUnit(unit?: string): string {
