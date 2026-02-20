@@ -1,11 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { MasterListStep } from '../MasterListStep';
+import { resetSessionExpiredSignalForTests, SESSION_EXPIRED_EVENT } from '../../services/api';
 
 describe('MasterListStep URL items', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetSessionExpiredSignalForTests();
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
   });
 
@@ -186,5 +188,73 @@ describe('MasterListStep URL items', () => {
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse((init as RequestInit).body as string) as { orderMechanism: string };
     expect(body.orderMechanism).toBe('purchase_order');
+  });
+
+  it('emits session-expired when sync returns 401', async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Not authenticated' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const onExpired = vi.fn();
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+
+    render(
+      <MasterListStep
+        emailItems={[
+          {
+            id: 'email-1',
+            name: 'Email Item',
+            supplier: 'Email Vendor',
+          },
+        ]}
+        urlItems={[]}
+        scannedBarcodes={[]}
+        capturedPhotos={[]}
+        csvItems={[]}
+        onComplete={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Sync' }));
+
+    await waitFor(() => expect(onExpired).toHaveBeenCalledTimes(1));
+    window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  });
+
+  it('shows floating CTA when the table is scrollable and scrolled', async () => {
+    render(
+      <MasterListStep
+        emailItems={[
+          {
+            id: 'email-1',
+            name: 'Email Item',
+            supplier: 'Email Vendor',
+          },
+        ]}
+        urlItems={[]}
+        scannedBarcodes={[]}
+        capturedPhotos={[]}
+        csvItems={[]}
+        onComplete={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const scrollEl = screen.getByTestId('masterlist-table-scroll');
+    Object.defineProperty(scrollEl, 'scrollHeight', { value: 2000, configurable: true });
+    Object.defineProperty(scrollEl, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(scrollEl, 'scrollTop', { value: 200, writable: true, configurable: true });
+
+    fireEvent.scroll(scrollEl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('masterlist-floating-cta')).toBeInTheDocument();
+    });
   });
 });

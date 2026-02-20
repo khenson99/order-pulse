@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Icons } from '../components/Icons';
+import { InstructionCard } from '../components/InstructionCard';
 
 // CSV item with approval status
 export interface CSVItem {
@@ -282,6 +283,16 @@ export const CSVUploadStep: React.FC<CSVUploadStepProps> = ({
 
   return (
     <div className="space-y-6">
+      <InstructionCard
+        title="What to do"
+        icon="FileSpreadsheet"
+        steps={[
+          'Upload a CSV.',
+          'Map columns to fields.',
+          'Approve items to import.',
+        ]}
+      />
+
       {/* Upload area or items list */}
       {items.length === 0 ? (
         <div className="bg-white rounded-arda-lg border-2 border-dashed border-arda-border p-12 shadow-arda">

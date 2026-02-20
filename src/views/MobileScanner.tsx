@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { Icons } from '../components/Icons';
+import { InstructionCard } from '../components/InstructionCard';
 import { API_BASE_URL } from '../services/api';
 
 interface MobileScannerProps {
@@ -299,177 +300,196 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({
     };
   }, [stopCamera]);
 
+  const headerTitle = mode === 'barcode' ? 'Barcode Scanner' : 'Photo Capture';
+  const instructionSteps = mode === 'barcode'
+    ? [
+      'Tap “Start camera.”',
+      'Point at a barcode until it scans.',
+      'Keep this page open until synced.',
+    ]
+    : [
+      'Tap “Start camera.”',
+      'Capture a clear label or packaging.',
+      'Keep this page open until synced.',
+    ];
+
   return (
-    <div className="min-h-screen bg-black flex flex-col">
-      {/* Header */}
-      <div className="bg-black/80 backdrop-blur-sm px-4 py-3 flex items-center justify-between z-10 border-b border-white/10">
-        <div className="flex items-center gap-3 text-white">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-arda">
-            <Icons.Package className="w-5 h-5 text-white" />
+    <div className="min-h-screen arda-mesh flex flex-col">
+      <div className="px-4 pt-4 space-y-4">
+        <div className="arda-glass rounded-2xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-arda">
+              <Icons.Package className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="font-semibold leading-tight text-arda-text-primary">
+                {headerTitle}
+              </h1>
+              <p className="text-xs text-arda-text-muted">
+                Syncing to your desktop
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-semibold leading-tight">
-              {mode === 'barcode' ? 'Barcode Scanner' : 'Photo Capture'}
-            </h1>
-            <p className="text-xs text-white/60">
-              Syncing to your desktop
-            </p>
+          <div className="flex items-center gap-3">
+            <span className="text-arda-text-secondary text-sm">
+              {scannedItems.length} scanned
+            </span>
+            <div className={`w-2 h-2 rounded-full ${
+              scannedItems.some(i => !i.synced) ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'
+            }`} />
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-white/80 text-sm">
-            {scannedItems.length} scanned
-          </span>
-          <div className={`w-2 h-2 rounded-full ${
-            scannedItems.some(i => !i.synced) ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'
-          }`} />
-        </div>
+
+        <InstructionCard
+          title="What to do"
+          icon={mode === 'barcode' ? 'Barcode' : 'Camera'}
+          steps={instructionSteps}
+        />
       </div>
 
       {/* Camera view */}
-      <div className="flex-1 relative">
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          playsInline
-          muted
-        />
-        
-        {/* Hidden canvas for processing */}
-        <canvas ref={canvasRef} className="hidden" />
-        
-        {/* Scanning overlay for barcode mode */}
-        {mode === 'barcode' && isScanning && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-64 h-40 border-2 border-orange-400/60 rounded-xl relative">
-              <div className="absolute top-0 left-0 w-6 h-6 border-l-4 border-t-4 border-orange-300 rounded-tl-xl" />
-              <div className="absolute top-0 right-0 w-6 h-6 border-r-4 border-t-4 border-orange-300 rounded-tr-xl" />
-              <div className="absolute bottom-0 left-0 w-6 h-6 border-l-4 border-b-4 border-orange-300 rounded-bl-xl" />
-              <div className="absolute bottom-0 right-0 w-6 h-6 border-r-4 border-b-4 border-orange-300 rounded-br-xl" />
-              
-              {/* Scanning line animation */}
-              <div className="absolute left-4 right-4 h-0.5 bg-arda-accent animate-scan" />
+      <div className="flex-1 px-4 py-4">
+        <div className="relative h-full min-h-[360px] rounded-2xl overflow-hidden border border-arda-border shadow-arda bg-black">
+          <video
+            ref={videoRef}
+            className="absolute inset-0 w-full h-full object-cover"
+            playsInline
+            muted
+          />
+
+          {/* Hidden canvas for processing */}
+          <canvas ref={canvasRef} className="hidden" />
+
+          {/* Scanning overlay for barcode mode */}
+          {mode === 'barcode' && isScanning && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-64 h-40 border-2 border-orange-400/60 rounded-xl relative">
+                <div className="absolute top-0 left-0 w-6 h-6 border-l-4 border-t-4 border-orange-300 rounded-tl-xl" />
+                <div className="absolute top-0 right-0 w-6 h-6 border-r-4 border-t-4 border-orange-300 rounded-tr-xl" />
+                <div className="absolute bottom-0 left-0 w-6 h-6 border-l-4 border-b-4 border-orange-300 rounded-bl-xl" />
+                <div className="absolute bottom-0 right-0 w-6 h-6 border-r-4 border-b-4 border-orange-300 rounded-br-xl" />
+
+                {/* Scanning line animation */}
+                <div className="absolute left-4 right-4 h-0.5 bg-arda-accent animate-scan" />
+              </div>
+              <p className="absolute bottom-6 text-white/80 text-sm">
+                Position barcode within frame
+              </p>
             </div>
-            <p className="absolute bottom-8 text-white/80 text-sm">
-              Position barcode within frame
-            </p>
-          </div>
-        )}
-        
-        {/* Error state */}
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-            <div className="text-center p-6">
-              <Icons.AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-              <p className="text-white mb-4">{error}</p>
+          )}
+
+          {/* Error state */}
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+              <div className="text-center p-6">
+                <Icons.AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+                <p className="text-white mb-4">{error}</p>
+                <button
+                  onClick={startCamera}
+                  className="btn-arda-primary px-6 py-2"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Start camera prompt */}
+          {!isScanning && !error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black">
               <button
                 onClick={startCamera}
-                className="px-6 py-2 bg-white text-black rounded-lg font-medium"
+                className="flex flex-col items-center gap-4 p-8"
               >
-                Try Again
+                <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center">
+                  {mode === 'barcode' ? (
+                    <Icons.Barcode className="w-10 h-10 text-white" />
+                  ) : (
+                    <Icons.Camera className="w-10 h-10 text-white" />
+                  )}
+                </div>
+                <p className="text-white font-medium">
+                  {mode === 'barcode' ? 'Tap to start scanning' : 'Tap to take photos'}
+                </p>
               </button>
             </div>
-          </div>
-        )}
-        
-        {/* Start camera prompt */}
-        {!isScanning && !error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black">
-            <button
-              onClick={startCamera}
-              className="flex flex-col items-center gap-4 p-8"
-            >
-              <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center">
-                {mode === 'barcode' ? (
-                  <Icons.Barcode className="w-10 h-10 text-white" />
-                ) : (
-                  <Icons.Camera className="w-10 h-10 text-white" />
-                )}
-              </div>
-              <p className="text-white font-medium">
-                {mode === 'barcode' ? 'Tap to start scanning' : 'Tap to take photos'}
-              </p>
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
+      {scannedItems.length > 0 && (
+        <div className="px-4 pb-2">
+          <div className="card-arda p-3">
+            <p className="text-xs text-arda-text-muted mb-2">Recent scans</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {scannedItems.slice(0, 5).map((item) => (
+                <div
+                  key={item.id}
+                  className={`
+                    flex-shrink-0 px-3 py-2 rounded-lg flex items-center gap-2 border
+                    ${item.synced ? 'bg-green-50 border-green-200' : 'bg-arda-bg-tertiary border-arda-border'}
+                  `}
+                >
+                  {item.type === 'barcode' ? (
+                    <>
+                      <Icons.Barcode className="w-4 h-4 text-arda-text-secondary" />
+                      <span className="text-arda-text-primary text-sm font-mono">{item.data}</span>
+                    </>
+                  ) : (
+                    <img src={item.data} alt="" className="w-10 h-10 rounded object-cover" />
+                  )}
+                  {item.synced && (
+                    <Icons.Check className="w-4 h-4 text-green-600" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Controls */}
-      <div className="bg-black/80 backdrop-blur-sm px-4 py-6 safe-area-inset-bottom">
-        <div className="flex items-center justify-around">
-          {/* Switch camera */}
+      <div className="px-4 pb-6 safe-area-inset-bottom">
+        <div className="card-arda px-4 py-4 flex items-center justify-around">
           <button
             onClick={toggleCamera}
             aria-label="Switch camera"
             title="Switch camera"
-            className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"
+            className="w-12 h-12 rounded-full border border-arda-border bg-white/80 flex items-center justify-center"
           >
-            <Icons.RefreshCw className="w-5 h-5 text-white" />
+            <Icons.RefreshCw className="w-5 h-5 text-arda-text-secondary" />
           </button>
-          
-          {/* Capture button (for photo mode) */}
+
           {mode === 'photo' && isScanning && (
             <button
               onClick={capturePhoto}
               aria-label="Capture photo"
               title="Capture photo"
-              className="w-16 h-16 rounded-full bg-white flex items-center justify-center"
+              className="w-16 h-16 rounded-full bg-arda-text-primary flex items-center justify-center"
             >
-              <div className="w-14 h-14 rounded-full border-4 border-black/20" />
+              <div className="w-14 h-14 rounded-full border-4 border-white/30" />
             </button>
           )}
-          
-          {/* Barcode mode indicator */}
+
           {mode === 'barcode' && isScanning && (
-            <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
-              <Icons.Barcode className="w-8 h-8 text-green-500" />
+            <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center">
+              <Icons.Barcode className="w-8 h-8 text-green-600" />
             </div>
           )}
-          
-          {/* Flash toggle (placeholder) */}
+
           <button
             onClick={() => setFlashEnabled(!flashEnabled)}
             aria-label={flashEnabled ? 'Disable flash' : 'Enable flash'}
             title={flashEnabled ? 'Disable flash' : 'Enable flash'}
-            className={`w-12 h-12 rounded-full flex items-center justify-center ${
-              flashEnabled ? 'bg-yellow-500' : 'bg-white/10'
+            className={`w-12 h-12 rounded-full flex items-center justify-center border ${
+              flashEnabled ? 'bg-yellow-400 border-yellow-300' : 'bg-white/80 border-arda-border'
             }`}
           >
-            <Icons.Zap className={`w-5 h-5 ${flashEnabled ? 'text-black' : 'text-white'}`} />
+            <Icons.Zap className={`w-5 h-5 ${flashEnabled ? 'text-black' : 'text-arda-text-secondary'}`} />
           </button>
         </div>
       </div>
 
-      {/* Recent scans strip */}
-      {scannedItems.length > 0 && (
-        <div className="absolute bottom-24 left-0 right-0 px-4">
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {scannedItems.slice(0, 5).map((item) => (
-              <div
-                key={item.id}
-                className={`
-                  flex-shrink-0 px-3 py-2 rounded-lg flex items-center gap-2
-                  ${item.synced ? 'bg-green-500/20' : 'bg-white/10'}
-                `}
-              >
-                {item.type === 'barcode' ? (
-                  <>
-                    <Icons.Barcode className="w-4 h-4 text-white" />
-                    <span className="text-white text-sm font-mono">{item.data}</span>
-                  </>
-                ) : (
-                  <img src={item.data} alt="" className="w-10 h-10 rounded object-cover" />
-                )}
-                {item.synced && (
-                  <Icons.Check className="w-4 h-4 text-green-500" />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Custom styles for scan animation */}
       <style>{`
         @keyframes scan {
           0%, 100% { transform: translateY(0); }

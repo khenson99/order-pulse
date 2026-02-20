@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Icons } from '../components/Icons';
+import { InstructionCard } from '../components/InstructionCard';
 import {
   IntegrationConnection,
   IntegrationSyncRun,
@@ -207,6 +208,16 @@ export const IntegrationsStep: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <InstructionCard
+        title="What to do"
+        icon="Building2"
+        steps={[
+          'Connect QuickBooks or Xero if you want PO data.',
+          'Start a sync to pull history.',
+          'Continue when ready.',
+        ]}
+      />
+
       <section className="arda-glass rounded-2xl p-6 border border-arda-border/80">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-arda-accent">

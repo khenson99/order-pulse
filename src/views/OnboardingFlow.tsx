@@ -10,6 +10,8 @@ import { CSVUploadStep, CSVItem, CSVFooterState } from './CSVUploadStep';
 import { MasterListStep, MasterListItem, MasterListFooterState } from './MasterListStep';
 import { IntegrationsStep } from './IntegrationsStep';
 import { UrlScrapedItem } from '../services/api';
+import { InstructionCard } from '../components/InstructionCard';
+import { OnboardingWelcomeStep } from './OnboardingWelcomeStep';
 
 // Simple email item for onboarding (before full InventoryItem processing)
 interface EmailItem {
@@ -27,7 +29,7 @@ interface EmailItem {
 }
 
 // Onboarding step definitions
-export type OnboardingStep = 'email' | 'integrations' | 'url' | 'barcode' | 'photo' | 'csv' | 'masterlist';
+export type OnboardingStep = 'welcome' | 'email' | 'integrations' | 'url' | 'barcode' | 'photo' | 'csv' | 'masterlist';
 
 interface StepConfig {
   id: OnboardingStep;
@@ -39,50 +41,57 @@ interface StepConfig {
 
 const ONBOARDING_STEPS: StepConfig[] = [
   {
-    id: 'email',
+    id: 'welcome',
     number: 1,
+    title: 'Welcome',
+    description: 'Overview the onboarding path and start your sync',
+    icon: 'Sparkles',
+  },
+  {
+    id: 'email',
+    number: 2,
     title: 'Email',
     description: 'Import orders from your inbox',
     icon: 'Mail',
   },
   {
     id: 'integrations',
-    number: 2,
+    number: 3,
     title: 'Integrations',
     description: 'Connect your systems and data sources',
     icon: 'Building2',
   },
   {
     id: 'url',
-    number: 3,
+    number: 4,
     title: 'URLs',
     description: 'Import products from links',
     icon: 'Link',
   },
   {
     id: 'barcode',
-    number: 4,
+    number: 5,
     title: 'UPCs',
     description: 'Scan UPC/EAN codes in your shop',
     icon: 'Barcode',
   },
   {
     id: 'photo',
-    number: 5,
+    number: 6,
     title: 'Images',
     description: 'Photograph items with labels',
     icon: 'Camera',
   },
   {
     id: 'csv',
-    number: 6,
+    number: 7,
     title: 'CSV',
     description: 'Import from spreadsheet',
     icon: 'FileSpreadsheet',
   },
   {
     id: 'masterlist',
-    number: 7,
+    number: 8,
     title: 'Review',
     description: 'Review and sync items',
     icon: 'ListChecks',
@@ -209,14 +218,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onSkip,
   userProfile,
 }) => {
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>(() => {
+  const hasIntegrationCallback = (() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('integration_provider') && params.get('integration_status')) {
-      return 'integrations';
-    }
-    return 'email';
+    return Boolean(params.get('integration_provider') && params.get('integration_status'));
+  })();
+
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(() => {
+    return hasIntegrationCallback ? 'integrations' : 'welcome';
   });
-  const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
+  const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(() => (
+    hasIntegrationCallback ? new Set<OnboardingStep>(['welcome', 'email']) : new Set()
+  ));
+  const [hasStartedEmailSync, setHasStartedEmailSync] = useState(false);
   
   // Data from each step
   const [emailOrders, setEmailOrders] = useState<ExtractedOrder[]>([]);
@@ -277,15 +290,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Check if can go back
   const canGoBack = currentStepIndex > 0;
   
-  // Check if can go forward
-  // Some steps have their own primary action (e.g. CSV approve, review/sync).
-  // For those, we hide the global footer "Continue" to avoid accidental skipping.
-  const showFooterContinue = currentStep !== 'csv' && currentStep !== 'masterlist';
-  const canGoForward = showFooterContinue && (
-    currentStep === 'email'
-      ? canProceedFromEmail
-      : true
-  );
+  const canGoForward = currentStep === 'email' ? canProceedFromEmail : true;
 
   // Handle step completion
   const handleStepComplete = useCallback((step: OnboardingStep) => {
@@ -355,6 +360,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     setEmailScanState(state);
   }, []);
 
+  const handleStartEmailSync = useCallback(() => {
+    setHasStartedEmailSync(true);
+    handleStepComplete('welcome');
+  }, [handleStepComplete]);
+
+  const handleSkipEmailSync = useCallback(() => {
+    setHasStartedEmailSync(false);
+    setCompletedSteps(prev => {
+      const next = new Set(prev);
+      next.add('welcome');
+      next.add('email');
+      return next;
+    });
+    setCurrentStep('integrations');
+  }, []);
+
   // Go to previous step
   const goBack = useCallback(() => {
     if (currentStepIndex > 0) {
@@ -377,6 +398,116 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   };
 
   // Render step indicator
+  const renderHeaderActions = () => {
+    if (currentStep === 'welcome') return null;
+
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {canGoBack && (
+            <button
+              type="button"
+              onClick={goBack}
+              className="btn-arda-outline flex items-center gap-2"
+            >
+              <Icons.ChevronLeft className="w-4 h-4" />
+              Back
+            </button>
+          )}
+
+          {currentStep === 'email' && (
+            <button
+              type="button"
+              onClick={() => handleStepComplete('email')}
+              className="btn-arda-outline"
+            >
+              Skip for now
+            </button>
+          )}
+
+          {currentStep === 'csv' && (
+            <>
+              <button
+                type="button"
+                onClick={csvFooterState.onSkip === noop ? () => handleCSVComplete([]) : csvFooterState.onSkip}
+                className="btn-arda-outline"
+              >
+                Skip CSV
+              </button>
+              <button
+                type="button"
+                onClick={csvFooterState.onContinue}
+                disabled={!csvFooterState.canContinue}
+                className={[
+                  'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
+                  csvFooterState.canContinue
+                    ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
+                    : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
+                ].join(' ')}
+              >
+                Continue
+                <Icons.ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
+          {currentStep === 'masterlist' ? (
+            <>
+              <button
+                type="button"
+                onClick={masterListFooterState.onSyncSelected}
+                disabled={!masterListFooterState.canSyncSelected}
+                className="btn-arda-outline text-sm py-1.5 flex items-center gap-2 disabled:opacity-50"
+              >
+                {masterListFooterState.isSyncing ? (
+                  <Icons.Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Icons.Upload className="w-4 h-4" />
+                )}
+                Sync Selected ({masterListFooterState.selectedCount})
+              </button>
+              <button
+                type="button"
+                onClick={masterListFooterState.onComplete}
+                disabled={!masterListFooterState.canComplete}
+                className={[
+                  'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
+                  masterListFooterState.canComplete
+                    ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
+                    : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
+                ].join(' ')}
+              >
+                <Icons.ArrowRight className="w-4 h-4" />
+                Complete setup ({masterListFooterState.syncedCount} synced)
+              </button>
+            </>
+          ) : currentStep !== 'csv' && (
+            <button
+              type="button"
+              onClick={goForward}
+              disabled={!canGoForward}
+              className={[
+                'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
+                canGoForward
+                  ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
+                  : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
+              ].join(' ')}
+            >
+              Continue
+              <Icons.ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {currentStep === 'email' && (
+          <p className="max-w-[18rem] text-right text-xs text-arda-text-muted">
+            Continuing won’t stop email scanning. Import keeps running in the background.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderStepIndicator = () => (
     <div className="sticky top-0 z-40 border-b border-arda-border/70 bg-white/75 backdrop-blur">
       <div className="max-w-6xl mx-auto px-4 py-2.5 sm:px-6">
@@ -449,7 +580,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           </div>
         </div>
 
-        <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="mt-2 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] text-arda-text-muted">
@@ -462,7 +593,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             <p className="text-xs text-arda-text-secondary truncate sm:whitespace-normal">{currentStepConfig.description}</p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
+          <div className="flex items-center gap-2 flex-wrap justify-start lg:justify-end">
             {totalItems > 0 && (
               <span className="arda-pill text-xs px-2.5 py-1">
                 <Icons.Sparkles className="w-3.5 h-3.5" />
@@ -477,6 +608,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               </span>
             )}
           </div>
+
+          {renderHeaderActions()}
         </div>
 
         <div className="mt-2 lg:hidden">
@@ -494,15 +627,53 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Render current step content (keep SupplierSetup mounted so background imports continue)
   const renderStepContent = () => (
     <>
-      <div className={currentStep === 'email' ? '' : 'hidden'}>
-        <SupplierSetup
-          onScanComplete={handleEmailOrdersUpdate}
-          onSkip={() => handleStepComplete('email')}
-          onProgressUpdate={handleEmailProgressUpdate}
-          onCanProceed={handleCanProceedFromEmail}
-          onStateChange={handleEmailScanStateChange}
-          initialState={emailScanState}
+      {currentStep === 'welcome' && (
+        <OnboardingWelcomeStep
+          steps={ONBOARDING_STEPS.filter(step => step.id !== 'welcome')}
+          userProfile={userProfile}
+          onStartEmailSync={handleStartEmailSync}
+          onSkipEmail={handleSkipEmailSync}
         />
+      )}
+
+      <div className={currentStep === 'email' ? '' : 'hidden'}>
+        {hasStartedEmailSync ? (
+          <SupplierSetup
+            onScanComplete={handleEmailOrdersUpdate}
+            onSkip={() => handleStepComplete('email')}
+            onProgressUpdate={handleEmailProgressUpdate}
+            onCanProceed={handleCanProceedFromEmail}
+            onStateChange={handleEmailScanStateChange}
+            initialState={emailScanState}
+          />
+        ) : (
+          <div className="space-y-4">
+            <InstructionCard
+              title="What to do"
+              icon="Mail"
+              steps={[
+                'Connect Gmail to start scanning.',
+                'Wait for Amazon + priority suppliers to finish.',
+                'Select any extra suppliers to import.',
+              ]}
+            />
+            <div className="card-arda p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-arda-text-primary">Start email sync</h3>
+                <p className="text-sm text-arda-text-secondary mt-1">
+                  Email scanning will run in the background while you continue.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHasStartedEmailSync(true)}
+                className="btn-arda-primary"
+              >
+                Start email sync
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {currentStep === 'integrations' && (
@@ -559,164 +730,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     </>
   );
 
-  // Render persistent footer
-  const renderFooter = () => (
-    <div className="sticky bottom-0 z-40 bg-white/80 backdrop-blur border-t border-arda-border shadow-arda-lg">
-      <div className="max-w-6xl mx-auto px-6 py-4">
-        <div className="flex items-center justify-between gap-4">
-          {/* Left: Back */}
-          <div className="min-w-[7.5rem]">
-            {canGoBack && (
-              <button
-                type="button"
-                onClick={goBack}
-                className="btn-arda-outline flex items-center gap-2"
-              >
-                <Icons.ChevronLeft className="w-4 h-4" />
-                Back
-              </button>
-            )}
-          </div>
-
-          {/* Center: Progress + counts */}
-          <div className="flex-1 flex flex-col items-center text-center">
-            <div className="text-sm font-medium text-arda-text-secondary">
-              Step {currentStepIndex + 1} of {ONBOARDING_STEPS.length}
-            </div>
-
-            <div className="flex items-center gap-4 mt-1 text-xs text-arda-text-muted flex-wrap justify-center">
-              {emailItems.length > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Icons.Mail className="w-3 h-3" />
-                  {emailItems.length} email
-                </span>
-              )}
-              {scannedBarcodes.length > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Icons.Barcode className="w-3 h-3" />
-                  {scannedBarcodes.length} scanned
-                </span>
-              )}
-              {urlItems.length > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Icons.Link className="w-3 h-3" />
-                  {urlItems.length} URLs
-                </span>
-              )}
-              {capturedPhotoCount > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Icons.Camera className="w-3 h-3" />
-                  {capturedPhotoCount} photos
-                </span>
-              )}
-              {csvItems.length > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Icons.FileSpreadsheet className="w-3 h-3" />
-                  {csvItems.length} CSV
-                </span>
-              )}
-              {totalItems > 0 && (
-                <span className="text-arda-text-secondary font-medium">
-                  ({totalItems} total)
-                </span>
-              )}
-            </div>
-
-            {emailProgress && emailProgress.isActive && (
-              <div className="mt-2 inline-flex items-center gap-2 text-xs text-arda-text-secondary bg-white/70 border border-arda-border rounded-full px-3 py-1">
-                <Icons.Loader2 className="w-3 h-3 animate-spin text-arda-accent" />
-                <span>
-                  Scanning {emailProgress.supplier}: {emailProgress.processed}/{emailProgress.total}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Primary CTA */}
-          <div className="min-w-[7.5rem] flex flex-col items-end gap-2">
-            {currentStep === 'email' && (
-              <p className="max-w-[18rem] text-right text-xs text-arda-text-muted">
-                Continuing won’t stop email scanning. Import keeps running in the background.
-              </p>
-            )}
-            {currentStep === 'csv' && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={csvFooterState.onSkip === noop ? () => handleCSVComplete([]) : csvFooterState.onSkip}
-                  className="btn-arda-outline"
-                >
-                  Skip CSV
-                </button>
-                <button
-                  type="button"
-                  onClick={csvFooterState.onContinue}
-                  disabled={!csvFooterState.canContinue}
-                  className={[
-                    'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-                    csvFooterState.canContinue
-                      ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
-                      : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-                  ].join(' ')}
-                >
-                  Continue
-                  <Icons.ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-            {currentStep === 'masterlist' && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={masterListFooterState.onSyncSelected}
-                  disabled={!masterListFooterState.canSyncSelected}
-                  className="btn-arda-outline text-sm py-1.5 flex items-center gap-2 disabled:opacity-50"
-                >
-                  {masterListFooterState.isSyncing ? (
-                    <Icons.Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Icons.Upload className="w-4 h-4" />
-                  )}
-                  Sync Selected ({masterListFooterState.selectedCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={masterListFooterState.onComplete}
-                  disabled={!masterListFooterState.canComplete}
-                  className={[
-                    'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-                    masterListFooterState.canComplete
-                      ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
-                      : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-                  ].join(' ')}
-                >
-                  <Icons.ArrowRight className="w-4 h-4" />
-                  Complete setup ({masterListFooterState.syncedCount} synced)
-                </button>
-              </div>
-            )}
-            {showFooterContinue && (
-              <button
-                type="button"
-                onClick={goForward}
-                disabled={!canGoForward}
-                className={[
-                  'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-                  canGoForward
-                    ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
-                    : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-                ].join(' ')}
-              >
-                Continue
-                <Icons.ChevronRight className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div className="relative min-h-screen arda-mesh flex flex-col">
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -727,14 +740,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       {renderStepIndicator()}
       
       {/* Main content */}
-      <div className="relative z-10 flex-1 px-6 py-6 pb-28">
-        <div className="max-w-6xl mx-auto">
+      <div className="relative z-10 flex-1 px-6 py-6 pb-24">
+        <div className={currentStep === 'masterlist' ? 'max-w-none w-full' : 'max-w-6xl mx-auto'}>
           {renderStepContent()}
         </div>
       </div>
-
-      {/* Persistent footer */}
-      {renderFooter()}
     </div>
   );
 };

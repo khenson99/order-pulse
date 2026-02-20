@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Icons } from '../components/Icons';
+import { InstructionCard } from '../components/InstructionCard';
 import { API_BASE_URL, UrlScrapedItem, ardaApi, ArdaTenantResolutionDetails, isApiRequestError } from '../services/api';
 import { ScannedBarcode, CapturedPhoto } from './OnboardingFlow';
 import { CSVItem } from './CSVUploadStep';
@@ -338,6 +339,8 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [syncStateById, setSyncStateById] = useState<Record<string, RowSyncState>>({});
   const [isBulkSyncing, setIsBulkSyncing] = useState(false);
+  const [showFloatingCta, setShowFloatingCta] = useState(false);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -757,6 +760,31 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
     void syncSelectedItems();
   }, [syncSelectedItems]);
 
+  const updateFloatingCtaVisibility = useCallback(() => {
+    const scrollEl = tableScrollRef.current;
+    if (!scrollEl) return;
+    const scrollable = scrollEl.scrollHeight - scrollEl.clientHeight > 8;
+    const show = scrollable && scrollEl.scrollTop > 120;
+    setShowFloatingCta(show);
+  }, []);
+
+  useEffect(() => {
+    const scrollEl = tableScrollRef.current;
+    if (!scrollEl) return undefined;
+
+    const handleScroll = () => updateFloatingCtaVisibility();
+    const handleResize = () => updateFloatingCtaVisibility();
+
+    updateFloatingCtaVisibility();
+    scrollEl.addEventListener('scroll', handleScroll);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      scrollEl.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [filteredItems.length, updateFloatingCtaVisibility]);
+
   useEffect(() => {
     onFooterStateChange?.({
       selectedCount,
@@ -779,6 +807,16 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
 
   return (
     <div className="space-y-4">
+      <InstructionCard
+        title="What to do"
+        icon="ListChecks"
+        steps={[
+          'Review and edit item details.',
+          'Select items and sync to Arda.',
+          'Complete setup when ready.',
+        ]}
+      />
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 text-sm">
           <span className="font-medium">{stats.total} items</span>
@@ -833,8 +871,12 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
       </div>
 
       <div className="bg-white rounded-lg border border-arda-border overflow-hidden">
-        <div className="overflow-y-auto max-h-[60vh]">
-          <table className="w-full table-fixed text-sm">
+        <div
+          ref={tableScrollRef}
+          data-testid="masterlist-table-scroll"
+          className="overflow-auto max-h-[65vh]"
+        >
+          <table className="w-full min-w-[1400px] table-auto text-sm">
             <thead className="bg-gray-50 border-b border-arda-border sticky top-0 z-10">
               <tr>
                 <th className="px-2 py-2 text-left font-medium text-gray-600 w-10">
@@ -1098,6 +1140,43 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
           </div>
         )}
       </div>
+
+      {showFloatingCta && (
+        <div
+          data-testid="masterlist-floating-cta"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-40"
+        >
+          <div className="arda-glass rounded-2xl px-4 py-3 shadow-arda-lg flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSyncSelected}
+              disabled={!selectedCount || hasSyncInProgress}
+              className="btn-arda-outline text-sm py-1.5 flex items-center gap-2 disabled:opacity-50"
+            >
+              {isBulkSyncing ? (
+                <Icons.Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Icons.Upload className="w-4 h-4" />
+              )}
+              Sync Selected ({selectedCount})
+            </button>
+            <button
+              type="button"
+              onClick={handleComplete}
+              disabled={hasSyncInProgress}
+              className={[
+                'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
+                !hasSyncInProgress
+                  ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
+                  : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
+              ].join(' ')}
+            >
+              <Icons.ArrowRight className="w-4 h-4" />
+              Complete setup ({syncedItems.length} synced)
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="text-xs text-gray-400 text-center">
         Click any cell to edit. Press Enter to save, Escape to cancel.

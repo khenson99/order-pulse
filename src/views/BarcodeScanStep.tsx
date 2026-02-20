@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
+import { InstructionCard } from '../components/InstructionCard';
 import { ScannedBarcode } from './OnboardingFlow';
 import { API_BASE_URL } from '../services/api';
 
@@ -181,6 +182,16 @@ export const BarcodeScanStep: React.FC<BarcodeScanStepProps> = ({
 
   return (
     <div className="space-y-6">
+      <InstructionCard
+        title="What to do"
+        icon="Barcode"
+        steps={[
+          'Scan with a USB/Bluetooth scanner or phone camera.',
+          'Scan UPC/EAN codes on items.',
+          'Confirm items appear below.',
+        ]}
+      />
+
       {/* Scanning options */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Desktop scanner */}

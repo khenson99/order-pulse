@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
+import { InstructionCard } from '../components/InstructionCard';
 import { ExtractedOrder } from '../types';
 import {
   discoverApi,
@@ -7,6 +8,9 @@ import {
   JobStatus,
   DiscoveredSupplier,
   isSessionExpiredError,
+  gmailApi,
+  ApiRequestError,
+  API_BASE_URL,
 } from '../services/api';
 import { mergeSuppliers } from '../utils/supplierUtils';
 import {
@@ -95,6 +99,7 @@ const LEAN_WISDOM = [
 let moduleDiscoveryPromise: Promise<{ suppliers: DiscoveredSupplier[] }> | null = null;
 let moduleDiscoveryResult: DiscoveredSupplier[] | null = null;
 const SESSION_EXPIRED_MESSAGE = 'Session expired. Please sign in again.';
+const GMAIL_REQUIRED_MESSAGE = 'Connect Gmail to start email analysis.';
 
 // Background progress type for parent components
 interface BackgroundEmailProgress {
@@ -173,6 +178,9 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   const [isPriorityComplete, setIsPriorityComplete] = useState(initialState?.isPriorityComplete || false);
   const priorityPollAbortRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
+  const [gmailStatus, setGmailStatus] = useState<{ connected: boolean; gmailEmail?: string | null } | null>(null);
+  const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
+
   // Discovery state (runs in parallel)
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoveryProgress, setDiscoveryProgress] = useState<string>('');
@@ -212,8 +220,39 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     if (isSessionExpiredError(error)) {
       return SESSION_EXPIRED_MESSAGE;
     }
+    if (error instanceof ApiRequestError && error.code === 'GMAIL_AUTH_REQUIRED') {
+      return GMAIL_REQUIRED_MESSAGE;
+    }
     return error instanceof Error && error.message ? error.message : fallback;
   }, []);
+
+  const isGmailConnected = Boolean(gmailStatus?.connected);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadGmailStatus = async () => {
+      try {
+        const status = await gmailApi.getStatus();
+        if (isMounted) {
+          setGmailStatus(status);
+          setGmailStatusError(null);
+        }
+      } catch (error: unknown) {
+        const message = getErrorMessage(error, 'Unable to check Gmail connection.');
+        if (isMounted) {
+          setGmailStatusError(message);
+          setGmailStatus({ connected: false, gmailEmail: null });
+        }
+      }
+    };
+
+    void loadGmailStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getErrorMessage]);
 
   // Computed values for the experience
   const allItems = useMemo(() => {
@@ -363,6 +402,10 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       console.log('📦 Restored email scan state - skipping initialization');
       return;
     }
+
+    if (!isGmailConnected) {
+      return;
+    }
     
     let amazonRetryTimeout: ReturnType<typeof setTimeout> | null = null;
     
@@ -420,11 +463,16 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     return () => {
       if (amazonRetryTimeout) clearTimeout(amazonRetryTimeout);
     };
-  }, [hasRestoredState]);
+  }, [hasRestoredState, isGmailConnected]);
 
   // Discover suppliers - memoized to allow proper dependency tracking
   // Uses module-level caching to handle StrictMode remounts
   const handleDiscoverSuppliers = useCallback(async () => {
+    if (!isGmailConnected) {
+      setDiscoverError(GMAIL_REQUIRED_MESSAGE);
+      setHasDiscovered(true);
+      return;
+    }
     // Check if we already have cached results (from previous mount in StrictMode)
     if (moduleDiscoveryResult) {
       setDiscoveredSuppliers(moduleDiscoveryResult);
@@ -463,16 +511,26 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     } finally {
       setIsDiscovering(false);
     }
-  }, [getErrorMessage]);
+  }, [getErrorMessage, isGmailConnected]);
 
   // 2. START SUPPLIER DISCOVERY (start immediately for faster supplier identification)
   // Uses ref to prevent infinite loop and module-level caching for StrictMode
   useEffect(() => {
+    if (!isGmailConnected) return;
     if (!hasDiscovered && !isDiscovering && !hasInitiatedDiscovery.current) {
       hasInitiatedDiscovery.current = true;
       handleDiscoverSuppliers();
     }
-  }, [hasDiscovered, isDiscovering, handleDiscoverSuppliers]);
+  }, [hasDiscovered, isDiscovering, handleDiscoverSuppliers, isGmailConnected]);
+
+  useEffect(() => {
+    if (!isGmailConnected) return;
+    if (discoverError === GMAIL_REQUIRED_MESSAGE) {
+      setDiscoverError(null);
+      setHasDiscovered(false);
+      hasInitiatedDiscovery.current = false;
+    }
+  }, [discoverError, isGmailConnected]);
 
   // Poll Amazon job status with adaptive backoff
   const pollAmazonStatus = useCallback(async () => {
@@ -676,6 +734,11 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       return;
     }
 
+    if (!isGmailConnected) {
+      setOtherScanError(GMAIL_REQUIRED_MESSAGE);
+      return;
+    }
+
     // Filter to only non-Amazon, non-priority enabled suppliers
     const domainsToScan = Array.from(
       new Set(Array.from(enabledSuppliers).map((domain) => canonicalizePrioritySupplierDomain(domain))),
@@ -710,6 +773,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     hasStartedOtherImport,
     currentJobId,
     isScanning,
+    isGmailConnected,
   ]);
 
   const handleToggleSupplier = useCallback((domain: string) => {
@@ -859,26 +923,36 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
         </div>
       )}
 
+      <InstructionCard
+        title="What to do"
+        icon="Mail"
+        steps={[
+          'Connect Gmail to start scanning.',
+          'Wait for Amazon + priority suppliers to finish.',
+          'Select any extra suppliers to import.',
+        ]}
+      />
+
       {/* Welcome Header - Animated intro */}
       {showWelcome && (
         <div className="text-center py-8 animate-fade-in">
           <div className="inline-flex items-center gap-2 bg-arda-accent/10 text-arda-accent px-4 py-2 rounded-full text-sm font-medium mb-4">
             <Icons.Sparkles className="w-4 h-4" />
-            Welcome to Arda
+            Email sync started
           </div>
           <h1 className="text-3xl font-bold text-arda-text-primary mb-3">
-            Let's discover your supply chain
+            We’re scanning your inbox
           </h1>
           <p className="text-arda-text-secondary max-w-lg mx-auto">
-            We're scanning your emails to find orders, track spending, and identify 
-            replenishment patterns. This usually takes about 30 seconds.
+            We’re finding orders, tracking spend, and identifying replenishment patterns.
+            This usually takes about 30 seconds.
           </p>
         </div>
       )}
 
       {/* Live Stats Bar - The "wow" moment */}
       {(allItems.length > 0 || totalOrders > 0) && (
-        <div className="bg-gradient-to-r from-arda-accent to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+        <div className={`bg-gradient-to-r from-arda-accent to-blue-600 rounded-2xl p-6 text-white shadow-lg ${isGmailConnected ? '' : 'opacity-60'}`}>
           <div className="grid grid-cols-4 gap-6 text-center">
             <div>
               <div className="text-4xl font-bold">{allItems.length}</div>
@@ -923,13 +997,41 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
                 : 'Ready to set up your inventory'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onSkip}
-            className="text-sm font-semibold text-arda-accent hover:text-arda-accent/80 transition-colors"
-          >
-            Skip for now
-          </button>
+          {isGmailConnected && (
+            <button
+              type="button"
+              onClick={onSkip}
+              className="text-sm font-semibold text-arda-accent hover:text-arda-accent/80 transition-colors"
+            >
+              Skip for now
+            </button>
+          )}
+        </div>
+      )}
+
+      {!isGmailConnected && (
+        <div className="border border-arda-border rounded-2xl p-6 bg-arda-bg-secondary">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-orange-500 text-white flex items-center justify-center">
+              <Icons.Mail className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-arda-text-primary">Connect Gmail to continue</h3>
+              <p className="text-sm text-arda-text-secondary mt-1">
+                {gmailStatusError || 'Link Gmail to scan your inbox for purchase orders and receipts.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = `${API_BASE_URL}/auth/google?returnTo=email`;
+                }}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-arda-accent text-white font-semibold hover:bg-arda-accent/90 transition-colors"
+              >
+                <Icons.Link className="w-4 h-4" />
+                Connect Gmail
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

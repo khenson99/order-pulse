@@ -13,6 +13,26 @@ vi.mock('../SupplierSetup', () => ({
   ),
 }));
 
+vi.mock('../OnboardingWelcomeStep', () => ({
+  OnboardingWelcomeStep: ({
+    onStartEmailSync,
+    onSkipEmail,
+  }: {
+    onStartEmailSync: () => void;
+    onSkipEmail: () => void;
+  }) => (
+    <div>
+      <div>welcome-step</div>
+      <button type="button" onClick={onStartEmailSync}>
+        start-email-sync
+      </button>
+      <button type="button" onClick={onSkipEmail}>
+        skip-email-sync
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock('../BarcodeScanStep', () => ({
   BarcodeScanStep: () => <div>barcode-step</div>,
 }));
@@ -44,10 +64,16 @@ describe('OnboardingFlow email continuation reminder', () => {
     window.history.replaceState({}, '', '/');
   });
 
-  it('shows the reminder on the email step', () => {
+  it('shows the reminder on the email step', async () => {
+    const user = userEvent.setup();
+
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
 
-    expect(screen.getAllByText('Step 1 of 7').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 1 of 8').length).toBeGreaterThan(0);
+    expect(screen.getByText('welcome-step')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
+
+    expect(screen.getAllByText('Step 2 of 8').length).toBeGreaterThan(0);
     expect(
       screen.getByText('Continuing won’t stop email scanning. Import keeps running in the background.'),
     ).toBeInTheDocument();
@@ -58,11 +84,12 @@ describe('OnboardingFlow email continuation reminder', () => {
 
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
 
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
     await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('integrations-step')).toBeInTheDocument();
-    expect(screen.getAllByText('Step 2 of 7').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 3 of 8').length).toBeGreaterThan(0);
     expect(
       screen.queryByText('Continuing won’t stop email scanning. Import keeps running in the background.'),
     ).not.toBeInTheDocument();
@@ -73,12 +100,13 @@ describe('OnboardingFlow email continuation reminder', () => {
 
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
 
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
     await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('url-scrape-step')).toBeInTheDocument();
-    expect(screen.getAllByText('Step 3 of 7').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 4 of 8').length).toBeGreaterThan(0);
   });
 
   it('starts on integrations step when OAuth callback params are present', () => {
@@ -87,6 +115,6 @@ describe('OnboardingFlow email continuation reminder', () => {
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
 
     expect(screen.getByText('integrations-step')).toBeInTheDocument();
-    expect(screen.getAllByText('Step 2 of 7').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 3 of 8').length).toBeGreaterThan(0);
   });
 });
