@@ -132,34 +132,38 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       }
 
       if (sessionUser.googleId && sessionUser.googleId !== userInfo.id) {
-        return res.redirect(`${process.env.FRONTEND_URL}?error=google_account_mismatch`);
+        // User selected a different Google account than the one on the active session.
+        // Reset the session and continue with a normal Google login to avoid auth loops.
+        await new Promise<void>((resolve, reject) => {
+          req.session.regenerate((err) => (err ? reject(err) : resolve()));
+        });
+      } else {
+        const existingGoogleUser = await getUserByGoogleId(userInfo.id);
+        if (existingGoogleUser && existingGoogleUser.id !== sessionUser.id) {
+          await mergeUsers(existingGoogleUser.id, sessionUser.id);
+        }
+
+        const linkedUser: StoredUser = {
+          ...sessionUser,
+          googleId: userInfo.id,
+          googleEmail: userInfo.email,
+          accessToken,
+          refreshToken: refreshToken || sessionUser.refreshToken,
+          expiresAt,
+          name: sessionUser.name || userInfo.name || '',
+          picture: sessionUser.picture || userInfo.picture || '',
+        };
+
+        await saveUser(linkedUser);
+        console.log(`✅ Gmail linked for user ${linkedUser.id} (${linkedUser.email})`);
+
+        const authToken = generateAuthToken(linkedUser.id);
+      req.session.userId = linkedUser.id;
+      req.session.authProvider = linkedUser.googleId ? 'google' : 'local';
+
+        const redirectTarget = `${process.env.FRONTEND_URL}?auth=success&token=${authToken}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`;
+        return res.redirect(redirectTarget);
       }
-
-      const existingGoogleUser = await getUserByGoogleId(userInfo.id);
-      if (existingGoogleUser && existingGoogleUser.id !== sessionUser.id) {
-        await mergeUsers(existingGoogleUser.id, sessionUser.id);
-      }
-
-      const linkedUser: StoredUser = {
-        ...sessionUser,
-        googleId: userInfo.id,
-        googleEmail: userInfo.email,
-        accessToken,
-        refreshToken: refreshToken || sessionUser.refreshToken,
-        expiresAt,
-        name: sessionUser.name || userInfo.name || '',
-        picture: sessionUser.picture || userInfo.picture || '',
-      };
-
-      await saveUser(linkedUser);
-      console.log(`✅ Gmail linked for user ${linkedUser.id} (${linkedUser.email})`);
-
-      const authToken = generateAuthToken(linkedUser.id);
-    req.session.userId = linkedUser.id;
-    req.session.authProvider = linkedUser.googleId ? 'google' : 'local';
-
-      const redirectTarget = `${process.env.FRONTEND_URL}?auth=success&token=${authToken}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`;
-      return res.redirect(redirectTarget);
     }
 
     // No existing session: login / create by Google account
