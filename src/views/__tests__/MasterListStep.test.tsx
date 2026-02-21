@@ -190,6 +190,67 @@ describe('MasterListStep URL items', () => {
     expect(body.orderMechanism).toBe('purchase_order');
   });
 
+  it('auto-attempts create_new on TENANT_REQUIRED without confirmation prompts', async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const confirmSpy = vi.spyOn(window, 'confirm');
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: false,
+            code: 'TENANT_REQUIRED',
+            error: 'Tenant required for Arda sync',
+            details: {
+              canCreateTenant: true,
+              message: 'No tenant mapping found.',
+            },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ success: true, tenantId: 'tenant-new', author: 'author-new' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ success: true, record: { rId: 'item-1' } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    render(
+      <MasterListStep
+        emailItems={[
+          {
+            id: 'email-1',
+            name: 'Email Item',
+            supplier: 'Email Vendor',
+          },
+        ]}
+        urlItems={[]}
+        scannedBarcodes={[]}
+        capturedPhotos={[]}
+        csvItems={[]}
+        onComplete={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Sync' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const resolveCall = fetchMock.mock.calls[1];
+    expect(String(resolveCall?.[0])).toContain('/api/arda/tenant/resolve');
+    const resolveBody = JSON.parse(((resolveCall?.[1] as RequestInit)?.body as string) || '{}') as { action?: string };
+    expect(resolveBody.action).toBe('create_new');
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
   it('emits session-expired when sync returns 401', async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;

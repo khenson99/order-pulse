@@ -199,7 +199,8 @@ export default function App() {
               title="What to do"
               icon="ExternalLink"
               steps={[
-                'Open Arda to continue in your tenant.',
+                'Open Arda to continue in your synced tenant.',
+                'If Arda asks you to sign in, use this same account email.',
                 'You can return anytime to import more items.',
               ]}
               className="mb-6 text-left"

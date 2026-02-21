@@ -119,6 +119,7 @@ describe('App auth session handling', () => {
 
     await screen.findByText('Setup Complete!');
     await screen.findByText('tenant-abc');
+    await screen.findByText('If Arda asks you to sign in, use this same account email.');
     fireEvent.click(screen.getByRole('button', { name: 'Open Arda' }));
 
     expect(openSpy).toHaveBeenCalledWith(

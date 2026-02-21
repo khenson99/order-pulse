@@ -510,26 +510,16 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   }, []);
 
   const resolveTenantForSync = useCallback(async (details?: ArdaTenantResolutionDetails): Promise<boolean> => {
-    const suggested = details?.suggestedTenant;
-    if (suggested && details?.canUseSuggestedTenant) {
-      const useSuggestion = window.confirm(
-        `No tenant was mapped to your login email. Use suggested tenant ${suggested.tenantId} from ${suggested.matchedEmail}?`
-      );
-      if (useSuggestion) {
-        const resolution = await ardaApi.resolveTenant('use_suggested');
-        return resolution.success;
-      }
+    if (!details?.canCreateTenant) {
+      return false;
     }
 
-    if (details?.canCreateTenant) {
-      const createNew = window.confirm('No tenant is mapped for this account. Create a new tenant now?');
-      if (createNew) {
-        const resolution = await ardaApi.resolveTenant('create_new');
-        return resolution.success;
-      }
+    try {
+      const resolution = await ardaApi.resolveTenant('create_new');
+      return resolution.success;
+    } catch {
+      return false;
     }
-
-    return false;
   }, []);
 
   const exportMasterListItemsFallback = useCallback((itemsToExport: MasterListItem[]) => {
@@ -616,10 +606,14 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
         if (resolved) {
           attempt = await attemptSync();
         } else {
+          const tenantDetails = attempt.error.details as ArdaTenantResolutionDetails | undefined;
+          const unresolvedMessage = tenantDetails?.autoProvisionError
+            || tenantDetails?.message
+            || 'Tenant could not be auto-provisioned.';
           exportMasterListItemsFallback([item]);
           return {
             success: false,
-            error: `${(attempt.error.details as ArdaTenantResolutionDetails | undefined)?.message || 'Tenant unresolved for sync.'} Exported item to CSV.`,
+            error: `${unresolvedMessage} Exported item to CSV.`,
           };
         }
       }

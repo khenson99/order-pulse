@@ -109,7 +109,7 @@ describe('arda routes credential resolution', () => {
     }
   });
 
-  it('returns TENANT_REQUIRED for authenticated writes when logged-in email has no tenant mapping', async () => {
+  it('attempts auto-provision and returns TENANT_REQUIRED with auto-provision details when provisioning fails', async () => {
     mockGetUserEmail.mockResolvedValue('auth-user@example.com');
     mockGetUserByEmail.mockReturnValue(null);
 
@@ -124,16 +124,59 @@ describe('arda routes credential resolution', () => {
     const data = await response.json() as {
       success?: boolean;
       code?: string;
-      details?: { email?: string; canCreateTenant?: boolean };
+      details?: {
+        email?: string;
+        canCreateTenant?: boolean;
+        autoProvisionAttempted?: boolean;
+        autoProvisionSucceeded?: boolean;
+        autoProvisionError?: string;
+      };
     };
     expect(response.status).toBe(400);
     expect(data.success).toBe(false);
     expect(data.code).toBe('TENANT_REQUIRED');
     expect(data.details?.email).toBe('auth-user@example.com');
     expect(data.details?.canCreateTenant).toBe(true);
+    expect(data.details?.autoProvisionAttempted).toBe(true);
+    expect(data.details?.autoProvisionSucceeded).toBe(false);
+    expect(data.details?.autoProvisionError).toContain('did not return tenant credentials');
     expect(mockCreateItem).not.toHaveBeenCalled();
-    expect(mockProvisionUserForEmail).not.toHaveBeenCalled();
+    expect(mockProvisionUserForEmail).toHaveBeenCalledWith('auth-user@example.com');
     expect(mockGetUserByEmail).toHaveBeenCalledWith('auth-user@example.com');
+  });
+
+  it('auto-provisions tenant during authenticated write when mapping is missing', async () => {
+    mockGetUserEmail.mockResolvedValue('new-user@example.com');
+    mockGetUserByEmail.mockReturnValue(null);
+    mockProvisionUserForEmail.mockResolvedValue({
+      author: 'provisioned-sub',
+      email: 'new-user@example.com',
+      tenantId: 'provisioned-tenant',
+    });
+
+    ({ server, baseUrl } = await startTestServer('session-user-id'));
+
+    const response = await fetch(`${baseUrl}/api/arda/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Auto Item', primarySupplier: 'Auto Supplier' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockProvisionUserForEmail).toHaveBeenCalledWith('new-user@example.com');
+    expect(mockEnsureUserMappingForEmail).toHaveBeenCalledWith(
+      'new-user@example.com',
+      'provisioned-tenant',
+      expect.objectContaining({ role: 'User', suppressMessage: true })
+    );
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Auto Item', primarySupplier: 'Auto Supplier' }),
+      {
+        author: 'provisioned-sub',
+        email: 'new-user@example.com',
+        tenantId: 'provisioned-tenant',
+      }
+    );
   });
 
   it('refreshes Cognito mapping on-demand when tenant is missing', async () => {
@@ -472,5 +515,36 @@ describe('arda routes credential resolution', () => {
     expect(statusData.recent[0]?.operation).toBe('item_create');
     expect(statusData.recent[0]?.success).toBe(false);
     expect(statusData.recent[0]?.error).toContain('Tenant required');
+  });
+
+  it('records provisioned tenant id in sync status events after auto-provisioned write', async () => {
+    mockGetUserEmail.mockResolvedValue('status-provisioned@example.com');
+    mockGetUserByEmail.mockReturnValue(null);
+    mockProvisionUserForEmail.mockResolvedValue({
+      author: 'status-provisioned-sub',
+      email: 'status-provisioned@example.com',
+      tenantId: 'tenant-from-provision',
+    });
+
+    ({ server, baseUrl } = await startTestServer('status-provisioned-user'));
+
+    const createResponse = await fetch(`${baseUrl}/api/arda/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Provisioned Tracked Item', primarySupplier: 'Supplier' }),
+    });
+    expect(createResponse.status).toBe(200);
+
+    const statusResponse = await fetch(`${baseUrl}/api/arda/sync-status`);
+    const statusData = await statusResponse.json() as {
+      success: boolean;
+      recent: Array<{ success: boolean; tenantId?: string; email?: string }>;
+    };
+
+    expect(statusResponse.status).toBe(200);
+    expect(statusData.success).toBe(true);
+    expect(statusData.recent[0]?.success).toBe(true);
+    expect(statusData.recent[0]?.tenantId).toBe('tenant-from-provision');
+    expect(statusData.recent[0]?.email).toBe('status-provisioned@example.com');
   });
 });

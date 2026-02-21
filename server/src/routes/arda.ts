@@ -32,10 +32,15 @@ declare module 'express-session' {
 }
 
 type TenantResolutionAction = 'create_new' | 'use_suggested';
+type TenantResolutionMode = 'mapped' | 'override' | 'provisioned' | 'unresolved';
 
 interface TenantResolutionDetails {
   canCreateTenant: boolean;
   suggestedTenant: TenantDomainSuggestion | null;
+  autoProvisionAttempted?: boolean;
+  autoProvisionSucceeded?: boolean;
+  autoProvisionError?: string;
+  resolutionMode?: TenantResolutionMode;
 }
 
 interface UserCredentials {
@@ -53,6 +58,13 @@ interface TrackArdaSyncInput {
   successful?: number;
   failed?: number;
   error?: string;
+  actor?: ArdaActor;
+}
+
+interface ActorResolutionResult {
+  credentials: UserCredentials;
+  actor?: ArdaActor;
+  error?: { status: number; body: unknown };
 }
 
 // Get user credentials from session - returns email, tenantId, and author (sub).
@@ -68,18 +80,30 @@ async function getUserCredentials(req: Request): Promise<UserCredentials> {
 
   // Look up user in Cognito
   let cognitoUser = email ? cognitoService.getUserByEmail(email) : null;
+  const sessionTenantOverride = req.session?.ardaTenantIdOverride || null;
+  const sessionAuthorOverride = req.session?.ardaAuthorOverride || null;
 
-  let tenantId = cognitoUser?.tenantId || req.session?.ardaTenantIdOverride || null;
-  let author = cognitoUser?.sub || req.session?.ardaAuthorOverride || null;
+  let tenantId = cognitoUser?.tenantId || sessionTenantOverride || null;
+  let author = cognitoUser?.sub || sessionAuthorOverride || null;
 
   if (isAuthenticated && email && !tenantId) {
     const refreshed = await cognitoService.syncUsersOnDemand('missing-tenant');
     if (refreshed) {
       cognitoUser = cognitoService.getUserByEmail(email);
-      tenantId = cognitoUser?.tenantId || req.session?.ardaTenantIdOverride || null;
-      author = cognitoUser?.sub || req.session?.ardaAuthorOverride || null;
+      tenantId = cognitoUser?.tenantId || sessionTenantOverride || null;
+      author = cognitoUser?.sub || sessionAuthorOverride || null;
     }
   }
+
+  const usingSessionOverride = (
+    (!cognitoUser?.tenantId && Boolean(sessionTenantOverride))
+    || (!cognitoUser?.sub && Boolean(sessionAuthorOverride))
+  );
+  const resolutionMode: TenantResolutionMode = (
+    tenantId && author
+      ? (usingSessionOverride ? 'override' : 'mapped')
+      : 'unresolved'
+  );
 
   const suggestedTenant = (
     isAuthenticated && email && !tenantId
@@ -95,6 +119,20 @@ async function getUserCredentials(req: Request): Promise<UserCredentials> {
     resolution: {
       canCreateTenant: isAuthenticated && Boolean(email),
       suggestedTenant,
+      resolutionMode,
+    },
+  };
+}
+
+function updateCredentialResolution(
+  credentials: UserCredentials,
+  updates: Partial<TenantResolutionDetails>
+): UserCredentials {
+  return {
+    ...credentials,
+    resolution: {
+      ...credentials.resolution,
+      ...updates,
     },
   };
 }
@@ -128,8 +166,12 @@ function credentialFailureResponse(credentials: UserCredentials) {
           canUseSuggestedTenant: canUseSuggested,
           canCreateTenant: credentials.resolution.canCreateTenant,
           suggestedTenant: credentials.resolution.suggestedTenant,
+          autoProvisionAttempted: credentials.resolution.autoProvisionAttempted,
+          autoProvisionSucceeded: credentials.resolution.autoProvisionSucceeded,
+          autoProvisionError: credentials.resolution.autoProvisionError,
+          resolutionMode: credentials.resolution.resolutionMode || 'unresolved',
           message: tenantRequired
-            ? `${emailMessage} ${suggestionMessage} Choose "Use Suggested Tenant" or "Create New Tenant".`
+            ? `${emailMessage} ${suggestionMessage}`
             : emailMessage,
         },
       },
@@ -199,6 +241,164 @@ function buildActor(
   return { error: credentialFailureResponse(credentials) };
 }
 
+async function resolveActorForWrite(
+  req: Request,
+  providedAuthor?: string | null
+): Promise<ActorResolutionResult> {
+  const requestId = req.get('x-request-id') || 'n/a';
+  let credentials = await getUserCredentials(req);
+
+  if (providedAuthor !== undefined && providedAuthor !== null && typeof providedAuthor !== 'string') {
+    return {
+      credentials,
+      error: {
+        status: 400,
+        body: { success: false, error: 'author must be a string when provided' },
+      },
+    };
+  }
+
+  let actorResult = buildActor(credentials, providedAuthor);
+  if (actorResult.actor || !credentials.isAuthenticated || credentials.tenantId) {
+    return {
+      credentials,
+      ...actorResult,
+    };
+  }
+
+  if (!credentials.email || !credentials.resolution.canCreateTenant) {
+    return {
+      credentials,
+      error: credentialFailureResponse(credentials),
+    };
+  }
+
+  credentials = updateCredentialResolution(credentials, {
+    autoProvisionAttempted: true,
+    autoProvisionSucceeded: false,
+    resolutionMode: 'unresolved',
+  });
+
+  console.info('Arda auto-provision attempt', {
+    email: credentials.email,
+    path: req.path,
+    requestId,
+  });
+
+  if (!ardaService.isConfigured()) {
+    const autoProvisionError = 'ARDA_API_KEY is not configured; auto-provisioning unavailable.';
+    console.warn('Arda auto-provision failed', {
+      email: credentials.email,
+      path: req.path,
+      requestId,
+      reason: autoProvisionError,
+      code: 'ARDA_NOT_CONFIGURED',
+    });
+    credentials = updateCredentialResolution(credentials, {
+      autoProvisionSucceeded: false,
+      autoProvisionError,
+      resolutionMode: 'unresolved',
+    });
+    return {
+      credentials,
+      error: credentialFailureResponse(credentials),
+    };
+  }
+
+  try {
+    const provisioned = await ardaService.provisionUserForEmail(credentials.email);
+    if (!provisioned?.tenantId || !provisioned.author) {
+      const autoProvisionError = 'Automatic tenant provisioning did not return tenant credentials.';
+      console.warn('Arda auto-provision failed', {
+        email: credentials.email,
+        path: req.path,
+        requestId,
+        reason: autoProvisionError,
+        code: 'TENANT_PROVISION_FAILED',
+      });
+      credentials = updateCredentialResolution(credentials, {
+        autoProvisionSucceeded: false,
+        autoProvisionError,
+        resolutionMode: 'unresolved',
+      });
+      return {
+        credentials,
+        error: credentialFailureResponse(credentials),
+      };
+    }
+
+    req.session.ardaTenantIdOverride = provisioned.tenantId;
+    req.session.ardaAuthorOverride = provisioned.author;
+
+    console.info('Arda auto-provision success', {
+      email: credentials.email,
+      path: req.path,
+      requestId,
+      tenantId: provisioned.tenantId,
+      authorSource: 'provisioned',
+    });
+
+    try {
+      await cognitoService.ensureUserMappingForEmail(
+        credentials.email,
+        provisioned.tenantId,
+        { role: 'User', suppressMessage: true }
+      );
+      console.info('Arda auto-provision Cognito mapping updated', {
+        email: credentials.email,
+        path: req.path,
+        requestId,
+        tenantId: provisioned.tenantId,
+      });
+    } catch (error) {
+      console.warn('Arda auto-provision Cognito mapping update failed', {
+        email: credentials.email,
+        path: req.path,
+        requestId,
+        tenantId: provisioned.tenantId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    credentials = updateCredentialResolution(
+      {
+        ...credentials,
+        tenantId: provisioned.tenantId,
+        author: provisioned.author,
+      },
+      {
+        autoProvisionSucceeded: true,
+        autoProvisionError: undefined,
+        resolutionMode: 'provisioned',
+      }
+    );
+
+    actorResult = buildActor(credentials, providedAuthor);
+    return {
+      credentials,
+      ...actorResult,
+    };
+  } catch (error) {
+    const autoProvisionError = error instanceof Error ? error.message : String(error);
+    console.warn('Arda auto-provision failed', {
+      email: credentials.email,
+      path: req.path,
+      requestId,
+      reason: autoProvisionError,
+      code: 'TENANT_PROVISION_FAILED',
+    });
+    credentials = updateCredentialResolution(credentials, {
+      autoProvisionSucceeded: false,
+      autoProvisionError,
+      resolutionMode: 'unresolved',
+    });
+    return {
+      credentials,
+      error: credentialFailureResponse(credentials),
+    };
+  }
+}
+
 function getSyncStatusUserKey(req: Request, credentials?: UserCredentials): string {
   if (req.session?.userId) {
     return `user:${req.session.userId}`;
@@ -249,8 +449,8 @@ async function trackArdaSync(
       getSyncStatusUserKey(req, credentials),
       {
         ...input,
-        email: credentials?.email || undefined,
-        tenantId: credentials?.tenantId || undefined,
+        email: input.actor?.email || credentials?.email || undefined,
+        tenantId: input.actor?.tenantId || credentials?.tenantId || undefined,
       }
     );
   } catch (error) {
@@ -436,6 +636,7 @@ router.get('/tenant/status', async (req: Request, res: Response) => {
           authorFound: true,
           tenantIdFound: true,
           tenantId: credentials.tenantId,
+          resolutionMode: credentials.resolution.resolutionMode || 'mapped',
         },
       });
     }
@@ -457,9 +658,10 @@ router.get('/tenant/status', async (req: Request, res: Response) => {
 // Create item in Arda
 router.post('/items', async (req: Request, res: Response) => {
   let credentials: UserCredentials | undefined;
+  let actor: ArdaActor | undefined;
   try {
-    credentials = await getUserCredentials(req);
-    const actorResult = buildActor(credentials);
+    const actorResult = await resolveActorForWrite(req);
+    credentials = actorResult.credentials;
     if (actorResult.error) {
       await trackArdaSync(req, credentials, {
         operation: 'item_create',
@@ -468,6 +670,7 @@ router.post('/items', async (req: Request, res: Response) => {
       });
       return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+    actor = actorResult.actor;
 
     const itemData: Omit<ItemInput, 'externalGuid'> = req.body;
 
@@ -512,13 +715,14 @@ router.post('/items', async (req: Request, res: Response) => {
       color: (itemData as any).color,
     };
 
-    const result = await ardaService.createItem(item, actorResult.actor!);
+    const result = await ardaService.createItem(item, actor!);
     await trackArdaSync(req, credentials, {
       operation: 'item_create',
       success: true,
       requested: 1,
       successful: 1,
       failed: 0,
+      actor,
     });
     res.json({ success: true, record: result });
   } catch (error) {
@@ -527,6 +731,7 @@ router.post('/items', async (req: Request, res: Response) => {
       operation: 'item_create',
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create item in Arda',
+      actor,
     });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to create item in Arda',
@@ -537,9 +742,10 @@ router.post('/items', async (req: Request, res: Response) => {
 // Create Kanban card in Arda
 router.post('/kanban-cards', async (req: Request, res: Response) => {
   let credentials: UserCredentials | undefined;
+  let actor: ArdaActor | undefined;
   try {
-    credentials = await getUserCredentials(req);
-    const actorResult = buildActor(credentials);
+    const actorResult = await resolveActorForWrite(req);
+    credentials = actorResult.credentials;
     if (actorResult.error) {
       await trackArdaSync(req, credentials, {
         operation: 'kanban_card_create',
@@ -548,6 +754,7 @@ router.post('/kanban-cards', async (req: Request, res: Response) => {
       });
       return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+    actor = actorResult.actor;
 
     const cardData: KanbanCardInput = req.body;
 
@@ -563,13 +770,14 @@ router.post('/kanban-cards', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await ardaService.createKanbanCard(cardData, actorResult.actor!);
+    const result = await ardaService.createKanbanCard(cardData, actor!);
     await trackArdaSync(req, credentials, {
       operation: 'kanban_card_create',
       success: true,
       requested: 1,
       successful: 1,
       failed: 0,
+      actor,
     });
     res.json({ success: true, record: result });
   } catch (error) {
@@ -578,6 +786,7 @@ router.post('/kanban-cards', async (req: Request, res: Response) => {
       operation: 'kanban_card_create',
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create Kanban card in Arda',
+      actor,
     });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to create Kanban card in Arda',
@@ -588,9 +797,10 @@ router.post('/kanban-cards', async (req: Request, res: Response) => {
 // Create order in Arda
 router.post('/orders', async (req: Request, res: Response) => {
   let credentials: UserCredentials | undefined;
+  let actor: ArdaActor | undefined;
   try {
-    credentials = await getUserCredentials(req);
-    const actorResult = buildActor(credentials);
+    const actorResult = await resolveActorForWrite(req);
+    credentials = actorResult.credentials;
     if (actorResult.error) {
       await trackArdaSync(req, credentials, {
         operation: 'order_create',
@@ -599,6 +809,7 @@ router.post('/orders', async (req: Request, res: Response) => {
       });
       return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+    actor = actorResult.actor;
 
     const orderData = req.body;
 
@@ -620,13 +831,14 @@ router.post('/orders', async (req: Request, res: Response) => {
       order.deliverBy = { utcTimestamp: new Date(orderData.deliverBy).getTime() };
     }
 
-    const result = await ardaService.createOrder(order, actorResult.actor!);
+    const result = await ardaService.createOrder(order, actor!);
     await trackArdaSync(req, credentials, {
       operation: 'order_create',
       success: true,
       requested: 1,
       successful: 1,
       failed: 0,
+      actor,
     });
     res.json({ success: true, record: result });
   } catch (error) {
@@ -635,6 +847,7 @@ router.post('/orders', async (req: Request, res: Response) => {
       operation: 'order_create',
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create order in Arda',
+      actor,
     });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to create order in Arda',
@@ -645,9 +858,10 @@ router.post('/orders', async (req: Request, res: Response) => {
 // Bulk sync items to Arda
 router.post('/items/bulk', async (req: Request, res: Response) => {
   let credentials: UserCredentials | undefined;
+  let actor: ArdaActor | undefined;
   try {
-    credentials = await getUserCredentials(req);
-    const actorResult = buildActor(credentials);
+    const actorResult = await resolveActorForWrite(req);
+    credentials = actorResult.credentials;
     if (actorResult.error) {
       await trackArdaSync(req, credentials, {
         operation: 'item_bulk_create',
@@ -656,6 +870,7 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
       });
       return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+    actor = actorResult.actor;
 
     const items: Array<Omit<ItemInput, 'externalGuid'>> = req.body.items;
 
@@ -673,11 +888,11 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
     }
 
     console.log(`📤 Syncing ${items.length} items to Arda for user ${credentials.email}`);
-    console.log(`   Author: ${actorResult.actor?.author}, Tenant: ${actorResult.actor?.tenantId}`);
+    console.log(`   Author: ${actor?.author}, Tenant: ${actor?.tenantId}`);
 
     // Sync each item with proper author from Cognito
     const results = await Promise.allSettled(
-      items.map((item) => ardaService.createItem(item, actorResult.actor!))
+      items.map((item) => ardaService.createItem(item, actor!))
     );
 
     const successful = results.filter((r) => r.status === 'fulfilled').length;
@@ -689,14 +904,15 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
       successful,
       failed,
       error: failed > 0 ? `${failed} items failed to sync` : undefined,
+      actor,
     });
 
     res.json({
       success: failed === 0,
       credentials: {
         email: credentials.email,
-        author: actorResult.actor?.author,
-        tenantId: actorResult.actor?.tenantId || null,
+        author: actor?.author,
+        tenantId: actor?.tenantId || null,
       },
       summary: { total: items.length, successful, failed },
       results: results.map((r, i) => ({
@@ -712,6 +928,7 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
       operation: 'item_bulk_create',
       success: false,
       error: error instanceof Error ? error.message : 'Failed to bulk sync items',
+      actor,
     });
     res.status(500).json({
       success: false,
@@ -724,6 +941,7 @@ router.post('/items/bulk', async (req: Request, res: Response) => {
 // Sync velocity profiles to Arda
 router.post('/sync-velocity', async (req: Request, res: Response) => {
   let credentials: UserCredentials | undefined;
+  let actor: ArdaActor | undefined;
   try {
     credentials = await getUserCredentials(req);
     const { profiles, author } = req.body;
@@ -740,7 +958,8 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
       });
     }
 
-    const actorResult = buildActor(credentials, author);
+    const actorResult = await resolveActorForWrite(req, author);
+    credentials = actorResult.credentials;
     if (actorResult.error) {
       await trackArdaSync(req, credentials, {
         operation: 'velocity_sync',
@@ -749,6 +968,7 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
       });
       return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+    actor = actorResult.actor;
 
     // Validate each profile
     for (const profile of profiles) {
@@ -766,7 +986,7 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
 
     console.log(`📤 Syncing ${profiles.length} velocity profiles to Arda for user ${credentials.email}`);
 
-    const results = await syncVelocityToArda(profiles, actorResult.actor!);
+    const results = await syncVelocityToArda(profiles, actor!);
     const successful = results.filter((result) => result.success).length;
     const failed = results.length - successful;
     await trackArdaSync(req, credentials, {
@@ -776,6 +996,7 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
       successful,
       failed,
       error: failed > 0 ? `${failed} velocity profiles failed to sync` : undefined,
+      actor,
     });
 
     res.json({ results });
@@ -785,6 +1006,7 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
       operation: 'velocity_sync',
       success: false,
       error: error instanceof Error ? error.message : 'Failed to sync velocity profiles to Arda',
+      actor,
     });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to sync velocity profiles to Arda',
@@ -795,9 +1017,10 @@ router.post('/sync-velocity', async (req: Request, res: Response) => {
 // Push velocity items to Arda
 router.post('/push-velocity', async (req: Request, res: Response) => {
   let credentials: UserCredentials | undefined;
+  let actor: ArdaActor | undefined;
   try {
-    credentials = await getUserCredentials(req);
-    const actorResult = buildActor(credentials);
+    const actorResult = await resolveActorForWrite(req);
+    credentials = actorResult.credentials;
     if (actorResult.error) {
       await trackArdaSync(req, credentials, {
         operation: 'velocity_push',
@@ -806,6 +1029,7 @@ router.post('/push-velocity', async (req: Request, res: Response) => {
       });
       return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+    actor = actorResult.actor;
 
     const { items } = req.body;
 
@@ -838,9 +1062,9 @@ router.post('/push-velocity', async (req: Request, res: Response) => {
     }
 
     console.log(`📤 Pushing ${items.length} velocity items to Arda for user ${credentials.email}`);
-    console.log(`   Author: ${actorResult.actor?.author}, Tenant: ${actorResult.actor?.tenantId}`);
+    console.log(`   Author: ${actor?.author}, Tenant: ${actor?.tenantId}`);
 
-    const results = await ardaService.syncVelocityToArda(items, actorResult.actor!);
+    const results = await ardaService.syncVelocityToArda(items, actor!);
 
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
@@ -851,6 +1075,7 @@ router.post('/push-velocity', async (req: Request, res: Response) => {
       successful,
       failed,
       error: failed > 0 ? `${failed} velocity items failed to sync` : undefined,
+      actor,
     });
 
     res.json({
@@ -864,6 +1089,7 @@ router.post('/push-velocity', async (req: Request, res: Response) => {
       operation: 'velocity_push',
       success: false,
       error: error instanceof Error ? error.message : 'Failed to push velocity items to Arda',
+      actor,
     });
     res.status(500).json({
       success: false,
@@ -876,6 +1102,7 @@ router.post('/push-velocity', async (req: Request, res: Response) => {
 // Sync a single item from velocity data
 router.post('/sync-item', async (req: Request, res: Response) => {
   let credentials: UserCredentials | undefined;
+  let actor: ArdaActor | undefined;
   try {
     credentials = await getUserCredentials(req);
     const { author, ...profileData } = req.body;
@@ -892,7 +1119,8 @@ router.post('/sync-item', async (req: Request, res: Response) => {
       });
     }
 
-    const actorResult = buildActor(credentials, author);
+    const actorResult = await resolveActorForWrite(req, author);
+    credentials = actorResult.credentials;
     if (actorResult.error) {
       await trackArdaSync(req, credentials, {
         operation: 'velocity_item_sync',
@@ -901,16 +1129,18 @@ router.post('/sync-item', async (req: Request, res: Response) => {
       });
       return res.status(actorResult.error.status).json(actorResult.error.body);
     }
+    actor = actorResult.actor;
 
     console.log(`📤 Syncing item "${profileData.displayName}" to Arda for user ${credentials.email}`);
 
-    const result = await createItemFromVelocity(profileData as ItemVelocityProfileInput, actorResult.actor!);
+    const result = await createItemFromVelocity(profileData as ItemVelocityProfileInput, actor!);
     await trackArdaSync(req, credentials, {
       operation: 'velocity_item_sync',
       success: true,
       requested: 1,
       successful: 1,
       failed: 0,
+      actor,
     });
     res.json({ success: true, record: result });
   } catch (error) {
@@ -919,6 +1149,7 @@ router.post('/sync-item', async (req: Request, res: Response) => {
       operation: 'velocity_item_sync',
       success: false,
       error: error instanceof Error ? error.message : 'Failed to sync item from velocity data',
+      actor,
     });
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to sync item from velocity data',

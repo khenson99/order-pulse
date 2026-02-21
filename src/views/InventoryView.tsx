@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { InventoryItem, ItemColor, ReviewStatus } from '../types';
 import { Icons } from '../components/Icons';
-import { ardaApi, ArdaItemInput } from '../services/api';
+import { ardaApi, ArdaItemInput, ArdaTenantResolutionDetails, isApiRequestError } from '../services/api';
+import { exportItemsToCSV } from '../utils/exportUtils';
 
 interface InventoryViewProps {
   inventory: InventoryItem[];
@@ -196,6 +197,39 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   // Use provided items or local state
   const items = onUpdateItem ? inventory : localItems;
 
+  const resolveTenantForSync = useCallback(async (details?: ArdaTenantResolutionDetails): Promise<boolean> => {
+    if (!details?.canCreateTenant) {
+      return false;
+    }
+
+    try {
+      const resolution = await ardaApi.resolveTenant('create_new');
+      return resolution.success;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const exportInventoryItemsFallback = useCallback((itemsToExport: InventoryItem[]) => {
+    exportItemsToCSV(
+      itemsToExport.map((item) => ({
+        source: 'inventory',
+        name: item.name,
+        supplier: item.supplier,
+        location: item.location,
+        orderMethod: 'email',
+        minQty: item.recommendedMin,
+        orderQty: item.recommendedOrderQty,
+        unitPrice: item.lastPrice,
+        asin: item.asin,
+        productUrl: item.productUrl,
+        imageUrl: item.imageUrl,
+        color: item.color,
+      })),
+      'inventory-tenant-unresolved'
+    );
+  }, []);
+
   // Update handler
   const handleUpdate = useCallback((id: string, updates: Partial<InventoryItem>) => {
     if (onUpdateItem) {
@@ -226,7 +260,29 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         primarySupplierLink: item.productUrl,
         imageUrl: item.imageUrl,
       };
-      await ardaApi.createItem(ardaItem);
+      try {
+        await ardaApi.createItem(ardaItem);
+      } catch (error) {
+        if (isApiRequestError(error) && error.code === 'TENANT_REQUIRED') {
+          const resolved = await resolveTenantForSync(error.details as ArdaTenantResolutionDetails | undefined);
+          if (resolved) {
+            await ardaApi.createItem(ardaItem);
+          } else {
+            const tenantDetails = error.details as ArdaTenantResolutionDetails | undefined;
+            const unresolvedMessage = tenantDetails?.autoProvisionError
+              || tenantDetails?.message
+              || error.message
+              || 'Tenant could not be auto-provisioned.';
+            exportInventoryItemsFallback([item]);
+            throw new Error(
+              `${unresolvedMessage} Exported item to CSV.`
+            );
+          }
+        } else {
+          throw error;
+        }
+      }
+
       setSyncResults(prev => ({ ...prev, [item.id]: 'success' }));
       // Mark as no longer draft
       handleUpdate(item.id, { isDraft: false });
@@ -261,7 +317,21 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         primarySupplierLink: item.productUrl,
         imageUrl: item.imageUrl,
       }));
-      const result = await ardaApi.bulkCreateItems(ardaItems);
+      let result = await ardaApi.bulkCreateItems(ardaItems);
+      if (!result.success && result.code === 'TENANT_REQUIRED') {
+        const resolved = await resolveTenantForSync(result.details);
+        if (resolved) {
+          result = await ardaApi.bulkCreateItems(ardaItems);
+        } else {
+          const unresolvedMessage = result.details?.autoProvisionError
+            || result.details?.message
+            || result.error
+            || 'Tenant could not be auto-provisioned.';
+          exportInventoryItemsFallback(items);
+          setBulkSyncError(`${unresolvedMessage} Exported items to CSV.`);
+          return;
+        }
+      }
       
       // Check for overall success
       if (!result.success && result.error) {
@@ -289,6 +359,58 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       });
     } catch (error) {
       console.error('Bulk sync failed:', error);
+      if (isApiRequestError(error) && error.code === 'TENANT_REQUIRED') {
+        try {
+          const resolved = await resolveTenantForSync(error.details as ArdaTenantResolutionDetails | undefined);
+          if (resolved) {
+            const ardaItems: ArdaItemInput[] = items.map(item => ({
+              name: item.name,
+              orderMechanism: 'email',
+              minQty: item.recommendedMin,
+              minQtyUnit: 'each',
+              primarySupplier: item.supplier,
+              orderQty: item.recommendedOrderQty,
+              orderQtyUnit: 'each',
+              location: item.location,
+              primarySupplierLink: item.productUrl,
+              imageUrl: item.imageUrl,
+            }));
+            const retryResult = await ardaApi.bulkCreateItems(ardaItems);
+            if (!retryResult.success && retryResult.error) {
+              setBulkSyncError(retryResult.details?.message || retryResult.error);
+            }
+            retryResult.results?.forEach((r, i: number) => {
+              const status = (r as { status?: string }).status;
+              const errorMsg = (r as { error?: string }).error;
+              if (items[i]) {
+                setSyncResults(prev => ({
+                  ...prev,
+                  [items[i].id]: status === 'fulfilled' ? 'success' : 'error',
+                }));
+                if (errorMsg) {
+                  setSyncErrors(prev => ({ ...prev, [items[i].id]: errorMsg }));
+                }
+                if (status === 'fulfilled') {
+                  handleUpdate(items[i].id, { isDraft: false });
+                }
+              }
+            });
+            return;
+          }
+          exportInventoryItemsFallback(items);
+          const tenantDetails = error.details as ArdaTenantResolutionDetails | undefined;
+          const unresolvedMessage = tenantDetails?.autoProvisionError
+            || tenantDetails?.message
+            || error.message
+            || 'Tenant could not be auto-provisioned.';
+          setBulkSyncError(`${unresolvedMessage} Exported items to CSV.`);
+          return;
+        } catch (retryError) {
+          const retryMsg = retryError instanceof Error ? retryError.message : 'Unknown error';
+          setBulkSyncError(retryMsg);
+          return;
+        }
+      }
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       setBulkSyncError(errorMsg);
     } finally {

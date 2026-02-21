@@ -567,6 +567,10 @@ export interface ArdaTenantResolutionDetails {
   canCreateTenant?: boolean;
   suggestedTenant?: ArdaTenantSuggestion | null;
   tenantId?: string;
+  autoProvisionAttempted?: boolean;
+  autoProvisionSucceeded?: boolean;
+  autoProvisionError?: string;
+  resolutionMode?: 'mapped' | 'provisioned' | 'override' | 'unresolved';
 }
 
 export interface ArdaSyncStatusEvent {
