@@ -116,3 +116,19 @@ export default defineConfig([
 
 ### Monitoring & observability
 - When `SENTRY_DSN` is set, Sentry picks up HTTP errors and uncaught exceptions automatically. The API logs the Cognito sync status on startup and reports Redis issues to the server logs.
+
+## Worktree guardrails
+
+Use these commands to avoid accidental dirty-state drift:
+
+1. `npm run worktree:status`
+2. `npm run worktree:check-clean`
+3. `npm run worktree:backup-clean`
+4. `npm run hooks:install`
+
+Notes:
+- `worktree:check-clean` fails if tracked or untracked files are present.
+- `worktree:backup-clean` creates a local backup branch (`codex/wip-backup-<timestamp>`), commits all current changes, then resets and cleans the current branch.
+- `hooks:install` configures `core.hooksPath=.githooks`.
+- The repo hooks block direct commits to `main` by default and block push when the worktree is dirty.
+- For emergency commits on `main`, set `ALLOW_MAIN_COMMIT=1` for that command only.

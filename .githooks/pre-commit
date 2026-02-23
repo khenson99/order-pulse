@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+branch="$(git branch --show-current)"
+if [[ "$branch" == "main" && "${ALLOW_MAIN_COMMIT:-0}" != "1" ]]; then
+  echo "Direct commits to main are blocked by default." >&2
+  echo "Create a feature branch (recommended) or set ALLOW_MAIN_COMMIT=1 for an emergency commit." >&2
+  exit 1
+fi
