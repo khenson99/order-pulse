@@ -7,7 +7,9 @@ on:
 
 env:
   NODE_VERSION: 20
-  RAILWAY_SERVICE: orderpulse-server
+  RAILWAY_PROJECT_ID: f7c96f7b-ed85-4ae9-9428-de3888942936
+  RAILWAY_ENVIRONMENT: production
+  RAILWAY_SERVICE: order-pulse-api
 
 jobs:
   build-and-test:
@@ -57,8 +59,10 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           NODE_VERSION: ${{ env.NODE_VERSION }}
+          RAILWAY_PROJECT_ID: ${{ env.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT: ${{ env.RAILWAY_ENVIRONMENT }}
           RAILWAY_SERVICE: ${{ env.RAILWAY_SERVICE }}
         working-directory: server
         run: |
           export PATH="$HOME/.railway/bin:$PATH"
-          railway up --service "$RAILWAY_SERVICE"
+          railway up --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
