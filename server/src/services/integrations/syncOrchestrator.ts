@@ -340,7 +340,7 @@ async function performSync(
     });
   }
 
-  let currentConnection = await refreshConnectionIfNeeded(connection);
+  const currentConnection = await refreshConnectionIfNeeded(connection);
   const accessToken = decrypt(currentConnection.accessTokenEncrypted);
 
   if (!accessToken) {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icons } from '../components/Icons';
 import { InstructionCard } from '../components/InstructionCard';
 import { urlIngestionApi, UrlScrapeResult, UrlScrapedItem } from '../services/api';
@@ -6,6 +6,23 @@ import { urlIngestionApi, UrlScrapeResult, UrlScrapedItem } from '../services/ap
 interface UrlScrapeStepProps {
   importedItems: UrlScrapedItem[];
   onImportItems: (items: UrlScrapedItem[]) => void;
+  onDeleteImportedItem?: (sourceUrl: string) => void;
+  onReviewStateChange?: (state: UrlReviewState) => void;
+}
+
+interface UrlReviewState {
+  pendingReviewCount: number;
+  unimportedApprovedCount: number;
+  totalRows: number;
+  canContinue: boolean;
+}
+
+interface EditableScrapeRow {
+  sourceUrl: string;
+  status: UrlScrapeResult['status'];
+  message?: string;
+  item: UrlScrapedItem;
+  approved: boolean;
 }
 
 const MAX_URLS = 50;
@@ -19,17 +36,57 @@ function parseUrls(raw: string): string[] {
   return Array.from(new Set(tokens));
 }
 
+function isImportedRowSynced(row: EditableScrapeRow, imported?: UrlScrapedItem): boolean {
+  if (!imported) return false;
+  const item = row.item;
+  return (
+    (item.itemName ?? '') === (imported.itemName ?? '')
+    && (item.supplier ?? '') === (imported.supplier ?? '')
+    && (item.vendorSku ?? '') === (imported.vendorSku ?? '')
+    && (item.asin ?? '') === (imported.asin ?? '')
+    && (item.productUrl ?? '') === (imported.productUrl ?? '')
+    && (item.price ?? null) === (imported.price ?? null)
+  );
+}
+
 export const UrlScrapeStep: React.FC<UrlScrapeStepProps> = ({
   importedItems,
   onImportItems,
+  onDeleteImportedItem,
+  onReviewStateChange,
 }) => {
   const [urlInput, setUrlInput] = useState('');
   const [isScraping, setIsScraping] = useState(false);
-  const [results, setResults] = useState<UrlScrapeResult[]>([]);
+  const [rows, setRows] = useState<EditableScrapeRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const parsedUrls = useMemo(() => parseUrls(urlInput), [urlInput]);
   const overLimit = parsedUrls.length > MAX_URLS;
+
+  const importedBySource = useMemo(
+    () => new Map(importedItems.map(item => [item.sourceUrl, item])),
+    [importedItems],
+  );
+
+  const successCount = rows.filter(result => result.status === 'success').length;
+  const partialCount = rows.filter(result => result.status === 'partial').length;
+  const failedCount = rows.filter(result => result.status === 'failed').length;
+  const approvedCount = rows.filter(row => row.approved).length;
+  const pendingCount = rows.length - approvedCount;
+  const unimportedApprovedCount = rows.filter(row => (
+    row.approved && !isImportedRowSynced(row, importedBySource.get(row.sourceUrl))
+  )).length;
+  const canContinue = rows.length === 0 || (pendingCount === 0 && unimportedApprovedCount === 0);
+
+  useEffect(() => {
+    onReviewStateChange?.({
+      pendingReviewCount: pendingCount,
+      unimportedApprovedCount,
+      totalRows: rows.length,
+      canContinue,
+    });
+  }, [canContinue, onReviewStateChange, pendingCount, rows.length, unimportedApprovedCount]);
 
   const handleScrape = async () => {
     if (parsedUrls.length === 0 || overLimit || isScraping) {
@@ -41,33 +98,118 @@ export const UrlScrapeStep: React.FC<UrlScrapeStepProps> = ({
 
     try {
       const response = await urlIngestionApi.scrapeUrls(parsedUrls);
-      setResults(response.results);
+      setRows(previousRows => {
+        const merged = new Map<string, EditableScrapeRow>();
+
+        previousRows.forEach(row => {
+          merged.set(row.sourceUrl, row);
+        });
+
+        response.results.forEach(result => {
+          const existing = merged.get(result.sourceUrl);
+          merged.set(result.sourceUrl, {
+            sourceUrl: result.sourceUrl,
+            status: result.status,
+            message: result.message,
+            item: {
+              ...existing?.item,
+              ...result.item,
+              sourceUrl: result.item.sourceUrl || result.sourceUrl,
+              productUrl: result.item.productUrl || result.sourceUrl,
+            },
+            approved: existing?.approved ?? false,
+          });
+        });
+
+        return Array.from(merged.values());
+      });
+      setImportMessage(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to scrape URLs');
-      setResults([]);
     } finally {
       setIsScraping(false);
     }
   };
 
   const handleImport = () => {
-    if (results.length === 0) return;
-    onImportItems(results.map(result => result.item));
+    const approvedRows = rows.filter(row => row.approved);
+    if (approvedRows.length === 0) {
+      setImportMessage('Approve at least one row before importing.');
+      return;
+    }
+
+    onImportItems(approvedRows.map(row => row.item));
+    setImportMessage(`Imported ${approvedRows.length} approved row${approvedRows.length === 1 ? '' : 's'}.`);
   };
 
-  const successCount = results.filter(result => result.status === 'success').length;
-  const partialCount = results.filter(result => result.status === 'partial').length;
-  const failedCount = results.filter(result => result.status === 'failed').length;
+  const handleToggleApproval = (sourceUrl: string, approved: boolean) => {
+    setRows(previousRows => previousRows.map(row => (
+      row.sourceUrl === sourceUrl ? { ...row, approved } : row
+    )));
+  };
+
+  const handleDeleteRow = (sourceUrl: string) => {
+    setRows(previousRows => previousRows.filter(row => row.sourceUrl !== sourceUrl));
+    onDeleteImportedItem?.(sourceUrl);
+  };
+
+  const handleFieldChange = (
+    sourceUrl: string,
+    field: 'itemName' | 'supplier' | 'vendorSku' | 'asin' | 'productUrl',
+    value: string,
+  ) => {
+    setRows(previousRows => previousRows.map(row => {
+      if (row.sourceUrl !== sourceUrl) return row;
+      return {
+        ...row,
+        item: {
+          ...row.item,
+          [field]: value.trim() ? value : undefined,
+        },
+      };
+    }));
+  };
+
+  const handlePriceChange = (sourceUrl: string, value: string) => {
+    setRows(previousRows => previousRows.map(row => {
+      if (row.sourceUrl !== sourceUrl) return row;
+
+      if (!value.trim()) {
+        return {
+          ...row,
+          item: {
+            ...row.item,
+            price: undefined,
+          },
+        };
+      }
+
+      const parsedPrice = Number(value);
+      if (!Number.isFinite(parsedPrice)) {
+        return row;
+      }
+
+      return {
+        ...row,
+        item: {
+          ...row.item,
+          price: parsedPrice,
+        },
+      };
+    }));
+  };
 
   return (
     <div className="space-y-4">
       <InstructionCard
+        variant="compact"
         title="What to do"
         icon="Link"
         steps={[
           'Paste up to 50 product links.',
           'Click “Scrape URLs.”',
-          'Import results to the master list.',
+          'Review, edit, approve, or delete rows.',
+          'Import approved rows to the master list.',
         ]}
       />
 
@@ -77,12 +219,10 @@ export const UrlScrapeStep: React.FC<UrlScrapeStepProps> = ({
             <h2 className="text-lg font-semibold text-arda-text-primary">Paste Product URLs</h2>
             <p className="text-sm text-arda-text-secondary mt-1">
               Add up to 50 links. Amazon URLs use ASIN enrichment, other URLs use metadata + AI fallback. McMaster-Carr
-              sometimes blocks automated requests, so you may get partial details (supplier + SKU) to review.
+              sometimes blocks automated requests, so you may get partial details (supplier + SKU) to review. New
+              scrapes append to the table below so you can build one running list.
             </p>
           </div>
-          <span className="text-xs text-arda-text-muted bg-arda-bg-tertiary rounded-full px-3 py-1">
-            Optional step
-          </span>
         </div>
 
         <textarea
@@ -114,65 +254,161 @@ https://supplier.com/products/part-123"
         )}
       </div>
 
-      {(results.length > 0 || importedItems.length > 0) && (
+      {(rows.length > 0 || importedItems.length > 0) && (
         <div className="bg-white rounded-2xl border border-arda-border p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3 text-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="font-semibold text-arda-text-primary">Scrape Results</span>
               <span className="text-green-600">{successCount} success</span>
               <span className="text-orange-600">{partialCount} partial</span>
               <span className="text-red-600">{failedCount} failed</span>
+              <span className="text-arda-text-secondary">{approvedCount} approved</span>
+              <span className="text-arda-text-muted">{pendingCount} pending review</span>
             </div>
             <button
               type="button"
               onClick={handleImport}
-              disabled={results.length === 0}
+              disabled={rows.length === 0}
               className="btn-arda-outline text-sm py-1.5 inline-flex items-center gap-2 disabled:opacity-50"
             >
               <Icons.Download className="w-4 h-4" />
-              Import To Master List
+              Import Approved To Master List
             </button>
           </div>
 
-          <div className="space-y-2 max-h-[360px] overflow-auto">
-            {results.map((result, index) => {
-              const statusColor = result.status === 'success'
-                ? 'text-green-600 bg-green-50 border-green-100'
-                : result.status === 'partial'
-                  ? 'text-orange-600 bg-orange-50 border-orange-100'
-                  : 'text-red-600 bg-red-50 border-red-100';
+          <div className="max-h-[420px] overflow-auto rounded-xl border border-arda-border">
+            <table className="w-full min-w-[1080px] text-xs">
+              <thead className="bg-arda-bg-tertiary text-arda-text-secondary sticky top-0">
+                <tr>
+                  <th className="px-2 py-2 text-left font-medium w-20">Approve</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[220px]">Source URL</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[180px]">Item Name</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[150px]">Supplier</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[130px]">SKU</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[120px]">Price</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[130px]">ASIN</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[220px]">Product URL</th>
+                  <th className="px-2 py-2 text-left font-medium w-24">Status</th>
+                  <th className="px-2 py-2 text-left font-medium min-w-[180px]">Message</th>
+                  <th className="px-2 py-2 text-left font-medium w-20">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(row => {
+                  const statusColor = row.status === 'success'
+                    ? 'text-green-600 bg-green-50 border-green-100'
+                    : row.status === 'partial'
+                      ? 'text-orange-600 bg-orange-50 border-orange-100'
+                      : 'text-red-600 bg-red-50 border-red-100';
 
-              return (
-                <div
-                  key={`${result.sourceUrl}-${index}`}
-                  className="border border-arda-border rounded-xl p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-xs text-arda-text-muted truncate">{result.sourceUrl}</div>
-                      <div className="font-medium text-sm text-arda-text-primary truncate">
-                        {result.item.itemName || 'Unknown item'}
-                      </div>
-                    </div>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full border ${statusColor}`}>
-                      {result.status}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 text-xs text-arda-text-secondary grid grid-cols-2 gap-x-3 gap-y-1">
-                    <span>Supplier: {result.item.supplier || '—'}</span>
-                    <span>Price: {result.item.price !== undefined ? `$${result.item.price.toFixed(2)}` : '—'}</span>
-                    <span>SKU: {result.item.vendorSku || '—'}</span>
-                    <span>ASIN: {result.item.asin || '—'}</span>
-                  </div>
-
-                  {result.message && (
-                    <p className="mt-2 text-xs text-arda-text-muted">{result.message}</p>
-                  )}
-                </div>
-              );
-            })}
+                  return (
+                    <tr key={row.sourceUrl} className="border-t border-arda-border align-top">
+                      <td className="px-2 py-2">
+                        <label className="inline-flex items-center gap-2 text-arda-text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={row.approved}
+                            onChange={(event) => handleToggleApproval(row.sourceUrl, event.target.checked)}
+                            aria-label={`Approve ${row.sourceUrl}`}
+                          />
+                          <span>Approve</span>
+                        </label>
+                      </td>
+                      <td className="px-2 py-2">
+                        <a
+                          href={row.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-arda-accent underline break-all"
+                        >
+                          {row.sourceUrl}
+                        </a>
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={row.item.itemName ?? ''}
+                          onChange={(event) => handleFieldChange(row.sourceUrl, 'itemName', event.target.value)}
+                          placeholder="Item name"
+                          aria-label={`Item name for ${row.sourceUrl}`}
+                          className="w-full rounded-lg border border-arda-border px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={row.item.supplier ?? ''}
+                          onChange={(event) => handleFieldChange(row.sourceUrl, 'supplier', event.target.value)}
+                          placeholder="Supplier"
+                          aria-label={`Supplier for ${row.sourceUrl}`}
+                          className="w-full rounded-lg border border-arda-border px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={row.item.vendorSku ?? ''}
+                          onChange={(event) => handleFieldChange(row.sourceUrl, 'vendorSku', event.target.value)}
+                          placeholder="SKU"
+                          aria-label={`SKU for ${row.sourceUrl}`}
+                          className="w-full rounded-lg border border-arda-border px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={row.item.price ?? ''}
+                          onChange={(event) => handlePriceChange(row.sourceUrl, event.target.value)}
+                          placeholder="0.00"
+                          aria-label={`Price for ${row.sourceUrl}`}
+                          className="w-full rounded-lg border border-arda-border px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={row.item.asin ?? ''}
+                          onChange={(event) => handleFieldChange(row.sourceUrl, 'asin', event.target.value)}
+                          placeholder="ASIN"
+                          aria-label={`ASIN for ${row.sourceUrl}`}
+                          className="w-full rounded-lg border border-arda-border px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={row.item.productUrl ?? ''}
+                          onChange={(event) => handleFieldChange(row.sourceUrl, 'productUrl', event.target.value)}
+                          placeholder="Product URL"
+                          aria-label={`Product URL for ${row.sourceUrl}`}
+                          className="w-full rounded-lg border border-arda-border px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full border ${statusColor}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-arda-text-muted">
+                        {row.message || '—'}
+                      </td>
+                      <td className="px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRow(row.sourceUrl)}
+                          className="text-red-600 hover:text-red-700 inline-flex items-center gap-1"
+                          aria-label={`Delete ${row.sourceUrl}`}
+                        >
+                          <Icons.Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
+
+          {importMessage && (
+            <p className="mt-3 text-xs text-arda-text-secondary">{importMessage}</p>
+          )}
 
           <p className="mt-4 text-xs text-arda-text-muted">
             Imported rows: {importedItems.length}. You can still edit everything in the Review step.

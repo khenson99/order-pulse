@@ -89,7 +89,7 @@ function buildClient(): { client: CognitoIdentityProviderClient; userPoolId: str
 async function findUserByEmail(client: CognitoIdentityProviderClient, userPoolId: string, email: string) {
   const response = await client.send(new ListUsersCommand({
     UserPoolId: userPoolId,
-    Filter: `email = \"${email}\"`,
+    Filter: `email = "${email}"`,
     Limit: 1,
   }));
 

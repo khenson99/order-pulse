@@ -71,6 +71,7 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   return (
     <div className="space-y-4">
       <InstructionCard
+        variant="compact"
         title="What to do"
         icon="ListChecks"
         steps={[
