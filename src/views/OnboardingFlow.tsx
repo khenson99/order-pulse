@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
 import { buildVelocityProfiles, normalizeItemName } from '../utils/inventoryLogic';
@@ -7,7 +7,11 @@ import { UrlScrapeStep } from './UrlScrapeStep';
 import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
 import { CSVUploadStep, CSVItem, CSVFooterState } from './CSVUploadStep';
-import { MasterListStep, MasterListItem, MasterListFooterState } from './MasterListStep';
+import { MasterListStep } from './MasterListStep';
+import { ItemsGrid } from '../components/ItemsTable';
+import type { MasterListItem, MasterListFooterState } from '../components/ItemsTable/types';
+import { buildMasterListItems, mergeMasterListItems } from '../utils/masterListItems';
+import { useSyncToArda } from '../hooks/useSyncToArda';
 import { IntegrationsStep } from './IntegrationsStep';
 import { UrlScrapedItem } from '../services/api';
 import { InstructionCard } from '../components/InstructionCard';
@@ -270,6 +274,44 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   );
 
+  // === Lifted master items state ===
+  const [masterItems, setMasterItems] = useState<MasterListItem[]>([]);
+  const { syncStateById, setSyncStateById, syncSingleItem, syncSelectedItems, isBulkSyncing } = useSyncToArda(masterItems);
+
+  // Merge items from all sources into masterItems
+  useEffect(() => {
+    const incoming = buildMasterListItems(emailItems, urlItems, scannedBarcodes, capturedPhotos, csvItems);
+    setMasterItems(prev => mergeMasterListItems(prev, incoming));
+  }, [emailItems, urlItems, scannedBarcodes, capturedPhotos, csvItems]);
+
+  const isPanelVisible = masterItems.length > 0;
+
+  const updateItem = useCallback((id: string, field: keyof MasterListItem, value: unknown) => {
+    setMasterItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const updated: MasterListItem = { ...item, [field]: value };
+      if (field === 'name' && value && !String(value).includes('Unknown')) {
+        updated.needsAttention = false;
+      }
+      return updated;
+    }));
+    setSyncStateById(prev => {
+      const existing = prev[id];
+      if (!existing || existing.status === 'idle') return prev;
+      return { ...prev, [id]: { status: 'idle' } };
+    });
+  }, [setSyncStateById]);
+
+  const removeItem = useCallback((id: string) => {
+    setMasterItems(prev => prev.filter(item => item.id !== id));
+    setSyncStateById(prev => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, [setSyncStateById]);
+
   const capturedPhotoCount = useMemo(
     () => capturedPhotos.reduce((count, photo) => count + (photo.suggestedName ? 1 : 0), 0),
     [capturedPhotos],
@@ -365,10 +407,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   }, [handleStepComplete]);
 
   // Handle master list completion
-  const handleMasterListComplete = useCallback((items: MasterListItem[]) => {
+  const handleMasterListComplete = useCallback(() => {
     handleStepComplete('masterlist');
-    onComplete(items);
-  }, [handleStepComplete, onComplete]);
+    const syncedItems = masterItems.filter(item => syncStateById[item.id]?.status === 'success');
+    onComplete(syncedItems);
+  }, [handleStepComplete, masterItems, onComplete, syncStateById]);
 
   // Update email progress from child component
   const handleEmailProgressUpdate = useCallback((progress: BackgroundEmailProgress | null) => {
@@ -792,11 +835,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
       {currentStep === 'masterlist' && (
         <MasterListStep
-          emailItems={emailItems}
-          urlItems={urlItems}
-          scannedBarcodes={scannedBarcodes}
-          capturedPhotos={capturedPhotos}
-          csvItems={csvItems}
+          items={masterItems}
+          syncStateById={syncStateById}
+          isBulkSyncing={isBulkSyncing}
+          onSyncSingle={syncSingleItem}
+          onSyncSelected={syncSelectedItems}
+          onUpdateItem={updateItem}
+          onRemoveItem={removeItem}
           onComplete={handleMasterListComplete}
           onBack={() => setCurrentStep('csv')}
           onFooterStateChange={setMasterListFooterState}
@@ -813,11 +858,52 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       </div>
       {/* Step indicator */}
       {renderStepIndicator()}
-      
+
       {/* Main content */}
       <div className="relative z-10 flex-1 px-4 sm:px-6 py-4 pb-20">
-        <div className={currentStep === 'masterlist' ? 'max-w-none w-full' : 'max-w-6xl mx-auto'}>
-          {renderStepContent()}
+        <div className={
+          currentStep === 'masterlist'
+            ? 'max-w-none w-full'
+            : isPanelVisible
+              ? 'flex flex-col lg:flex-row gap-6 max-w-none'
+              : 'max-w-6xl mx-auto'
+        }>
+          {/* Step content — left side */}
+          <div className={
+            isPanelVisible && currentStep !== 'masterlist'
+              ? 'w-full lg:w-[40%] lg:min-w-[380px] lg:flex-shrink-0'
+              : 'w-full'
+          }>
+            {renderStepContent()}
+          </div>
+
+          {/* AG Grid — right side panel (visible on non-masterlist steps) */}
+          {isPanelVisible && currentStep !== 'masterlist' && (
+            <div className="flex-1 min-w-0 lg:sticky lg:top-[72px] lg:self-start lg:max-h-[calc(100vh-72px-3rem)] overflow-hidden rounded-xl border border-arda-border bg-white shadow-sm">
+              <ItemsGrid
+                items={masterItems}
+                onUpdateItem={updateItem}
+                onRemoveItem={removeItem}
+                syncStateById={syncStateById}
+                onSyncSingle={syncSingleItem}
+                mode="panel"
+              />
+            </div>
+          )}
+
+          {/* Review step — grid is full-width (rendered by MasterListStep) */}
+          {currentStep === 'masterlist' && (
+            <div className="w-full rounded-xl border border-arda-border bg-white shadow-sm overflow-hidden mt-4">
+              <ItemsGrid
+                items={masterItems}
+                onUpdateItem={updateItem}
+                onRemoveItem={removeItem}
+                syncStateById={syncStateById}
+                onSyncSingle={syncSingleItem}
+                mode="fullpage"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
