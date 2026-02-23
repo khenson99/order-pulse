@@ -145,7 +145,7 @@ const buildEmailItemsFromOrders = (orders: ExtractedOrder[]): EmailItem[] => {
 export interface ScannedBarcode {
   id: string;
   barcode: string;
-  barcodeType: 'UPC' | 'EAN' | 'UPC-A' | 'EAN-13' | 'unknown';
+  barcodeType: 'UPC' | 'EAN' | 'UPC-A' | 'EAN-13' | 'EAN-8' | 'GTIN-14' | 'unknown';
   scannedAt: string;
   source: 'desktop' | 'mobile';
   // Enriched data from lookup
@@ -259,6 +259,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   
   // Track when user can proceed from email step (Amazon + priority done)
   const [canProceedFromEmail, setCanProceedFromEmail] = useState(false);
+  const [canProceedFromUrl, setCanProceedFromUrl] = useState(true);
+  const [urlReviewBlockMessage, setUrlReviewBlockMessage] = useState<string | null>(null);
   
   // Preserve email scan state for navigation
   const [emailScanState, setEmailScanState] = useState<EmailScanState | undefined>(undefined);
@@ -290,7 +292,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Check if can go back
   const canGoBack = currentStepIndex > 0;
   
-  const canGoForward = currentStep === 'email' ? canProceedFromEmail : true;
+  const canGoForward = currentStep === 'email'
+    ? canProceedFromEmail
+    : currentStep === 'url'
+      ? canProceedFromUrl
+      : true;
 
   // Handle step completion
   const handleStepComplete = useCallback((step: OnboardingStep) => {
@@ -312,9 +318,28 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Handle barcode scan
   const handleBarcodeScanned = useCallback((barcode: ScannedBarcode) => {
     setScannedBarcodes(prev => {
-      if (prev.some(b => b.barcode === barcode.barcode)) {
-        return prev;
+      const byIdIndex = prev.findIndex(item => item.id === barcode.id);
+      if (byIdIndex >= 0) {
+        const existing = prev[byIdIndex];
+        const merged = { ...existing, ...barcode, id: existing.id };
+        const hasChanged = JSON.stringify(existing) !== JSON.stringify(merged);
+        if (!hasChanged) return prev;
+        const next = [...prev];
+        next[byIdIndex] = merged;
+        return next;
       }
+
+      const byBarcodeIndex = prev.findIndex(item => item.barcode === barcode.barcode);
+      if (byBarcodeIndex >= 0) {
+        const existing = prev[byBarcodeIndex];
+        const merged = { ...existing, ...barcode, id: barcode.id };
+        const hasChanged = JSON.stringify(existing) !== JSON.stringify(merged);
+        if (!hasChanged) return prev;
+        const next = [...prev];
+        next[byBarcodeIndex] = merged;
+        return next;
+      }
+
       return [...prev, barcode];
     });
   }, []);
@@ -353,6 +378,32 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Handle when user can proceed from email step (key suppliers done)
   const handleCanProceedFromEmail = useCallback((canProceed: boolean) => {
     setCanProceedFromEmail(canProceed);
+  }, []);
+
+  const handleUrlReviewStateChange = useCallback((state: {
+    pendingReviewCount: number;
+    unimportedApprovedCount: number;
+    totalRows: number;
+    canContinue: boolean;
+  }) => {
+    setCanProceedFromUrl(state.canContinue);
+    if (state.canContinue || state.totalRows === 0) {
+      setUrlReviewBlockMessage(null);
+      return;
+    }
+    if (state.pendingReviewCount > 0) {
+      setUrlReviewBlockMessage(
+        `Review every scraped row before continuing (${state.pendingReviewCount} still pending).`,
+      );
+      return;
+    }
+    if (state.unimportedApprovedCount > 0) {
+      setUrlReviewBlockMessage(
+        `Import approved rows before continuing (${state.unimportedApprovedCount} still not imported).`,
+      );
+      return;
+    }
+    setUrlReviewBlockMessage('Review and import URL rows before continuing.');
   }, []);
 
   // Preserve email scan state for navigation
@@ -504,13 +555,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             Continuing won’t stop email scanning. Import keeps running in the background.
           </p>
         )}
+        {currentStep === 'url' && urlReviewBlockMessage && (
+          <p className="max-w-[22rem] text-right text-xs text-arda-text-muted">
+            {urlReviewBlockMessage}
+          </p>
+        )}
       </div>
     );
   };
 
   const renderStepIndicator = () => (
     <div className="sticky top-0 z-40 border-b border-arda-border/70 bg-white/75 backdrop-blur">
-      <div className="max-w-6xl mx-auto px-4 py-2.5 sm:px-6">
+      <div className="max-w-6xl mx-auto px-4 py-2 sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-arda flex items-center justify-center flex-shrink-0">
@@ -580,7 +636,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           </div>
         </div>
 
-        <div className="mt-2 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div className="mt-1.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] text-arda-text-muted">
@@ -612,11 +668,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           {renderHeaderActions()}
         </div>
 
-        <div className="mt-2 lg:hidden">
+        <div className="mt-2">
           <div className="h-1.5 rounded-full bg-arda-bg-tertiary border border-arda-border overflow-hidden">
             <div
               className="h-full rounded-full bg-gradient-to-r from-orange-400 to-orange-500 transition-all duration-300"
               style={{ width: `${((currentStepIndex + 1) / ONBOARDING_STEPS.length) * 100}%` }}
+              role="progressbar"
+              aria-label="Onboarding progress"
+              aria-valuenow={currentStepIndex + 1}
+              aria-valuemin={1}
+              aria-valuemax={ONBOARDING_STEPS.length}
             />
           </div>
         </div>
@@ -645,10 +706,12 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             onCanProceed={handleCanProceedFromEmail}
             onStateChange={handleEmailScanStateChange}
             initialState={emailScanState}
+            embedded
           />
         ) : (
           <div className="space-y-4">
             <InstructionCard
+              variant="compact"
               title="What to do"
               icon="Mail"
               steps={[
@@ -683,7 +746,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       {currentStep === 'url' && (
         <UrlScrapeStep
           importedItems={urlItems}
-          onImportItems={setUrlItems}
+          onImportItems={(items) => {
+            setUrlItems(previousItems => {
+              const merged = new Map(previousItems.map(item => [item.sourceUrl, item]));
+              items.forEach(item => {
+                merged.set(item.sourceUrl, item);
+              });
+              return Array.from(merged.values());
+            });
+          }}
+          onDeleteImportedItem={(sourceUrl) => {
+            setUrlItems(previousItems => previousItems.filter(item => item.sourceUrl !== sourceUrl));
+          }}
+          onReviewStateChange={handleUrlReviewStateChange}
         />
       )}
       
@@ -740,7 +815,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       {renderStepIndicator()}
       
       {/* Main content */}
-      <div className="relative z-10 flex-1 px-6 py-6 pb-24">
+      <div className="relative z-10 flex-1 px-4 sm:px-6 py-4 pb-20">
         <div className={currentStep === 'masterlist' ? 'max-w-none w-full' : 'max-w-6xl mx-auto'}>
           {renderStepContent()}
         </div>

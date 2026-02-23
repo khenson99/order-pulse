@@ -113,10 +113,7 @@ const EditableCell: React.FC<EditableCellProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [localValue, setLocalValue] = useState(String(value ?? ''));
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setLocalValue(String(value ?? ''));
-  }, [value]);
+  const valueAsString = String(value ?? '');
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -127,7 +124,7 @@ const EditableCell: React.FC<EditableCellProps> = ({
 
   const handleBlur = () => {
     setIsEditing(false);
-    if (localValue !== String(value ?? '')) {
+    if (localValue !== valueAsString) {
       onChange(localValue);
     }
   };
@@ -136,7 +133,7 @@ const EditableCell: React.FC<EditableCellProps> = ({
     if (e.key === 'Enter') {
       handleBlur();
     } else if (e.key === 'Escape') {
-      setLocalValue(String(value ?? ''));
+      setLocalValue(valueAsString);
       setIsEditing(false);
     }
   };
@@ -158,7 +155,10 @@ const EditableCell: React.FC<EditableCellProps> = ({
 
   return (
     <div
-      onClick={() => setIsEditing(true)}
+      onClick={() => {
+        setLocalValue(valueAsString);
+        setIsEditing(true);
+      }}
       className={`px-2 py-1 text-sm cursor-text hover:bg-orange-50 rounded min-h-[28px] ${className} ${!value ? 'text-arda-text-muted italic' : ''}`}
     >
       {value !== undefined && value !== '' ? value : placeholder || '—'}
@@ -802,6 +802,7 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
   return (
     <div className="space-y-4">
       <InstructionCard
+        variant="compact"
         title="What to do"
         icon="ListChecks"
         steps={[

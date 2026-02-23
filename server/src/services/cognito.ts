@@ -404,7 +404,7 @@ export async function ensureUserMappingForEmail(
 
   const lookup = await client.send(new ListUsersCommand({
     UserPoolId: userPoolId,
-    Filter: `email = \"${normalizedEmail}\"`,
+    Filter: `email = "${normalizedEmail}"`,
     Limit: 1,
   }));
 

@@ -23,6 +23,7 @@ interface ScannedBarcode {
   brand?: string;
   imageUrl?: string;
   category?: string;
+  updatedAt?: string;
 }
 
 interface ScanSession {
@@ -46,6 +47,14 @@ const isValidBarcode = (barcode: string): boolean => {
   if (barcode.length > MAX_BARCODE_LENGTH) return false;
   // Allow alphanumeric barcodes
   return /^[a-zA-Z0-9-]+$/.test(barcode);
+};
+
+const sanitizeOptionalString = (value: unknown, maxLength: number): string | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, maxLength);
 };
 
 // Get session from Redis or memory
@@ -157,26 +166,34 @@ router.get('/session/:sessionId/barcodes', validateSessionId, async (req: Reques
 
 /**
  * POST /api/scan/session/:sessionId/barcode
- * Add a barcode to a session (used by mobile scanner)
+ * Add a barcode to a session (used by mobile scanner and desktop scanner)
  */
 router.post('/session/:sessionId/barcode', validateSessionId, async (req: Request, res: Response) => {
   try {
     if (!ensureRedis(res)) return;
     const { sessionId } = req.params;
-    const { id, data, timestamp, barcodeType } = req.body;
+    const { id, data, timestamp, barcodeType, source, productName, brand, imageUrl, category } = req.body;
+    const barcodeValue = typeof data === 'string' ? data : req.body?.barcode;
     
     // Validate input
-    if (!data || typeof data !== 'string') {
+    if (!barcodeValue || typeof barcodeValue !== 'string') {
       return res.status(400).json({ error: 'Barcode data is required' });
     }
     
-    const cleanBarcode = data.trim();
+    const cleanBarcode = barcodeValue.trim();
     if (!isValidBarcode(cleanBarcode)) {
       return res.status(400).json({ error: 'Invalid barcode format' });
     }
     
     const session = await getSession(sessionId);
     
+    // Check for duplicates
+    const existingBarcode = session.barcodes.find((entry) => entry.barcode === cleanBarcode);
+    if (existingBarcode) {
+      await saveSession(sessionId, session);
+      return res.json({ success: true, duplicate: true, barcode: existingBarcode });
+    }
+
     // Check session limits
     if (session.barcodes.length >= MAX_BARCODES_PER_SESSION) {
       return res.status(429).json({ 
@@ -185,24 +202,22 @@ router.post('/session/:sessionId/barcode', validateSessionId, async (req: Reques
       });
     }
     
-    // Check for duplicates
-    if (session.barcodes.some(b => b.barcode === cleanBarcode)) {
-      return res.json({ success: true, duplicate: true });
-    }
-    
     // Look up product info (cached, with timeout)
-    const productInfo = await lookupProductByBarcode(cleanBarcode, { timeoutMs: 5000 });
+    const hasProvidedMetadata = Boolean(productName || brand || imageUrl || category);
+    const productInfo = hasProvidedMetadata
+      ? null
+      : await lookupProductByBarcode(cleanBarcode, { timeoutMs: 5000 });
     
     const barcode: ScannedBarcode = {
       id: id || `scan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       barcode: cleanBarcode,
-      barcodeType: barcodeType || detectBarcodeType(cleanBarcode),
+      barcodeType: sanitizeOptionalString(barcodeType, 24) || detectBarcodeType(cleanBarcode),
       scannedAt: timestamp || new Date().toISOString(),
-      source: 'mobile',
-      productName: productInfo?.name,
-      brand: productInfo?.brand,
-      imageUrl: productInfo?.imageUrl,
-      category: productInfo?.category,
+      source: source === 'desktop' ? 'desktop' : 'mobile',
+      productName: sanitizeOptionalString(productName, 200) || productInfo?.name,
+      brand: sanitizeOptionalString(brand, 120) || productInfo?.brand,
+      imageUrl: sanitizeOptionalString(imageUrl, 1000) || productInfo?.imageUrl,
+      category: sanitizeOptionalString(category, 120) || productInfo?.category,
     };
     
     session.barcodes.push(barcode);
@@ -214,6 +229,71 @@ router.post('/session/:sessionId/barcode', validateSessionId, async (req: Reques
   } catch (error) {
     appLogger.error({ err: error }, 'Add barcode error');
     res.status(500).json({ error: 'Failed to save barcode' });
+  }
+});
+
+/**
+ * PUT /api/scan/session/:sessionId/barcode/:barcodeId
+ * Update barcode metadata for an existing session barcode
+ */
+router.put('/session/:sessionId/barcode/:barcodeId', validateSessionId, async (req: Request, res: Response) => {
+  try {
+    if (!ensureRedis(res)) return;
+    const { sessionId, barcodeId } = req.params;
+    const session = await getSession(sessionId);
+    const existingIndex = session.barcodes.findIndex((item) => item.id === barcodeId);
+
+    if (existingIndex === -1) {
+      return res.status(404).json({ error: 'Barcode not found' });
+    }
+
+    const existing = session.barcodes[existingIndex];
+    const hasBarcode = Object.prototype.hasOwnProperty.call(req.body, 'barcode');
+    const nextBarcodeRaw = hasBarcode ? req.body.barcode : existing.barcode;
+
+    if (typeof nextBarcodeRaw !== 'string') {
+      return res.status(400).json({ error: 'Barcode must be a string' });
+    }
+
+    const nextBarcode = nextBarcodeRaw.trim();
+    if (!isValidBarcode(nextBarcode)) {
+      return res.status(400).json({ error: 'Invalid barcode format' });
+    }
+
+    const duplicateByBarcode = session.barcodes.find(
+      (item) => item.id !== barcodeId && item.barcode === nextBarcode,
+    );
+    if (duplicateByBarcode) {
+      return res.status(409).json({ error: 'Another barcode with that value already exists in session' });
+    }
+
+    const barcodeType = sanitizeOptionalString(req.body.barcodeType, 24) || existing.barcodeType;
+    const updated: ScannedBarcode = {
+      ...existing,
+      barcode: nextBarcode,
+      barcodeType,
+      productName: Object.prototype.hasOwnProperty.call(req.body, 'productName')
+        ? sanitizeOptionalString(req.body.productName, 200)
+        : existing.productName,
+      brand: Object.prototype.hasOwnProperty.call(req.body, 'brand')
+        ? sanitizeOptionalString(req.body.brand, 120)
+        : existing.brand,
+      imageUrl: Object.prototype.hasOwnProperty.call(req.body, 'imageUrl')
+        ? sanitizeOptionalString(req.body.imageUrl, 1000)
+        : existing.imageUrl,
+      category: Object.prototype.hasOwnProperty.call(req.body, 'category')
+        ? sanitizeOptionalString(req.body.category, 120)
+        : existing.category,
+      updatedAt: new Date().toISOString(),
+    };
+
+    session.barcodes[existingIndex] = updated;
+    await saveSession(sessionId, session);
+
+    res.json({ success: true, barcode: updated });
+  } catch (error) {
+    appLogger.error({ err: error }, 'Update barcode error');
+    res.status(500).json({ error: 'Failed to update barcode' });
   }
 });
 
