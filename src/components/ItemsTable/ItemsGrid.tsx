@@ -3,7 +3,7 @@ import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, GridReadyEvent, CellValueChangedEvent, GetRowIdParams, RowClassRules } from 'ag-grid-community';
 import './gridSetup';
 import './ardaGridTheme.css';
-import type { MasterListItem, RowSyncState, OrderMethod } from './types';
+import type { MasterListItem, RowSyncState } from './types';
 import { ORDER_METHOD_OPTIONS } from './types';
 import { SourceBadgeRenderer } from './cellRenderers/SourceBadgeRenderer';
 import { ImageCellRenderer } from './cellRenderers/ImageCellRenderer';

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
 import { buildVelocityProfiles, normalizeItemName } from '../utils/inventoryLogic';
@@ -10,7 +10,7 @@ import { CSVUploadStep, CSVItem, CSVFooterState } from './CSVUploadStep';
 import { MasterListStep } from './MasterListStep';
 import { ItemsGrid } from '../components/ItemsTable';
 import type { MasterListItem, MasterListFooterState } from '../components/ItemsTable/types';
-import { buildMasterListItems, mergeMasterListItems } from '../utils/masterListItems';
+import { buildMasterListItems } from '../utils/masterListItems';
 import { useSyncToArda } from '../hooks/useSyncToArda';
 import { IntegrationsStep } from './IntegrationsStep';
 import { UrlScrapedItem } from '../services/api';
@@ -274,27 +274,38 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   );
 
-  // === Lifted master items state ===
-  const [masterItems, setMasterItems] = useState<MasterListItem[]>([]);
-  const { syncStateById, setSyncStateById, syncSingleItem, syncSelectedItems, isBulkSyncing } = useSyncToArda(masterItems);
+  const [masterItemEditsById, setMasterItemEditsById] = useState<Record<string, Partial<MasterListItem>>>({});
+  const [removedMasterItemIds, setRemovedMasterItemIds] = useState<Record<string, true>>({});
 
-  // Merge items from all sources into masterItems
-  useEffect(() => {
-    const incoming = buildMasterListItems(emailItems, urlItems, scannedBarcodes, capturedPhotos, csvItems);
-    setMasterItems(prev => mergeMasterListItems(prev, incoming));
-  }, [emailItems, urlItems, scannedBarcodes, capturedPhotos, csvItems]);
+  const baseMasterItems = useMemo(
+    () => buildMasterListItems(emailItems, urlItems, scannedBarcodes, capturedPhotos, csvItems),
+    [emailItems, urlItems, scannedBarcodes, capturedPhotos, csvItems],
+  );
+
+  const masterItems = useMemo(
+    () => baseMasterItems
+      .filter(item => !removedMasterItemIds[item.id])
+      .map(item => {
+        const override = masterItemEditsById[item.id];
+        if (!override) return item;
+        return { ...item, ...override };
+      }),
+    [baseMasterItems, masterItemEditsById, removedMasterItemIds],
+  );
+
+  const { syncStateById, setSyncStateById, syncSingleItem, syncSelectedItems, isBulkSyncing } = useSyncToArda(masterItems);
 
   const isPanelVisible = masterItems.length > 0;
 
   const updateItem = useCallback((id: string, field: keyof MasterListItem, value: unknown) => {
-    setMasterItems(prev => prev.map(item => {
-      if (item.id !== id) return item;
-      const updated: MasterListItem = { ...item, [field]: value };
+    setMasterItemEditsById(prev => {
+      const existing = prev[id] ?? {};
+      const nextOverride = { ...existing, [field]: value } as Partial<MasterListItem>;
       if (field === 'name' && value && !String(value).includes('Unknown')) {
-        updated.needsAttention = false;
+        nextOverride.needsAttention = false;
       }
-      return updated;
-    }));
+      return { ...prev, [id]: nextOverride };
+    });
     setSyncStateById(prev => {
       const existing = prev[id];
       if (!existing || existing.status === 'idle') return prev;
@@ -303,7 +314,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   }, [setSyncStateById]);
 
   const removeItem = useCallback((id: string) => {
-    setMasterItems(prev => prev.filter(item => item.id !== id));
+    setRemovedMasterItemIds(prev => (prev[id] ? prev : { ...prev, [id]: true }));
+    setMasterItemEditsById(prev => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setSyncStateById(prev => {
       if (!prev[id]) return prev;
       const next = { ...prev };

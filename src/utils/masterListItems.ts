@@ -32,9 +32,9 @@ export function buildMasterListItems(
     });
   });
 
-  urlItems.forEach((item, index) => {
+  urlItems.forEach((item) => {
     items.push({
-      id: `url-${index}-${item.sourceUrl}`,
+      id: `url-${item.sourceUrl}`,
       source: 'url',
       orderMethod: DEFAULT_ORDER_METHOD_BY_SOURCE.url,
       name: item.itemName || 'Unknown item',
