@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "worktree:status": "git status --short --branch",
+    "worktree:check-clean": "bash ./scripts/worktree-check-clean.sh",
+    "worktree:backup-clean": "bash ./scripts/worktree-backup-and-clean.sh",
+    "hooks:install": "bash ./scripts/install-git-hooks.sh"
   },
   "engines": {
     "node": ">=20 <21"

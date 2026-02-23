@@ -282,8 +282,9 @@ export const CSVUploadStep: React.FC<CSVUploadStepProps> = ({
   }, [handleComplete, handleSkip, onFooterStateChange, stats.approved]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <InstructionCard
+        variant="compact"
         title="What to do"
         icon="FileSpreadsheet"
         steps={[

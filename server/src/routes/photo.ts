@@ -35,6 +35,7 @@ interface PhotoMetadata {
   isInternalItem?: boolean;
   analyzed: boolean;
   imageSizeBytes?: number;
+  manualEditsAt?: string;
 }
 
 // CapturedPhoto interface extends PhotoMetadata with image data
@@ -81,6 +82,31 @@ const isValidImageData = (data: string): { valid: boolean; sizeBytes: number; er
   }
   
   return { valid: true, sizeBytes };
+};
+
+const sanitizeOptionalText = (value: unknown, maxLength: number): string | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, maxLength);
+};
+
+const sanitizeOptionalStringArray = (
+  value: unknown,
+  maxItems: number,
+  maxItemLength: number,
+): string[] | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return undefined;
+
+  const cleaned = value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : String(entry).trim()))
+    .filter(Boolean)
+    .slice(0, maxItems)
+    .map((entry) => entry.slice(0, maxItemLength));
+
+  return cleaned.length > 0 ? cleaned : undefined;
 };
 
 // Get session from Redis or memory
@@ -262,7 +288,7 @@ router.post('/session/:sessionId/photo', validateSessionId, async (req: Request,
   try {
     if (!ensureRedis(res)) return;
     const { sessionId } = req.params;
-    const { id, data, timestamp } = req.body;
+    const { id, data, timestamp, source } = req.body;
     
     // Validate image data
     const validation = isValidImageData(data);
@@ -286,7 +312,7 @@ router.post('/session/:sessionId/photo', validateSessionId, async (req: Request,
     const metadata: PhotoMetadata = {
       id: photoId,
       capturedAt: timestamp || new Date().toISOString(),
-      source: 'mobile',
+      source: source === 'desktop' ? 'desktop' : 'mobile',
       analyzed: false,
       imageSizeBytes: validation.sizeBytes,
     };
@@ -310,6 +336,62 @@ router.post('/session/:sessionId/photo', validateSessionId, async (req: Request,
   } catch (error) {
     appLogger.error({ err: error }, 'Add photo error');
     res.status(500).json({ error: 'Failed to save photo' });
+  }
+});
+
+/**
+ * PUT /api/photo/session/:sessionId/photo/:photoId
+ * Update analyzed metadata fields for a photo
+ */
+router.put('/session/:sessionId/photo/:photoId', validateSessionId, async (req: Request, res: Response) => {
+  try {
+    if (!ensureRedis(res)) return;
+    const { sessionId, photoId } = req.params;
+    const session = await getSession(sessionId);
+    const metadata = session.metadata[photoId];
+
+    if (!metadata) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const nextMetadata: PhotoMetadata = { ...metadata };
+    const hasSuggestedName = Object.prototype.hasOwnProperty.call(req.body, 'suggestedName');
+    const hasSuggestedSupplier = Object.prototype.hasOwnProperty.call(req.body, 'suggestedSupplier');
+    const hasDetectedBarcodes = Object.prototype.hasOwnProperty.call(req.body, 'detectedBarcodes');
+    const hasExtractedText = Object.prototype.hasOwnProperty.call(req.body, 'extractedText');
+    const hasInternalItem = Object.prototype.hasOwnProperty.call(req.body, 'isInternalItem');
+
+    if (hasSuggestedName) {
+      nextMetadata.suggestedName = sanitizeOptionalText(req.body.suggestedName, 100);
+    }
+    if (hasSuggestedSupplier) {
+      nextMetadata.suggestedSupplier = sanitizeOptionalText(req.body.suggestedSupplier, 100);
+    }
+    if (hasDetectedBarcodes) {
+      nextMetadata.detectedBarcodes = sanitizeOptionalStringArray(req.body.detectedBarcodes, 20, 50);
+    }
+    if (hasExtractedText) {
+      nextMetadata.extractedText = sanitizeOptionalStringArray(req.body.extractedText, 30, 200);
+    }
+    if (hasInternalItem) {
+      if (req.body.isInternalItem === null || req.body.isInternalItem === undefined) {
+        nextMetadata.isInternalItem = undefined;
+      } else if (typeof req.body.isInternalItem === 'boolean') {
+        nextMetadata.isInternalItem = req.body.isInternalItem;
+      } else {
+        return res.status(400).json({ error: 'isInternalItem must be a boolean or null' });
+      }
+    }
+
+    nextMetadata.analyzed = true;
+    nextMetadata.manualEditsAt = new Date().toISOString();
+    session.metadata[photoId] = nextMetadata;
+    await saveSession(sessionId, session);
+
+    res.json({ success: true, photo: nextMetadata });
+  } catch (error) {
+    appLogger.error({ err: error }, 'Update photo metadata error');
+    res.status(500).json({ error: 'Failed to update photo metadata' });
   }
 });
 
@@ -345,6 +427,19 @@ router.post('/analyze', async (req: Request, res: Response) => {
 async function analyzePhotoAsync(sessionId: string, photoId: string, imageData: string): Promise<void> {
   if (!genAI) {
     appLogger.warn('Skipping photo analysis - Gemini not configured');
+    try {
+      const session = await getSession(sessionId);
+      const existing = session.metadata[photoId];
+      if (existing && !existing.analyzed) {
+        session.metadata[photoId] = {
+          ...existing,
+          analyzed: true,
+        };
+        await saveSession(sessionId, session);
+      }
+    } catch (error) {
+      appLogger.error({ err: error }, 'Failed to mark photo analyzed');
+    }
     return;
   }
   
@@ -354,13 +449,15 @@ async function analyzePhotoAsync(sessionId: string, photoId: string, imageData: 
     // Update session metadata with analysis results
     const session = await getSession(sessionId);
     if (session.metadata[photoId]) {
+      const existing = session.metadata[photoId];
+      const hasManualEdits = Boolean(existing.manualEditsAt);
       session.metadata[photoId] = {
-        ...session.metadata[photoId],
-        extractedText: analysis.extractedText,
-        detectedBarcodes: analysis.detectedBarcodes,
-        suggestedName: analysis.suggestedName,
-        suggestedSupplier: analysis.suggestedSupplier,
-        isInternalItem: analysis.isInternalItem,
+        ...existing,
+        extractedText: hasManualEdits ? (existing.extractedText ?? analysis.extractedText) : analysis.extractedText,
+        detectedBarcodes: hasManualEdits ? (existing.detectedBarcodes ?? analysis.detectedBarcodes) : analysis.detectedBarcodes,
+        suggestedName: hasManualEdits ? (existing.suggestedName ?? analysis.suggestedName) : analysis.suggestedName,
+        suggestedSupplier: hasManualEdits ? (existing.suggestedSupplier ?? analysis.suggestedSupplier) : analysis.suggestedSupplier,
+        isInternalItem: hasManualEdits ? (existing.isInternalItem ?? analysis.isInternalItem) : analysis.isInternalItem,
         analyzed: true,
       };
       await saveSession(sessionId, session);
@@ -368,6 +465,19 @@ async function analyzePhotoAsync(sessionId: string, photoId: string, imageData: 
     }
   } catch (error) {
     appLogger.error({ err: error }, 'Async photo analysis error');
+    try {
+      const session = await getSession(sessionId);
+      const existing = session.metadata[photoId];
+      if (existing && !existing.analyzed) {
+        session.metadata[photoId] = {
+          ...existing,
+          analyzed: true,
+        };
+        await saveSession(sessionId, session);
+      }
+    } catch (markError) {
+      appLogger.error({ err: markError }, 'Failed to mark photo analyzed after analysis error');
+    }
   }
 }
 

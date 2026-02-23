@@ -24,7 +24,7 @@ export const OnboardingWelcomeStep: React.FC<OnboardingWelcomeStepProps> = ({
   const firstName = userProfile?.name?.split(' ')[0];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="card-arda p-6">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center">
@@ -42,6 +42,7 @@ export const OnboardingWelcomeStep: React.FC<OnboardingWelcomeStepProps> = ({
       </div>
 
       <InstructionCard
+        variant="compact"
         title="What you will do"
         icon="MapPin"
         steps={[

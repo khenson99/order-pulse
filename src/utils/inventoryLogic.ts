@@ -82,7 +82,7 @@ const parsePackSizeFromText = (text?: string): number | null => {
     /\b(?:pack|box|case|bag|set|bundle)\s+of\s+(\d+)\b/i,
     
     // Parenthetical: "(100 Count)", "(50 Pack)", "[24 ct]"
-    /[(\[](\d+)\s*(?:count|ct|pack|pk|pcs|pieces)[)\]]/i,
+    /[([](\d+)\s*(?:count|ct|pack|pk|pcs|pieces)[)\]]/i,
     
     // "100-ct", "50-pk", "24-pack"
     /\b(\d+)\s*[-](?:ct|pk|pack|count)\b/i,

@@ -42,7 +42,42 @@ vi.mock('../IntegrationsStep', () => ({
 }));
 
 vi.mock('../UrlScrapeStep', () => ({
-  UrlScrapeStep: () => <div>url-scrape-step</div>,
+  UrlScrapeStep: ({
+    onReviewStateChange,
+  }: {
+    onReviewStateChange?: (state: {
+      pendingReviewCount: number;
+      unimportedApprovedCount: number;
+      totalRows: number;
+      canContinue: boolean;
+    }) => void;
+  }) => (
+    <div>
+      <div>url-scrape-step</div>
+      <button
+        type="button"
+        onClick={() => onReviewStateChange?.({
+          pendingReviewCount: 1,
+          unimportedApprovedCount: 0,
+          totalRows: 1,
+          canContinue: false,
+        })}
+      >
+        block-url-continue
+      </button>
+      <button
+        type="button"
+        onClick={() => onReviewStateChange?.({
+          pendingReviewCount: 0,
+          unimportedApprovedCount: 0,
+          totalRows: 1,
+          canContinue: true,
+        })}
+      >
+        allow-url-continue
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../PhotoCaptureStep', () => ({
@@ -107,6 +142,26 @@ describe('OnboardingFlow email continuation reminder', () => {
 
     expect(screen.getByText('url-scrape-step')).toBeInTheDocument();
     expect(screen.getAllByText('Step 4 of 8').length).toBeGreaterThan(0);
+  });
+
+  it('blocks continue on URL step until review state allows it', async () => {
+    const user = userEvent.setup();
+
+    render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
+    await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('url-scrape-step')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'block-url-continue' }));
+
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(screen.getByText(/review every scraped row before continuing/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'allow-url-continue' }));
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
   });
 
   it('starts on integrations step when OAuth callback params are present', () => {

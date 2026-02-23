@@ -69,6 +69,11 @@ const CATEGORY_CONFIG = {
 } as const;
 
 const SESSION_EXPIRED_MESSAGE = 'Session expired. Please sign in again.';
+type LatestRun = IntegrationSyncRun | NonNullable<IntegrationConnection['lastRun']>;
+
+function hasSyncCounts(run: LatestRun): run is IntegrationSyncRun {
+  return 'ordersUpserted' in run && 'itemsUpserted' in run;
+}
 
 export const IntegrationsStep: React.FC = () => {
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
@@ -207,8 +212,9 @@ export const IntegrationsStep: React.FC = () => {
   }), []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <InstructionCard
+        variant="compact"
         title="What to do"
         icon="Building2"
         steps={[
@@ -263,7 +269,9 @@ export const IntegrationsStep: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {(['quickbooks', 'xero'] as const).map(provider => {
             const connection = connectionByProvider.get(provider);
-            const latestRun = connection ? (runsByConnection[connection.id] || connection.lastRun) : undefined;
+            const latestRun: LatestRun | undefined = connection
+              ? (runsByConnection[connection.id] || connection.lastRun)
+              : undefined;
             const providerLabel = provider === 'quickbooks' ? 'QuickBooks' : 'Xero';
             const isConnected = Boolean(connection && connection.status === 'connected');
             const statusText = !connection
@@ -279,10 +287,8 @@ export const IntegrationsStep: React.FC = () => {
                 : latestRun.status === 'running'
                   ? 'Sync in progress'
                   : (() => {
-                    const orders = typeof (latestRun as any).ordersUpserted === 'number' ? (latestRun as any).ordersUpserted : undefined;
-                    const items = typeof (latestRun as any).itemsUpserted === 'number' ? (latestRun as any).itemsUpserted : undefined;
-                    if (orders !== undefined || items !== undefined) {
-                      return `Last sync: ${orders ?? 0} orders, ${items ?? 0} items`;
+                    if (hasSyncCounts(latestRun)) {
+                      return `Last sync: ${latestRun.ordersUpserted} orders, ${latestRun.itemsUpserted} items`;
                     }
                     return 'Last sync completed';
                   })()

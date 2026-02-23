@@ -130,6 +130,7 @@ interface SupplierSetupProps {
   onCanProceed?: (canProceed: boolean) => void;
   onStateChange?: (state: EmailScanState) => void;
   initialState?: EmailScanState;
+  embedded?: boolean;
 }
 
 export const SupplierSetup: React.FC<SupplierSetupProps> = ({
@@ -139,6 +140,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onCanProceed,
   onStateChange,
   initialState,
+  embedded = false,
 }) => {
   // Track if we already have restored state (don't restart scans)
   const hasRestoredState = Boolean(initialState && (initialState.amazonOrders.length > 0 || initialState.priorityOrders.length > 0 || initialState.otherOrders.length > 0));
@@ -183,7 +185,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
 
   // Discovery state (runs in parallel)
   const [isDiscovering, setIsDiscovering] = useState(false);
-  const [discoveryProgress, setDiscoveryProgress] = useState<string>('');
   const [discoveredSuppliers, setDiscoveredSuppliers] = useState<DiscoveredSupplier[]>(initialState?.discoveredSuppliers || []);
   const [enabledSuppliers, setEnabledSuppliers] = useState<Set<string>>(() => {
     const base = new Set<string>();
@@ -482,7 +483,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
     
     setIsDiscovering(true);
     setDiscoverError(null);
-    setDiscoveryProgress('Scanning your inbox for suppliers...');
     
     try {
       // Reuse in-flight promise if one exists (prevents duplicate API calls)
@@ -499,7 +499,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       
       setDiscoveredSuppliers(nonAmazonSuppliers);
       setHasDiscovered(true);
-      setDiscoveryProgress('');
     } catch (err: unknown) {
       console.error('Discovery error:', err);
       const message = getErrorMessage(err, 'Failed to discover suppliers');
@@ -889,7 +888,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   );
 
   return (
-    <div className="max-w-5xl mx-auto p-6 pb-32 space-y-6 relative">
+    <div className={embedded ? 'max-w-5xl mx-auto pb-32 space-y-5 relative' : 'max-w-5xl mx-auto p-6 pb-32 space-y-5 relative'}>
       
       {/* Milestone Celebration Overlay */}
       {milestoneMessage && (
@@ -924,6 +923,7 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       )}
 
       <InstructionCard
+        variant="compact"
         title="What to do"
         icon="Mail"
         steps={[

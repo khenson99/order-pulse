@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   startAmazon: vi.fn(),
   startJob: vi.fn(),
   getStatus: vi.fn(),
+  getGmailStatus: vi.fn(),
   isSessionExpiredError: vi.fn(),
   listConnections: vi.fn(),
   getConnectionRuns: vi.fn(),
@@ -16,6 +17,17 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../services/api', () => ({
+  ApiRequestError: class ApiRequestError extends Error {
+    code?: string;
+
+    constructor(message: string, status = 400, code?: string, details?: unknown) {
+      super(message);
+      this.name = 'ApiRequestError';
+      this.code = code;
+      void status;
+      void details;
+    }
+  },
   discoverApi: {
     discoverSuppliers: mocks.discoverSuppliers,
   },
@@ -23,6 +35,9 @@ vi.mock('../../services/api', () => ({
     startAmazon: mocks.startAmazon,
     startJob: mocks.startJob,
     getStatus: mocks.getStatus,
+  },
+  gmailApi: {
+    getStatus: mocks.getGmailStatus,
   },
   integrationsApi: {
     listConnections: mocks.listConnections,
@@ -96,6 +111,7 @@ describe('SupplierSetup supplier import behavior', () => {
     mocks.startAmazon.mockReset();
     mocks.startJob.mockReset();
     mocks.getStatus.mockReset();
+    mocks.getGmailStatus.mockReset();
     mocks.isSessionExpiredError.mockReset();
     mocks.listConnections.mockReset();
     mocks.getConnectionRuns.mockReset();
@@ -104,6 +120,7 @@ describe('SupplierSetup supplier import behavior', () => {
     mocks.syncConnection.mockReset();
     mocks.isSessionExpiredError.mockReturnValue(false);
     mocks.startJob.mockResolvedValue({ jobId: 'other-job-1' });
+    mocks.getGmailStatus.mockResolvedValue({ connected: true, gmailEmail: 'test@example.com' });
     mocks.getStatus.mockResolvedValue({
       hasJob: true,
       status: 'running',
