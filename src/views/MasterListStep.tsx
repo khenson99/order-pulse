@@ -1,5 +1,4 @@
 import { useMemo, useCallback, useEffect } from 'react';
-import { InstructionCard } from '../components/InstructionCard';
 import type { MasterListItem, RowSyncState, MasterListFooterState } from '../components/ItemsTable/types';
 
 interface MasterListStepProps {
@@ -70,17 +69,6 @@ export const MasterListStep: React.FC<MasterListStepProps> = ({
 
   return (
     <div className="space-y-4">
-      <InstructionCard
-        variant="compact"
-        title="What to do"
-        icon="ListChecks"
-        steps={[
-          'Review and edit item details in the grid below.',
-          'Select items and sync to Arda.',
-          'Complete setup when ready.',
-        ]}
-      />
-
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 text-sm">
           <span className="font-medium">{items.length} items</span>

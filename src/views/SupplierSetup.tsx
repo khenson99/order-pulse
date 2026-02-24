@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
-import { InstructionCard } from '../components/InstructionCard';
 import { ExtractedOrder } from '../types';
 import {
   discoverApi,
@@ -921,17 +920,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
           </div>
         </div>
       )}
-
-      <InstructionCard
-        variant="compact"
-        title="What to do"
-        icon="Mail"
-        steps={[
-          'Connect Gmail to start scanning.',
-          'Wait for Amazon + priority suppliers to finish.',
-          'Select any extra suppliers to import.',
-        ]}
-      />
 
       {/* Welcome Header - Animated intro */}
       {showWelcome && (

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Icons } from '../components/Icons';
-import { InstructionCard } from '../components/InstructionCard';
 import {
   IntegrationConnection,
   IntegrationSyncRun,
@@ -213,31 +212,6 @@ export const IntegrationsStep: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <InstructionCard
-        variant="compact"
-        title="What to do"
-        icon="Building2"
-        steps={[
-          'Connect QuickBooks or Xero if you want PO data.',
-          'Start a sync to pull history.',
-          'Continue when ready.',
-        ]}
-      />
-
-      <section className="arda-glass rounded-2xl p-6 border border-arda-border/80">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-arda-accent">
-            <Icons.Zap className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-arda-text-primary">Integrations</h2>
-            <p className="text-sm text-arda-text-secondary mt-1 max-w-3xl">
-              Connect accounting platforms here. Step 1 now focuses only on email discovery.
-            </p>
-          </div>
-        </div>
-      </section>
-
       <section className="border-2 border-emerald-200 bg-emerald-50 rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>

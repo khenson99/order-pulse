@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icons } from '../components/Icons';
 import { ExtractedOrder } from '../types';
 import { buildVelocityProfiles, normalizeItemName } from '../utils/inventoryLogic';
@@ -14,7 +14,6 @@ import { buildMasterListItems } from '../utils/masterListItems';
 import { useSyncToArda } from '../hooks/useSyncToArda';
 import { IntegrationsStep } from './IntegrationsStep';
 import { UrlScrapedItem } from '../services/api';
-import { InstructionCard } from '../components/InstructionCard';
 import { OnboardingWelcomeStep } from './OnboardingWelcomeStep';
 
 // Simple email item for onboarding (before full InventoryItem processing)
@@ -40,6 +39,8 @@ interface StepConfig {
   number: number;
   title: string;
   description: string;
+  tipsTitle: string;
+  tips: string[];
   icon: keyof typeof Icons;
 }
 
@@ -49,6 +50,12 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 1,
     title: 'Welcome',
     description: 'Overview the onboarding path and start your sync',
+    tipsTitle: 'What you will do',
+    tips: [
+      'Start email sync to import orders automatically.',
+      'Add items via URLs, barcodes, photos, or CSV.',
+      'Review and sync items to Arda.',
+    ],
     icon: 'Sparkles',
   },
   {
@@ -56,6 +63,12 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 2,
     title: 'Email',
     description: 'Import orders from your inbox',
+    tipsTitle: 'What to do',
+    tips: [
+      'Connect Gmail to start scanning.',
+      'Wait for Amazon + priority suppliers to finish.',
+      'Select any extra suppliers to import.',
+    ],
     icon: 'Mail',
   },
   {
@@ -63,6 +76,12 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 3,
     title: 'Integrations',
     description: 'Connect your systems and data sources',
+    tipsTitle: 'What to do',
+    tips: [
+      'Connect QuickBooks or Xero if you want PO data.',
+      'Start a sync to pull history.',
+      'Continue when ready.',
+    ],
     icon: 'Building2',
   },
   {
@@ -70,6 +89,13 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 4,
     title: 'URLs',
     description: 'Import products from links',
+    tipsTitle: 'What to do',
+    tips: [
+      'Paste up to 50 product links.',
+      'Click “Scrape URLs.”',
+      'Review, edit, approve, or delete rows.',
+      'Import approved rows to the master list.',
+    ],
     icon: 'Link',
   },
   {
@@ -77,6 +103,12 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 5,
     title: 'UPCs',
     description: 'Scan UPC/EAN codes in your shop',
+    tipsTitle: 'What to do',
+    tips: [
+      'Scan with a USB/Bluetooth scanner or phone camera.',
+      'Edit any detected fields as needed.',
+      'Confirm items appear below.',
+    ],
     icon: 'Barcode',
   },
   {
@@ -84,6 +116,12 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 6,
     title: 'Images',
     description: 'Photograph items with labels',
+    tipsTitle: 'What to do',
+    tips: [
+      'Upload photos or use the phone camera.',
+      'Wait for AI extraction, then edit any field as needed.',
+      'Confirm details before continuing.',
+    ],
     icon: 'Camera',
   },
   {
@@ -91,6 +129,12 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 7,
     title: 'CSV',
     description: 'Import from spreadsheet',
+    tipsTitle: 'What to do',
+    tips: [
+      'Upload a CSV.',
+      'Map columns to fields.',
+      'Approve items to import.',
+    ],
     icon: 'FileSpreadsheet',
   },
   {
@@ -98,6 +142,12 @@ const ONBOARDING_STEPS: StepConfig[] = [
     number: 8,
     title: 'Review',
     description: 'Review and sync items',
+    tipsTitle: 'What to do',
+    tips: [
+      'Review and edit item details in the grid below.',
+      'Select items and sync to Arda.',
+      'Complete setup when ready.',
+    ],
     icon: 'ListChecks',
   },
 ];
@@ -206,15 +256,6 @@ interface OnboardingFlowProps {
   userProfile?: { name?: string; email?: string };
 }
 
-// Background email progress state
-interface BackgroundEmailProgress {
-  isActive: boolean;
-  supplier: string;
-  processed: number;
-  total: number;
-  currentTask?: string;
-}
-
 const noop = () => {};
 
 export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
@@ -234,6 +275,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     hasIntegrationCallback ? new Set<OnboardingStep>(['welcome', 'email']) : new Set()
   ));
   const [hasStartedEmailSync, setHasStartedEmailSync] = useState(false);
+  const [tipsOpen, setTipsOpen] = useState(false);
+  const tipsWrapperRef = useRef<HTMLDivElement | null>(null);
   
   // Data from each step
   const [emailOrders, setEmailOrders] = useState<ExtractedOrder[]>([]);
@@ -257,9 +300,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     onSyncSelected: noop,
     onComplete: noop,
   });
-  
-  // Background email scanning progress
-  const [emailProgress, setEmailProgress] = useState<BackgroundEmailProgress | null>(null);
   
   // Track when user can proceed from email step (Amazon + priority done)
   const [canProceedFromEmail, setCanProceedFromEmail] = useState(false);
@@ -329,16 +369,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     });
   }, [setSyncStateById]);
 
-  const capturedPhotoCount = useMemo(
-    () => capturedPhotos.reduce((count, photo) => count + (photo.suggestedName ? 1 : 0), 0),
-    [capturedPhotos],
-  );
-
-  const totalItems = useMemo(
-    () => emailItems.length + urlItems.length + scannedBarcodes.length + capturedPhotoCount + csvItems.length,
-    [emailItems.length, urlItems.length, scannedBarcodes.length, capturedPhotoCount, csvItems.length],
-  );
-
   const { currentStepIndex, currentStepConfig } = useMemo(() => {
     const index = ONBOARDING_STEPS.findIndex(step => step.id === currentStep);
     const safeIndex = index === -1 ? 0 : index;
@@ -347,6 +377,34 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       currentStepConfig: ONBOARDING_STEPS[safeIndex],
     };
   }, [currentStep]);
+
+  useEffect(() => {
+    setTipsOpen(false);
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (!tipsOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTipsOpen(false);
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (!tipsWrapperRef.current?.contains(target)) {
+        setTipsOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [tipsOpen]);
   
   // Check if can go back
   const canGoBack = currentStepIndex > 0;
@@ -430,11 +488,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     onComplete(syncedItems);
   }, [handleStepComplete, masterItems, onComplete, syncStateById]);
 
-  // Update email progress from child component
-  const handleEmailProgressUpdate = useCallback((progress: BackgroundEmailProgress | null) => {
-    setEmailProgress(progress);
-  }, []);
-
   // Handle when user can proceed from email step (key suppliers done)
   const handleCanProceedFromEmail = useCallback((canProceed: boolean) => {
     setCanProceedFromEmail(canProceed);
@@ -513,8 +566,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     if (currentStep === 'welcome') return null;
 
     return (
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+      <div className="flex items-center gap-2 flex-nowrap justify-end">
           {canGoBack && (
             <button
               type="button"
@@ -597,6 +649,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               type="button"
               onClick={goForward}
               disabled={!canGoForward}
+              title={currentStep === 'email'
+                ? 'Continuing won’t stop email scanning. Import keeps running in the background.'
+                : undefined}
               className={[
                 'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
                 canGoForward
@@ -608,139 +663,140 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               <Icons.ChevronRight className="w-4 h-4" />
             </button>
           )}
-        </div>
-
-        {currentStep === 'email' && (
-          <p className="max-w-[18rem] text-right text-xs text-arda-text-muted">
-            Continuing won’t stop email scanning. Import keeps running in the background.
-          </p>
-        )}
-        {currentStep === 'url' && urlReviewBlockMessage && (
-          <p className="max-w-[22rem] text-right text-xs text-arda-text-muted">
-            {urlReviewBlockMessage}
-          </p>
-        )}
       </div>
     );
   };
 
   const renderStepIndicator = () => (
-    <div className="sticky top-0 z-40 border-b border-arda-border/70 bg-white/75 backdrop-blur">
-      <div className="max-w-6xl mx-auto px-4 py-2 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-arda flex items-center justify-center flex-shrink-0">
-              <Icons.Package className="w-4 h-4 text-white" />
-            </div>
-            <div className="leading-tight min-w-0">
-              <div className="text-sm font-semibold text-arda-text-primary">Arda</div>
-              <div className="hidden sm:block text-[11px] text-arda-text-muted">Order Pulse onboarding</div>
-            </div>
+    <div className="sticky top-0 z-40 border-b border-arda-border/70 bg-white/75 backdrop-blur relative">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-arda flex items-center justify-center flex-shrink-0">
+            <Icons.Package className="w-4 h-4 text-white" />
           </div>
+          <span className="text-sm font-semibold text-arda-text-primary flex-shrink-0">Arda</span>
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="text-[11px] text-arda-text-muted flex-shrink-0">
+              Step {currentStepIndex + 1} of {ONBOARDING_STEPS.length}
+            </span>
+            <span className="text-sm font-semibold text-arda-text-primary truncate">
+              {currentStepConfig.title}
+            </span>
+            <span className="hidden md:block text-xs text-arda-text-secondary truncate">
+              {currentStepConfig.description}
+            </span>
+          </div>
+        </div>
 
-          <div className="hidden lg:flex items-center gap-1.5 flex-1 justify-center px-4">
-            {ONBOARDING_STEPS.map((step, index) => {
-              const status = getStepStatus(step.id);
-              const Icon = Icons[step.icon] || Icons.Circle;
-              const isInteractive = status === 'completed' || status === 'current';
-              const isCompleted = status === 'completed';
-              const isCurrent = status === 'current';
+        <div className="hidden lg:flex items-center gap-1.5 flex-1 justify-center px-4">
+          {ONBOARDING_STEPS.map((step, index) => {
+            const status = getStepStatus(step.id);
+            const Icon = Icons[step.icon] || Icons.Circle;
+            const isInteractive = status === 'completed' || status === 'current';
+            const isCompleted = status === 'completed';
+            const isCurrent = status === 'current';
 
-              return (
-                <div key={step.id} className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isInteractive) setCurrentStep(step.id);
-                    }}
-                    disabled={!isInteractive}
+            return (
+              <div key={step.id} className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isInteractive) setCurrentStep(step.id);
+                  }}
+                  disabled={!isInteractive}
+                  className={[
+                    'w-7 h-7 rounded-full border flex items-center justify-center transition-colors',
+                    isCompleted ? 'bg-arda-accent border-orange-600 text-white' : '',
+                    isCurrent ? 'bg-orange-500 border-orange-600 text-white' : '',
+                    status === 'upcoming' ? 'bg-white/80 border-arda-border text-arda-text-muted' : '',
+                    isInteractive ? 'hover:bg-orange-50' : 'opacity-50 cursor-not-allowed',
+                  ].join(' ')}
+                  aria-current={isCurrent ? 'step' : undefined}
+                  title={step.title}
+                >
+                  {isCompleted ? <Icons.Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
+                </button>
+                {index < ONBOARDING_STEPS.length - 1 && (
+                  <div
                     className={[
-                      'w-7 h-7 rounded-full border flex items-center justify-center transition-colors',
-                      isCompleted ? 'bg-arda-accent border-orange-600 text-white' : '',
-                      isCurrent ? 'bg-orange-500 border-orange-600 text-white' : '',
-                      status === 'upcoming' ? 'bg-white/80 border-arda-border text-arda-text-muted' : '',
-                      isInteractive ? 'hover:bg-orange-50' : 'opacity-50 cursor-not-allowed',
+                      'w-6 h-[2px] mx-1 rounded-full',
+                      completedSteps.has(step.id) ? 'bg-orange-400' : 'bg-arda-border',
                     ].join(' ')}
-                    aria-current={isCurrent ? 'step' : undefined}
-                    title={step.title}
-                  >
-                    {isCompleted ? <Icons.Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
-                  </button>
-                  {index < ONBOARDING_STEPS.length - 1 && (
-                    <div
-                      className={[
-                        'w-6 h-[2px] mx-1 rounded-full',
-                        completedSteps.has(step.id) ? 'bg-orange-400' : 'bg-arda-border',
-                      ].join(' ')}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {userProfile?.email && (
-              <div className="hidden sm:flex items-center gap-2 text-xs text-arda-text-secondary bg-white/70 border border-arda-border rounded-xl px-2.5 py-1.5">
-                <Icons.Mail className="w-3.5 h-3.5 text-arda-text-muted" />
-                <span className="max-w-[14rem] truncate">{userProfile.email}</span>
+                  />
+                )}
               </div>
-            )}
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div ref={tipsWrapperRef} className="relative">
             <button
               type="button"
-              onClick={onSkip}
-              className="text-xs font-medium text-arda-text-muted hover:text-arda-text-primary hover:bg-white/70 border border-transparent hover:border-arda-border rounded-xl px-2.5 py-1.5 transition-colors"
+              onClick={() => setTipsOpen(open => !open)}
+              className="btn-arda-outline text-sm py-1.5 flex items-center gap-2"
+              aria-expanded={tipsOpen}
+              aria-controls={`onboarding-tips-${currentStep}`}
+              aria-haspopup="dialog"
             >
-              Exit
+              <Icons.Lightbulb className="w-4 h-4" />
+              <span className="hidden sm:inline">Tips</span>
             </button>
-          </div>
-        </div>
 
-        <div className="mt-1.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-arda-text-muted">
-                Step {currentStepIndex + 1} of {ONBOARDING_STEPS.length}
-              </span>
-              <h1 className="text-lg font-bold text-arda-text-primary tracking-tight">
-                {currentStepConfig.title}
-              </h1>
+            {tipsOpen && (
+              <div
+                id={`onboarding-tips-${currentStep}`}
+                role="dialog"
+                aria-label={currentStepConfig.tipsTitle}
+                className="absolute right-0 top-full mt-2 w-[320px] rounded-xl border border-arda-border bg-white/95 backdrop-blur shadow-lg p-3 z-50"
+              >
+                <div className="text-[11px] font-semibold text-arda-text-muted uppercase tracking-wide">
+                  {currentStepConfig.tipsTitle}
+                </div>
+                <ul className="mt-2 text-xs text-arda-text-secondary space-y-1 list-disc list-inside">
+                  {currentStepConfig.tips.map((tip, index) => (
+                    <li key={`${currentStep}-${index}`}>{tip}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {userProfile?.email && (
+            <div className="hidden sm:flex items-center gap-2 text-xs text-arda-text-secondary bg-white/70 border border-arda-border rounded-xl px-2.5 py-1.5">
+              <Icons.Mail className="w-3.5 h-3.5 text-arda-text-muted" />
+              <span className="max-w-[14rem] truncate">{userProfile.email}</span>
             </div>
-            <p className="text-xs text-arda-text-secondary truncate sm:whitespace-normal">{currentStepConfig.description}</p>
-          </div>
+          )}
 
-          <div className="flex items-center gap-2 flex-wrap justify-start lg:justify-end">
-            {totalItems > 0 && (
-              <span className="arda-pill text-xs px-2.5 py-1">
-                <Icons.Sparkles className="w-3.5 h-3.5" />
-                {totalItems} item{totalItems === 1 ? '' : 's'} captured
-              </span>
-            )}
-
-            {emailProgress && emailProgress.isActive && currentStep === 'email' && (
-              <span className="inline-flex items-center gap-2 text-[11px] font-medium text-arda-text-secondary bg-white/70 border border-arda-border rounded-full px-2.5 py-1">
-                <Icons.Loader2 className="w-3 h-3 animate-spin text-arda-accent" />
-                Scanning {emailProgress.supplier} ({emailProgress.processed}/{emailProgress.total})
-              </span>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-xs font-medium text-arda-text-muted hover:text-arda-text-primary hover:bg-white/70 border border-transparent hover:border-arda-border rounded-xl px-2.5 py-1.5 transition-colors"
+          >
+            Exit
+          </button>
 
           {renderHeaderActions()}
-        </div>
 
-        <div className="mt-2">
-          <div className="h-1.5 rounded-full bg-arda-bg-tertiary border border-arda-border overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-orange-400 to-orange-500 transition-all duration-300"
-              style={{ width: `${((currentStepIndex + 1) / ONBOARDING_STEPS.length) * 100}%` }}
-              role="progressbar"
-              aria-label="Onboarding progress"
-              aria-valuenow={currentStepIndex + 1}
-              aria-valuemin={1}
-              aria-valuemax={ONBOARDING_STEPS.length}
-            />
-          </div>
+          {currentStep === 'email' && (
+            <span className="sr-only">
+              Continuing won’t stop email scanning. Import keeps running in the background.
+            </span>
+          )}
         </div>
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 h-1 bg-arda-bg-tertiary overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-orange-400 to-orange-500 transition-all duration-300"
+          style={{ width: `${((currentStepIndex + 1) / ONBOARDING_STEPS.length) * 100}%` }}
+          role="progressbar"
+          aria-label="Onboarding progress"
+          aria-valuenow={currentStepIndex + 1}
+          aria-valuemin={1}
+          aria-valuemax={ONBOARDING_STEPS.length}
+        />
       </div>
     </div>
   );
@@ -762,7 +818,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           <SupplierSetup
             onScanComplete={handleEmailOrdersUpdate}
             onSkip={() => handleStepComplete('email')}
-            onProgressUpdate={handleEmailProgressUpdate}
             onCanProceed={handleCanProceedFromEmail}
             onStateChange={handleEmailScanStateChange}
             initialState={emailScanState}
@@ -770,16 +825,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           />
         ) : (
           <div className="space-y-4">
-            <InstructionCard
-              variant="compact"
-              title="What to do"
-              icon="Mail"
-              steps={[
-                'Connect Gmail to start scanning.',
-                'Wait for Amazon + priority suppliers to finish.',
-                'Select any extra suppliers to import.',
-              ]}
-            />
             <div className="card-arda p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-arda-text-primary">Start email sync</h3>
@@ -804,22 +849,29 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       )}
 
       {currentStep === 'url' && (
-        <UrlScrapeStep
-          importedItems={urlItems}
-          onImportItems={(items) => {
-            setUrlItems(previousItems => {
-              const merged = new Map(previousItems.map(item => [item.sourceUrl, item]));
-              items.forEach(item => {
-                merged.set(item.sourceUrl, item);
+        <div className="space-y-3">
+          {urlReviewBlockMessage && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 text-orange-900 text-xs px-3 py-2">
+              {urlReviewBlockMessage}
+            </div>
+          )}
+          <UrlScrapeStep
+            importedItems={urlItems}
+            onImportItems={(items) => {
+              setUrlItems(previousItems => {
+                const merged = new Map(previousItems.map(item => [item.sourceUrl, item]));
+                items.forEach(item => {
+                  merged.set(item.sourceUrl, item);
+                });
+                return Array.from(merged.values());
               });
-              return Array.from(merged.values());
-            });
-          }}
-          onDeleteImportedItem={(sourceUrl) => {
-            setUrlItems(previousItems => previousItems.filter(item => item.sourceUrl !== sourceUrl));
-          }}
-          onReviewStateChange={handleUrlReviewStateChange}
-        />
+            }}
+            onDeleteImportedItem={(sourceUrl) => {
+              setUrlItems(previousItems => previousItems.filter(item => item.sourceUrl !== sourceUrl));
+            }}
+            onReviewStateChange={handleUrlReviewStateChange}
+          />
+        </div>
       )}
       
       {currentStep === 'barcode' && (
@@ -896,7 +948,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
           {/* AG Grid — right side panel (visible on non-masterlist steps) */}
           {isPanelVisible && currentStep !== 'masterlist' && (
-            <div className="flex-1 min-w-0 lg:sticky lg:top-[72px] lg:self-start lg:max-h-[calc(100vh-72px-3rem)] overflow-hidden rounded-xl border border-arda-border bg-white shadow-sm">
+            <div className="flex-1 min-w-0 lg:sticky lg:top-14 lg:self-start lg:max-h-[calc(100vh-3.5rem-3rem)] overflow-hidden rounded-xl border border-arda-border bg-white shadow-sm">
               <ItemsGrid
                 items={masterItems}
                 onUpdateItem={updateItem}

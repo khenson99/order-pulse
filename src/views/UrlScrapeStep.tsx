@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icons } from '../components/Icons';
-import { InstructionCard } from '../components/InstructionCard';
 import { urlIngestionApi, UrlScrapeResult, UrlScrapedItem } from '../services/api';
 
 interface UrlScrapeStepProps {
@@ -201,18 +200,6 @@ export const UrlScrapeStep: React.FC<UrlScrapeStepProps> = ({
 
   return (
     <div className="space-y-4">
-      <InstructionCard
-        variant="compact"
-        title="What to do"
-        icon="Link"
-        steps={[
-          'Paste up to 50 product links.',
-          'Click “Scrape URLs.”',
-          'Review, edit, approve, or delete rows.',
-          'Import approved rows to the master list.',
-        ]}
-      />
-
       <div className="bg-white rounded-2xl border border-arda-border p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>

@@ -28,9 +28,9 @@ describe('MasterListStep', () => {
     onFooterStateChange: vi.fn(),
   };
 
-  it('renders instruction card', () => {
+  it('does not render instruction card (tips are in header)', () => {
     render(<MasterListStep {...defaultProps} />);
-    expect(screen.getByText('What to do')).toBeInTheDocument();
+    expect(screen.queryByText('What to do')).not.toBeInTheDocument();
   });
 
   it('shows item count', () => {

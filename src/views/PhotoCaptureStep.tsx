@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Icons } from '../components/Icons';
-import { InstructionCard } from '../components/InstructionCard';
 import { CapturedPhoto } from './OnboardingFlow';
 import { API_BASE_URL } from '../services/api';
 
@@ -274,17 +273,6 @@ export const PhotoCaptureStep: React.FC<PhotoCaptureStepProps> = ({
 
   return (
     <div className="space-y-4">
-      <InstructionCard
-        variant="compact"
-        title="What to do"
-        icon="Camera"
-        steps={[
-          'Upload photos or use the phone camera.',
-          'Wait for AI extraction, then edit any field as needed.',
-          'Confirm details before continuing.',
-        ]}
-      />
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div
           className={`

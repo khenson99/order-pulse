@@ -172,4 +172,39 @@ describe('OnboardingFlow email continuation reminder', () => {
     expect(screen.getByText('integrations-step')).toBeInTheDocument();
     expect(screen.getAllByText('Step 3 of 8').length).toBeGreaterThan(0);
   });
+
+  it('shows step tips in the header popover', async () => {
+    const user = userEvent.setup();
+
+    render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
+    await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('integrations-step')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /tips/i }));
+
+    expect(
+      screen.getByText('Connect QuickBooks or Xero if you want PO data.'),
+    ).toBeInTheDocument();
+  });
+
+  it('closes the tips popover when advancing steps', async () => {
+    const user = userEvent.setup();
+
+    render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
+    await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('integrations-step')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /tips/i }));
+    expect(screen.getByText('Connect QuickBooks or Xero if you want PO data.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('url-scrape-step')).toBeInTheDocument();
+    expect(screen.queryByText('Connect QuickBooks or Xero if you want PO data.')).not.toBeInTheDocument();
+  });
 });

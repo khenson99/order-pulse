@@ -1,5 +1,4 @@
 import { Icons } from '../components/Icons';
-import { InstructionCard } from '../components/InstructionCard';
 
 interface WelcomeStepItem {
   id: string;
@@ -40,17 +39,6 @@ export const OnboardingWelcomeStep: React.FC<OnboardingWelcomeStepProps> = ({
           </div>
         </div>
       </div>
-
-      <InstructionCard
-        variant="compact"
-        title="What you will do"
-        icon="MapPin"
-        steps={[
-          'Start email sync to import orders automatically.',
-          'Add items via URLs, barcodes, photos, or CSV.',
-          'Review and sync items to Arda.',
-        ]}
-      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {steps.map((step, index) => {
