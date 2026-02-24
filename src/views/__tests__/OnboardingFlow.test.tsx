@@ -207,4 +207,38 @@ describe('OnboardingFlow email continuation reminder', () => {
     expect(screen.getByText('url-scrape-step')).toBeInTheDocument();
     expect(screen.queryByText('Connect QuickBooks or Xero if you want PO data.')).not.toBeInTheDocument();
   });
+
+  it('renders footer navigation buttons on non-welcome steps', async () => {
+    const user = userEvent.setup();
+
+    render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
+    await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('integrations-step')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+  });
+
+  it('allows skipping a step even when Continue is disabled', async () => {
+    const user = userEvent.setup();
+
+    render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
+    await user.click(screen.getByRole('button', { name: 'enable-email-continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByText('url-scrape-step')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'block-url-continue' }));
+
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Skip' }));
+
+    expect(screen.getByText('barcode-step')).toBeInTheDocument();
+  });
 });

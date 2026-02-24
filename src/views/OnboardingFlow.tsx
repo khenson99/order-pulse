@@ -561,61 +561,84 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     return 'upcoming';
   };
 
-  // Render step indicator
-  const renderHeaderActions = () => {
-    if (currentStep === 'welcome') return null;
+  const renderFooterNavigation = () => {
+    const handleSkip = () => {
+      if (currentStep === 'welcome') {
+        handleSkipEmailSync();
+        return;
+      }
+
+      if (currentStep === 'csv') {
+        const skip = csvFooterState.onSkip === noop
+          ? () => handleCSVComplete([])
+          : csvFooterState.onSkip;
+        skip();
+        return;
+      }
+
+      if (currentStep === 'masterlist') {
+        setTipsOpenForStep(null);
+        onSkip();
+        return;
+      }
+
+      handleStepComplete(currentStep);
+    };
+
+    const handleContinue = () => {
+      if (currentStep === 'welcome') {
+        handleStartEmailSync();
+        return;
+      }
+
+      if (currentStep === 'csv') {
+        csvFooterState.onContinue();
+        return;
+      }
+
+      if (currentStep === 'masterlist') {
+        masterListFooterState.onComplete();
+        return;
+      }
+
+      goForward();
+    };
+
+    const continueDisabled = currentStep === 'welcome'
+      ? false
+      : currentStep === 'csv'
+        ? !csvFooterState.canContinue
+        : currentStep === 'masterlist'
+          ? !masterListFooterState.canComplete
+          : !canGoForward;
 
     return (
-      <div className="flex items-center gap-2 flex-nowrap justify-end">
-          {canGoBack && (
-            <button
-              type="button"
-              onClick={goBack}
-              className="btn-arda-outline flex items-center gap-2"
-            >
-              <Icons.ChevronLeft className="w-4 h-4" />
-              Back
-            </button>
-          )}
+      <div
+        className="fixed bottom-0 inset-x-0 z-40 border-t border-arda-border/70 bg-white/75 backdrop-blur"
+        role="navigation"
+        aria-label="Onboarding navigation"
+      >
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={!canGoBack}
+            className="btn-arda-outline flex items-center gap-2 disabled:opacity-50"
+          >
+            <Icons.ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
 
-          {currentStep === 'email' && (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => handleStepComplete('email')}
+              onClick={handleSkip}
               className="btn-arda-outline"
             >
-              Skip for now
+              Skip
             </button>
-          )}
 
-          {currentStep === 'csv' && (
-            <>
-              <button
-                type="button"
-                onClick={csvFooterState.onSkip === noop ? () => handleCSVComplete([]) : csvFooterState.onSkip}
-                className="btn-arda-outline"
-              >
-                Skip CSV
-              </button>
-              <button
-                type="button"
-                onClick={csvFooterState.onContinue}
-                disabled={!csvFooterState.canContinue}
-                className={[
-                  'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-                  csvFooterState.canContinue
-                    ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
-                    : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-                ].join(' ')}
-              >
-                Continue
-                <Icons.ChevronRight className="w-4 h-4" />
-              </button>
-            </>
-          )}
-
-          {currentStep === 'masterlist' ? (
-            <>
+            {currentStep === 'masterlist' && (
               <button
                 type="button"
                 onClick={masterListFooterState.onSyncSelected}
@@ -629,32 +652,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 )}
                 Sync Selected ({masterListFooterState.selectedCount})
               </button>
-              <button
-                type="button"
-                onClick={masterListFooterState.onComplete}
-                disabled={!masterListFooterState.canComplete}
-                className={[
-                  'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-                  masterListFooterState.canComplete
-                    ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
-                    : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
-                ].join(' ')}
-              >
-                <Icons.ArrowRight className="w-4 h-4" />
-                Complete setup ({masterListFooterState.syncedCount} synced)
-              </button>
-            </>
-          ) : currentStep !== 'csv' && (
+            )}
+
             <button
               type="button"
-              onClick={goForward}
-              disabled={!canGoForward}
+              onClick={handleContinue}
+              disabled={continueDisabled}
               title={currentStep === 'email'
                 ? 'Continuing won’t stop email scanning. Import keeps running in the background.'
                 : undefined}
               className={[
                 'flex items-center gap-2 px-4 py-2 rounded-arda font-semibold text-sm transition-colors',
-                canGoForward
+                !continueDisabled
                   ? 'bg-arda-accent text-white hover:bg-arda-accent-hover'
                   : 'bg-arda-border text-arda-text-muted cursor-not-allowed',
               ].join(' ')}
@@ -662,7 +671,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               Continue
               <Icons.ChevronRight className="w-4 h-4" />
             </button>
-          )}
+
+            {currentStep === 'email' && (
+              <span className="sr-only">
+                Continuing won’t stop email scanning. Import keeps running in the background.
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     );
   };
@@ -779,14 +795,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           >
             Exit
           </button>
-
-          {renderHeaderActions()}
-
-          {currentStep === 'email' && (
-            <span className="sr-only">
-              Continuing won’t stop email scanning. Import keeps running in the background.
-            </span>
-          )}
         </div>
       </div>
 
@@ -963,7 +971,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
           {/* AG Grid — right side panel (visible on non-masterlist steps) */}
           {isPanelVisible && currentStep !== 'masterlist' && (
-            <div className="flex-1 min-w-0 lg:sticky lg:top-14 lg:self-start lg:max-h-[calc(100vh-3.5rem-3rem)] overflow-hidden rounded-xl border border-arda-border bg-white shadow-sm">
+            <div className="flex-1 min-w-0 lg:sticky lg:top-14 lg:self-start lg:max-h-[calc(100vh-10rem)] overflow-hidden rounded-xl border border-arda-border bg-white shadow-sm">
               <ItemsGrid
                 items={masterItems}
                 onUpdateItem={updateItem}
@@ -990,6 +998,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           )}
         </div>
       </div>
+
+      {renderFooterNavigation()}
     </div>
   );
 };

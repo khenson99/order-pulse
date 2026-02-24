@@ -134,7 +134,6 @@ interface SupplierSetupProps {
 
 export const SupplierSetup: React.FC<SupplierSetupProps> = ({
   onScanComplete,
-  onSkip,
   onProgressUpdate,
   onCanProceed,
   onStateChange,
@@ -985,15 +984,6 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
                 : 'Ready to set up your inventory'}
             </p>
           </div>
-          {isGmailConnected && (
-            <button
-              type="button"
-              onClick={onSkip}
-              className="text-sm font-semibold text-arda-accent hover:text-arda-accent/80 transition-colors"
-            >
-              Skip for now
-            </button>
-          )}
         </div>
       )}
 
