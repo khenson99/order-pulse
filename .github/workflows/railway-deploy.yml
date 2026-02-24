@@ -64,5 +64,18 @@ jobs:
           RAILWAY_SERVICE: ${{ env.RAILWAY_SERVICE }}
         working-directory: server
         run: |
+          set -euo pipefail
           export PATH="$HOME/.railway/bin:$PATH"
-          railway up --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "::error title=Missing RAILWAY_TOKEN secret::Add a valid Railway token to repo secrets as RAILWAY_TOKEN."
+            exit 1
+          fi
+
+          railway --version
+
+          LOG_FILE="$(mktemp)"
+          if ! railway up --ci --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" 2>&1 | tee "$LOG_FILE"; then
+            SUMMARY="$(tail -n 80 "$LOG_FILE" | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g')"
+            echo "::error title=Railway deploy failed::$SUMMARY"
+            exit 1
+          fi
