@@ -275,7 +275,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     hasIntegrationCallback ? new Set<OnboardingStep>(['welcome', 'email']) : new Set()
   ));
   const [hasStartedEmailSync, setHasStartedEmailSync] = useState(false);
-  const [tipsOpen, setTipsOpen] = useState(false);
+  const [tipsOpenForStep, setTipsOpenForStep] = useState<OnboardingStep | null>(null);
   const tipsWrapperRef = useRef<HTMLDivElement | null>(null);
   
   // Data from each step
@@ -377,23 +377,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       currentStepConfig: ONBOARDING_STEPS[safeIndex],
     };
   }, [currentStep]);
-
-  useEffect(() => {
-    setTipsOpen(false);
-  }, [currentStep]);
+  const tipsOpen = tipsOpenForStep === currentStep;
 
   useEffect(() => {
     if (!tipsOpen) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setTipsOpen(false);
+      if (event.key === 'Escape') setTipsOpenForStep(null);
     };
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
       if (!tipsWrapperRef.current?.contains(target)) {
-        setTipsOpen(false);
+        setTipsOpenForStep(null);
       }
     };
 
@@ -422,6 +419,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     // Auto-advance to next step
     const currentIndex = ONBOARDING_STEPS.findIndex(s => s.id === step);
     if (currentIndex < ONBOARDING_STEPS.length - 1) {
+      setTipsOpenForStep(null);
       setCurrentStep(ONBOARDING_STEPS[currentIndex + 1].id);
     }
   }, []);
@@ -537,12 +535,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       next.add('email');
       return next;
     });
+    setTipsOpenForStep(null);
     setCurrentStep('integrations');
   }, []);
 
   // Go to previous step
   const goBack = useCallback(() => {
     if (currentStepIndex > 0) {
+      setTipsOpenForStep(null);
       setCurrentStep(ONBOARDING_STEPS[currentStepIndex - 1].id);
     }
   }, [currentStepIndex]);
@@ -698,12 +698,15 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
             return (
               <div key={step.id} className="flex items-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isInteractive) setCurrentStep(step.id);
-                  }}
-                  disabled={!isInteractive}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isInteractive) {
+                        setTipsOpenForStep(null);
+                        setCurrentStep(step.id);
+                      }
+                    }}
+                    disabled={!isInteractive}
                   className={[
                     'w-7 h-7 rounded-full border flex items-center justify-center transition-colors',
                     isCompleted ? 'bg-arda-accent border-orange-600 text-white' : '',
@@ -733,7 +736,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           <div ref={tipsWrapperRef} className="relative">
             <button
               type="button"
-              onClick={() => setTipsOpen(open => !open)}
+              onClick={() => setTipsOpenForStep(open => (open === currentStep ? null : currentStep))}
               className="btn-arda-outline text-sm py-1.5 flex items-center gap-2"
               aria-expanded={tipsOpen}
               aria-controls={`onboarding-tips-${currentStep}`}
@@ -880,7 +883,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           scannedBarcodes={scannedBarcodes}
           onBarcodeScanned={handleBarcodeScanned}
           onComplete={() => handleStepComplete('barcode')}
-          onBack={() => setCurrentStep('url')}
+          onBack={() => {
+            setTipsOpenForStep(null);
+            setCurrentStep('url');
+          }}
         />
       )}
       
@@ -890,14 +896,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           capturedPhotos={capturedPhotos}
           onPhotoCaptured={handlePhotoCaptured}
           onComplete={() => handleStepComplete('photo')}
-          onBack={() => setCurrentStep('barcode')}
+          onBack={() => {
+            setTipsOpenForStep(null);
+            setCurrentStep('barcode');
+          }}
         />
       )}
 
       {currentStep === 'csv' && (
         <CSVUploadStep
           onComplete={handleCSVComplete}
-          onBack={() => setCurrentStep('photo')}
+          onBack={() => {
+            setTipsOpenForStep(null);
+            setCurrentStep('photo');
+          }}
           onFooterStateChange={setCsvFooterState}
         />
       )}
@@ -912,7 +924,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           onUpdateItem={updateItem}
           onRemoveItem={removeItem}
           onComplete={handleMasterListComplete}
-          onBack={() => setCurrentStep('csv')}
+          onBack={() => {
+            setTipsOpenForStep(null);
+            setCurrentStep('csv');
+          }}
           onFooterStateChange={setMasterListFooterState}
         />
       )}
