@@ -734,25 +734,25 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
         <div className="flex items-center gap-2 flex-shrink-0">
           <div ref={tipsWrapperRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setTipsOpenForStep(open => (open === currentStep ? null : currentStep))}
-              className="btn-arda-outline text-sm py-1.5 flex items-center gap-2"
-              aria-expanded={tipsOpen}
-              aria-controls={`onboarding-tips-${currentStep}`}
-              aria-haspopup="dialog"
-            >
-              <Icons.Lightbulb className="w-4 h-4" />
-              <span className="hidden sm:inline">Tips</span>
-            </button>
+	            <button
+	              type="button"
+	              onClick={() => setTipsOpenForStep(open => (open === currentStep ? null : currentStep))}
+	              className="btn-arda-outline text-sm py-1.5 flex items-center gap-2"
+	              aria-expanded={tipsOpen}
+	              aria-controls={`onboarding-tips-${currentStep}`}
+	              aria-haspopup="dialog"
+	            >
+	              <Icons.Lightbulb className="w-4 h-4" />
+	              <span className="sr-only sm:not-sr-only">Tips</span>
+	            </button>
 
             {tipsOpen && (
               <div
-                id={`onboarding-tips-${currentStep}`}
-                role="dialog"
-                aria-label={currentStepConfig.tipsTitle}
-                className="absolute right-0 top-full mt-2 w-[320px] rounded-xl border border-arda-border bg-white/95 backdrop-blur shadow-lg p-3 z-50"
-              >
+	                id={`onboarding-tips-${currentStep}`}
+	                role="dialog"
+	                aria-label={currentStepConfig.tipsTitle}
+	                className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-arda-border bg-white/95 backdrop-blur shadow-lg p-3 z-50"
+	              >
                 <div className="text-[11px] font-semibold text-arda-text-muted uppercase tracking-wide">
                   {currentStepConfig.tipsTitle}
                 </div>
