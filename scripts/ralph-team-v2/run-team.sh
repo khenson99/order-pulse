@@ -161,27 +161,62 @@ $(tail -50 .ralph-team/progress.txt 2>/dev/null || echo "No progress yet")
 - Detected stack: $DETECTED_STACK
 - Iteration: $ARCHITECT_ITERATION of $MAX_ITERATIONS
 
-Respond with ONLY valid JSON per your spec.
+Respond with ONLY valid JSON per your spec. Do not include markdown fences or any commentary outside the JSON.
 ARCH_PROMPT_EOF
   ARCHITECT_PROMPT="$(cat "$ARCH_PROMPT_FILE")"
   rm -f "$ARCH_PROMPT_FILE" 2>/dev/null || true
 
   ARCHITECT_OUTPUT=$(claude -p "$ARCHITECT_PROMPT" --dangerously-skip-permissions 2>&1) || true
+  if [[ "${RLP_DEBUG_ARCH:-}" == "1" ]]; then
+    mkdir -p .ralph-team >/dev/null 2>&1 || true
+    printf '%s\n' "$ARCHITECT_OUTPUT" > .ralph-team/last-architect-output.txt 2>/dev/null || true
+  fi
 
-  ACTION_PLAN=$(echo "$ARCHITECT_OUTPUT" | python3 - <<'PY'
-import sys, json, re
-text = sys.stdin.read()
-m = re.search(r'\{[\s\S]*\}', text)
-if not m:
+  ARCH_OUT_FILE="$(mktemp -t ralph-architect-output.XXXXXX)"
+  printf '%s' "$ARCHITECT_OUTPUT" > "$ARCH_OUT_FILE"
+  export ARCH_OUT_FILE
+
+  ACTION_PLAN=$(python3 - <<'PY'
+import os
+import sys, json
+from pathlib import Path
+
+text = Path(os.environ["ARCH_OUT_FILE"]).read_text("utf-8", errors="replace").strip()
+if not text:
   print("{}")
   raise SystemExit
+
+# First try: response is pure JSON.
 try:
-  obj = json.loads(m.group(0))
+  obj = json.loads(text)
   print(json.dumps(obj))
+  raise SystemExit
 except Exception:
+  pass
+
+# Fallback: extract the first valid JSON object from mixed output.
+decoder = json.JSONDecoder()
+for i, ch in enumerate(text):
+  if ch != "{":
+    continue
+  try:
+    obj, _end = decoder.raw_decode(text[i:])
+    if isinstance(obj, dict):
+      print(json.dumps(obj))
+    else:
+      print("{}")
+    break
+  except Exception:
+    continue
+else:
   print("{}")
 PY
 )
+  rm -f "$ARCH_OUT_FILE" 2>/dev/null || true
+  unset ARCH_OUT_FILE
+  if [[ "${RLP_DEBUG_ARCH:-}" == "1" ]]; then
+    printf '%s\n' "$ACTION_PLAN" > .ralph-team/last-architect-action-plan.json 2>/dev/null || true
+  fi
 
   SPRINT_COMPLETE=$(echo "$ACTION_PLAN" | jq -r '.sprint_complete // false' 2>/dev/null || echo "false")
   SPRINT_BLOCKED=$(echo "$ACTION_PLAN" | jq -r '.sprint_blocked // false' 2>/dev/null || echo "false")

@@ -48,6 +48,8 @@ All:
 - `.ralph-team/` is local-only. Do not commit it.
 - The GitHub CLI needs `project` scope to add issues to Project 14:
   - `gh auth refresh -s project`
+- If Codex CLI needs to run fully unattended, you can opt into an unsafe mode (use with care):
+  - `RLP_CODEX_MODE=unsafe ./scripts/ralph-team-v2/run-planner.sh ...`
+  - `RLP_CODEX_MODE=unsafe ./scripts/ralph-team-v2/run-reviewer.sh ...`
 - If Codex CLI errors about session file permissions:
   - `sudo chown -R "$(whoami)" ~/.codex`
-
