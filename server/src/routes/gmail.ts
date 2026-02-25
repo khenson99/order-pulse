@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { google } from 'googleapis';
 import { getValidAccessToken } from './auth.js';
+import { getUserById } from '../services/userStore.js';
 
 const router = Router();
 
@@ -11,6 +12,34 @@ async function requireAuth(req: Request, res: Response, next: Function) {
   }
   next();
 }
+
+router.get('/status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userId!;
+    const user = await getUserById(userId);
+    if (!user) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (!user.googleId) {
+      return res.json({ connected: false, gmailEmail: null });
+    }
+
+    const accessToken = await getValidAccessToken(userId);
+    if (!accessToken) {
+      return res.status(403).json({ error: 'Gmail authentication required', code: 'GMAIL_AUTH_REQUIRED' });
+    }
+
+    return res.json({
+      connected: true,
+      gmailEmail: user.googleEmail ?? user.email ?? null,
+    });
+  } catch (error) {
+    console.error('Gmail status error:', error);
+    return res.status(500).json({ error: 'Failed to check Gmail status' });
+  }
+});
 
 // Fetch Gmail messages
 router.get('/messages', requireAuth, async (req: Request, res: Response) => {

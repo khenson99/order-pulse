@@ -21,15 +21,52 @@ const users = new Map<string, StoredUser>(); // local cache for dev
 // Short-lived auth tokens for cross-origin authentication
 // Token -> { userId, expiresAt }
 const authTokens = new Map<string, { userId: string; expiresAt: Date }>();
+const AUTH_TOKEN_TTL_MS = 60_000; // 60 seconds
+const AUTH_TOKEN_TTL_SECONDS = 60;
+const AUTH_TOKEN_REDIS_PREFIX = 'auth:exchange:';
 
-function generateAuthToken(userId: string): string {
+async function generateAuthToken(userId: string): Promise<string> {
   const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
   // Token expires in 60 seconds (just enough for the redirect)
-  authTokens.set(token, { userId, expiresAt: new Date(Date.now() + 60000) });
+  authTokens.set(token, { userId, expiresAt: new Date(Date.now() + AUTH_TOKEN_TTL_MS) });
+
+  if (redisClient) {
+    try {
+      await redisClient.set(`${AUTH_TOKEN_REDIS_PREFIX}${token}`, userId, 'EX', AUTH_TOKEN_TTL_SECONDS);
+    } catch (error) {
+      console.warn('Failed to store auth exchange token in Redis:', error);
+    }
+  }
   return token;
 }
 
-function consumeAuthToken(token: string): string | null {
+async function consumeAuthToken(token: string): Promise<string | null> {
+  if (redisClient) {
+    try {
+      const key = `${AUTH_TOKEN_REDIS_PREFIX}${token}`;
+      const lua = `
+        local v = redis.call('GET', KEYS[1])
+        if v then
+          redis.call('DEL', KEYS[1])
+        end
+        return v
+      `;
+      const value = await redisClient.eval(lua, 1, key);
+      const decoded =
+        typeof value === 'string'
+          ? value
+          : Buffer.isBuffer(value)
+            ? value.toString('utf8')
+            : '';
+      if (decoded.length > 0) {
+        authTokens.delete(token); // best-effort cleanup for same-instance tokens
+        return decoded;
+      }
+    } catch (error) {
+      console.warn('Failed to consume auth exchange token from Redis:', error);
+    }
+  }
+
   const data = authTokens.get(token);
   if (!data) return null;
   authTokens.delete(token); // One-time use
@@ -157,7 +194,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
         await saveUser(linkedUser);
         console.log(`✅ Gmail linked for user ${linkedUser.id} (${linkedUser.email})`);
 
-        const authToken = generateAuthToken(linkedUser.id);
+        const authToken = await generateAuthToken(linkedUser.id);
       req.session.userId = linkedUser.id;
       req.session.authProvider = linkedUser.googleId ? 'google' : 'local';
 
@@ -210,7 +247,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     console.log(`✅ User authenticated: ${user.name} (${user.email})`);
 
     // Generate a short-lived auth token for cross-origin cookie setting
-    const authToken = generateAuthToken(user.id);
+    const authToken = await generateAuthToken(user.id);
 
     // Set session (for same-origin requests)
     req.session.userId = user.id;
@@ -326,7 +363,7 @@ router.get('/token-exchange', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Missing token' });
   }
 
-  const userId = consumeAuthToken(token);
+  const userId = await consumeAuthToken(token);
   if (!userId) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
@@ -420,6 +457,7 @@ export async function getValidAccessToken(userId: string): Promise<string | null
     user.expiresAt = credentials.expiry_date 
       ? new Date(credentials.expiry_date) 
       : new Date(Date.now() + 3600 * 1000);
+    await saveUser(user);
 
     console.log(`🔄 Token refreshed for ${user.email}`);
     return user.accessToken;
