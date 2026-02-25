@@ -1,0 +1,394 @@
+openapi: 3.1.0
+info:
+  title: Onboarding API
+  version: 1.0.0
+  description: |
+    Backend API for onboarding durable session storage and ingestion.
+
+    ## Versioning
+
+    This contract follows semantic versioning. The `version` field tracks
+    breaking changes (major), new endpoints/fields (minor), and documentation
+    fixes (patch). See `docs/api-versioning.md` for the full change policy.
+
+    ## Authentication
+
+    All endpoints under `/api/onboarding` require two headers:
+    - `Authorization: Bearer <cognito-access-token>`
+    - `X-ID-Token: <cognito-id-token>`
+
+    The ID token carries the `custom:tenant` claim used for tenant isolation.
+
+    ## Error Convention
+
+    Every error response uses a stable shape:
+    ```json
+    { "error": { "code": "<ERROR_CODE>", "message": "...", "requestId": "..." } }
+    ```
+    Clients should match on `code` (not `message`) for programmatic handling.
+
+servers:
+  - url: /api/onboarding
+    description: Onboarding API base path
+
+security:
+  - cognitoBearer: []
+    cognitoIdToken: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check (no auth)
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /session:
+    get:
+      operationId: getSession
+      summary: Get current onboarding session
+      description: |
+        Returns the active onboarding session for the authenticated user and tenant.
+        If no session exists, returns 404.
+      responses:
+        "200":
+          description: Session data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      operationId: createSession
+      summary: Create a new onboarding session
+      description: |
+        Creates a new onboarding session for the authenticated user and tenant.
+        Returns 409 if an active session already exists.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    patch:
+      operationId: updateSession
+      summary: Update the current onboarding session
+      description: |
+        Merges the provided fields into the active session.
+        Only top-level fields in `data` are replaced; omitted fields are preserved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSessionRequest"
+      responses:
+        "200":
+          description: Session updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /session/images/upload-url:
+    post:
+      operationId: createImageUploadUrl
+      summary: Get a presigned URL for image upload
+      description: |
+        Returns a presigned S3 URL that the client uses to upload an image directly.
+        The server records the upload metadata (tenantId, sessionId, s3Key) for later retrieval.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageUploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageUploadUrlResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    cognitoBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Cognito access token
+    cognitoIdToken:
+      type: apiKey
+      in: header
+      name: X-ID-Token
+      description: Cognito ID token (carries custom:tenant claim)
+
+  schemas:
+    # ---------- Shared ----------
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - requestId
+          properties:
+            code:
+              type: string
+              enum:
+                - AUTH_MISSING_TOKEN
+                - AUTH_INVALID_TOKEN
+                - AUTH_EXPIRED_TOKEN
+                - VALIDATION_ERROR
+                - NOT_FOUND
+                - INTERNAL_ERROR
+              description: |
+                Stable error code for programmatic handling.
+                Clients MUST match on `code`, not `message`.
+            message:
+              type: string
+              description: Human-readable error description. May change between versions.
+            requestId:
+              type: string
+              format: uuid
+              description: Correlation ID for log tracing. Echoed from X-Request-ID if provided.
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+          example: ok
+
+    # ---------- Session ----------
+
+    SessionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/Session"
+
+    Session:
+      type: object
+      required:
+        - sessionId
+        - tenantId
+        - userId
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+        userId:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - completed
+            - expired
+        step:
+          type: string
+          description: Current onboarding step identifier
+        data:
+          type: object
+          additionalProperties: true
+          description: Arbitrary step-specific data stored by the client
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    CreateSessionRequest:
+      type: object
+      properties:
+        step:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+
+    UpdateSessionRequest:
+      type: object
+      properties:
+        step:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum:
+            - active
+            - completed
+
+    # ---------- Image Upload ----------
+
+    ImageUploadUrlRequest:
+      type: object
+      required:
+        - fileName
+        - contentType
+      properties:
+        fileName:
+          type: string
+          description: Original file name (used for metadata, not the S3 key)
+        contentType:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+            - image/webp
+          description: MIME type of the image to upload
+
+    ImageUploadUrlResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - uploadUrl
+            - s3Key
+            - expiresInSeconds
+          properties:
+            uploadUrl:
+              type: string
+              format: uri
+              description: Presigned S3 PUT URL
+            s3Key:
+              type: string
+              description: The object key that will be written to S3
+            expiresInSeconds:
+              type: integer
+              description: Seconds until the presigned URL expires
+
+  responses:
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missingToken:
+              summary: Missing token
+              value:
+                error:
+                  code: AUTH_MISSING_TOKEN
+                  message: Authorization Bearer token and X-ID-Token headers are required
+                  requestId: 550e8400-e29b-41d4-a716-446655440000
+            invalidToken:
+              summary: Invalid token
+              value:
+                error:
+                  code: AUTH_INVALID_TOKEN
+                  message: Invalid or expired access token
+                  requestId: 550e8400-e29b-41d4-a716-446655440000
+            expiredToken:
+              summary: Expired token
+              value:
+                error:
+                  code: AUTH_EXPIRED_TOKEN
+                  message: Invalid or expired access token
+                  requestId: 550e8400-e29b-41d4-a716-446655440000
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: "contentType must be one of: image/jpeg, image/png, image/webp"
+              requestId: 550e8400-e29b-41d4-a716-446655440000
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: NOT_FOUND
+              message: Session not found
+              requestId: 550e8400-e29b-41d4-a716-446655440000
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: An unexpected error occurred
+              requestId: 550e8400-e29b-41d4-a716-446655440000
