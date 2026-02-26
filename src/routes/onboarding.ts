@@ -9,6 +9,7 @@ import { GmailOAuthStore, type KeyValueStore } from "../lib/gmail-oauth-store";
 import { buildGmailAuthUrl, refreshAccessToken } from "../lib/google-oauth";
 import { createImageUploadUrl } from "../lib/image-upload";
 import { lookupProductByBarcode, validateBarcodeLookupCode } from "../lib/barcode-lookup";
+import { scrapeUrls } from "../lib/url-scraper";
 
 const TOKEN_EXPIRED_MESSAGE =
   "Session expired. Please reopen the link from the desktop session.";
@@ -278,6 +279,22 @@ export function createOnboardingRoutes(deps: {
     }
 
     res.json({ product });
+  });
+
+  router.post("/url/scrape", async (req, res: Response) => {
+    if (!(req as MaybeAuthRequest).auth) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const body = (req.body ?? null) as { urls?: unknown } | null;
+    const urls = body?.urls;
+    if (!Array.isArray(urls)) {
+      throw new ApiError(422, "VALIDATION_ERROR", "urls must be an array of strings");
+    }
+
+    const response = await scrapeUrls(urls as any);
+    res.json(response);
   });
 
   router.get("/scan-sessions/:sessionId/barcodes", async (req, res: Response) => {
