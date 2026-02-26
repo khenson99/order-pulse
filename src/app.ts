@@ -52,6 +52,7 @@ export function createApp(deps: AppDependencies) {
     config: deps.config,
     gmailStore,
     s3: deps.s3,
+    kv: deps.kv,
   });
 
   // Most /api/onboarding/* routes require auth.

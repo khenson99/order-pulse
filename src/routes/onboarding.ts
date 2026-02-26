@@ -5,9 +5,10 @@ import type { Config } from "../config";
 import { ApiError, type AuthContext } from "../types";
 import type { CapturedPhoto, ScannedBarcode } from "../lib/onboarding-session-store";
 import { OnboardingSessionStore } from "../lib/onboarding-session-store";
-import { GmailOAuthStore } from "../lib/gmail-oauth-store";
+import { GmailOAuthStore, type KeyValueStore } from "../lib/gmail-oauth-store";
 import { buildGmailAuthUrl, refreshAccessToken } from "../lib/google-oauth";
 import { createImageUploadUrl } from "../lib/image-upload";
+import { lookupProductByBarcode, validateBarcodeLookupCode } from "../lib/barcode-lookup";
 
 const TOKEN_EXPIRED_MESSAGE =
   "Session expired. Please reopen the link from the desktop session.";
@@ -109,6 +110,7 @@ export function createOnboardingRoutes(deps: {
   config: Config;
   gmailStore: GmailOAuthStore;
   s3: S3Client;
+  kv: KeyValueStore;
 }) {
   const router = Router();
 
@@ -257,6 +259,25 @@ export function createOnboardingRoutes(deps: {
       if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
       throw err;
     }
+  });
+
+  router.get("/barcode/lookup", async (req, res: Response) => {
+    if (!(req as MaybeAuthRequest).auth) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const code = validateBarcodeLookupCode(req.query?.code);
+    const product = await lookupProductByBarcode(code, {
+      kv: deps.kv,
+      timeoutMs: 5000,
+    });
+
+    if (!product) {
+      throw new ApiError(404, "NOT_FOUND", "Barcode not found");
+    }
+
+    res.json({ product });
   });
 
   router.get("/scan-sessions/:sessionId/barcodes", async (req, res: Response) => {
@@ -427,4 +448,3 @@ export function createOnboardingRoutes(deps: {
 
   return router;
 }
-

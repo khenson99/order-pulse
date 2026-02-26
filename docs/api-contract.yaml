@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Onboarding API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Backend API for onboarding durable session storage and ingestion.
 
@@ -219,6 +219,35 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /barcode/lookup:
+    get:
+      operationId: lookupBarcode
+      summary: Barcode lookup
+      description: |
+        Look up a barcode (UPC/EAN/GTIN) and return product metadata when available.
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: Barcode/GTIN code to look up.
+      responses:
+        "200":
+          description: Barcode lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarcodeLookupResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
 components:
   securitySchemes:
     cognitoBearer:
@@ -361,6 +390,36 @@ components:
           format: int64
           nullable: true
           description: Unix epoch milliseconds when the current access token expires (if known).
+
+    # ---------- Barcode Lookup ----------
+
+    BarcodeLookupResponse:
+      type: object
+      required:
+        - product
+      properties:
+        product:
+          type: object
+          required:
+            - name
+          properties:
+            name:
+              type: string
+            brand:
+              type: string
+              nullable: true
+            imageUrl:
+              type: string
+              nullable: true
+            category:
+              type: string
+              nullable: true
+            source:
+              type: string
+              nullable: true
+            normalizedBarcode:
+              type: string
+              nullable: true
         expiresAt:
           type: string
           format: date-time
