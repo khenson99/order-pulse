@@ -10,6 +10,7 @@ import { buildGmailAuthUrl, refreshAccessToken } from "../lib/google-oauth";
 import { createImageUploadUrl } from "../lib/image-upload";
 import { lookupProductByBarcode, validateBarcodeLookupCode } from "../lib/barcode-lookup";
 import { scrapeUrls } from "../lib/url-scraper";
+import { analyzePhoto } from "../lib/photo-analysis";
 
 const TOKEN_EXPIRED_MESSAGE =
   "Session expired. Please reopen the link from the desktop session.";
@@ -295,6 +296,29 @@ export function createOnboardingRoutes(deps: {
 
     const response = await scrapeUrls(urls as any);
     res.json(response);
+  });
+
+  router.post("/photo/analyze", async (req, res: Response) => {
+    if (!(req as MaybeAuthRequest).auth) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const body = (req.body ?? null) as { imageData?: unknown; imageDataUrl?: unknown } | null;
+    const imageData =
+      (typeof body?.imageData === "string" ? body.imageData : "")
+      || (typeof body?.imageDataUrl === "string" ? body.imageDataUrl : "");
+
+    if (!imageData) {
+      throw new ApiError(422, "VALIDATION_ERROR", "imageData is required");
+    }
+
+    const analysis = await analyzePhoto({
+      imageData,
+      geminiApiKey: deps.config.geminiApiKey,
+    });
+
+    res.json({ analysis });
   });
 
   router.get("/scan-sessions/:sessionId/barcodes", async (req, res: Response) => {

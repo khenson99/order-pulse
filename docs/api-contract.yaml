@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Onboarding API
-  version: 1.3.0
+  version: 1.4.0
   description: |
     Backend API for onboarding durable session storage and ingestion.
 
@@ -271,6 +271,39 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /photo/analyze:
+    post:
+      operationId: analyzePhoto
+      summary: Photo analysis (Gemini)
+      description: |
+        Analyze a base64 image data URL and return suggested metadata.
+
+        This endpoint is feature-gated: when `GEMINI_API_KEY` is not configured,
+        it returns 503.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhotoAnalyzeRequest"
+      responses:
+        "200":
+          description: Photo analysis response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoAnalyzeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/InternalError"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -549,6 +582,50 @@ components:
         expiresAt:
           type: string
           format: date-time
+
+    # ---------- Photo Analysis ----------
+
+    PhotoAnalyzeRequest:
+      type: object
+      required:
+        - imageData
+      additionalProperties: false
+      properties:
+        imageData:
+          type: string
+          description: Base64 data URL (data:image/...;base64,...) to analyze.
+
+    PhotoAnalysis:
+      type: object
+      required:
+        - suggestedName
+        - suggestedSupplier
+        - confidence
+        - notes
+      additionalProperties: false
+      properties:
+        suggestedName:
+          type: string
+          nullable: true
+        suggestedSupplier:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        notes:
+          type: string
+          nullable: true
+
+    PhotoAnalyzeResponse:
+      type: object
+      required:
+        - analysis
+      additionalProperties: false
+      properties:
+        analysis:
+          $ref: "#/components/schemas/PhotoAnalysis"
 
     CreateSessionRequest:
       type: object

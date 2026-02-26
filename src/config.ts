@@ -9,6 +9,7 @@ export interface Config {
   onboardingTokenEncryptionKey: Buffer | null;
   googleClientId: string | null;
   googleClientSecret: string | null;
+  geminiApiKey: string | null;
   onboardingImageUploadBucket: string;
   onboardingImageUploadPrefix: string;
   onboardingImageUploadUrlExpiresInSeconds: number;
@@ -81,6 +82,7 @@ export function loadConfig(): Config {
       : null,
     googleClientId: optionalEnv("GOOGLE_CLIENT_ID"),
     googleClientSecret: optionalEnv("GOOGLE_CLIENT_SECRET"),
+    geminiApiKey: optionalEnv("GEMINI_API_KEY"),
     onboardingImageUploadBucket: requireEnv("ONBOARDING_IMAGE_UPLOAD_BUCKET"),
     onboardingImageUploadPrefix:
       process.env.ONBOARDING_IMAGE_UPLOAD_PREFIX ?? "onboarding",
@@ -90,4 +92,3 @@ export function loadConfig(): Config {
     nodeEnv: process.env.NODE_ENV ?? "development",
   };
 }
-
