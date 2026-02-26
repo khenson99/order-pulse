@@ -33,10 +33,6 @@ vi.mock('../OnboardingWelcomeStep', () => ({
   ),
 }));
 
-vi.mock('../BarcodeScanStep', () => ({
-  BarcodeScanStep: () => <div>barcode-step</div>,
-}));
-
 vi.mock('../IntegrationsStep', () => ({
   IntegrationsStep: () => <div>integrations-step</div>,
 }));
@@ -104,11 +100,11 @@ describe('OnboardingFlow email continuation reminder', () => {
 
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
 
-    expect(screen.getAllByText('Step 1 of 8').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 1 of 7').length).toBeGreaterThan(0);
     expect(screen.getByText('welcome-step')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'start-email-sync' }));
 
-    expect(screen.getAllByText('Step 2 of 8').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 2 of 7').length).toBeGreaterThan(0);
     expect(
       screen.getByText('Continuing won’t stop email scanning. Import keeps running in the background.'),
     ).toBeInTheDocument();
@@ -124,7 +120,7 @@ describe('OnboardingFlow email continuation reminder', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('integrations-step')).toBeInTheDocument();
-    expect(screen.getAllByText('Step 3 of 8').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 3 of 7').length).toBeGreaterThan(0);
     expect(
       screen.queryByText('Continuing won’t stop email scanning. Import keeps running in the background.'),
     ).not.toBeInTheDocument();
@@ -141,7 +137,7 @@ describe('OnboardingFlow email continuation reminder', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('url-scrape-step')).toBeInTheDocument();
-    expect(screen.getAllByText('Step 4 of 8').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 4 of 7').length).toBeGreaterThan(0);
   });
 
   it('blocks continue on URL step until review state allows it', async () => {
@@ -170,7 +166,7 @@ describe('OnboardingFlow email continuation reminder', () => {
     render(<OnboardingFlow onComplete={vi.fn()} onSkip={vi.fn()} />);
 
     expect(screen.getByText('integrations-step')).toBeInTheDocument();
-    expect(screen.getAllByText('Step 3 of 8').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Step 3 of 7').length).toBeGreaterThan(0);
   });
 
   it('shows step tips in the header popover', async () => {
@@ -239,6 +235,6 @@ describe('OnboardingFlow email continuation reminder', () => {
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Skip' }));
 
-    expect(screen.getByText('barcode-step')).toBeInTheDocument();
+    expect(screen.getByText('photo-step')).toBeInTheDocument();
   });
 });

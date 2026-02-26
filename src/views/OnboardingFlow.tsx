@@ -4,7 +4,6 @@ import { ExtractedOrder } from '../types';
 import { buildVelocityProfiles, normalizeItemName } from '../utils/inventoryLogic';
 import { SupplierSetup, EmailScanState } from './SupplierSetup';
 import { UrlScrapeStep } from './UrlScrapeStep';
-import { BarcodeScanStep } from './BarcodeScanStep';
 import { PhotoCaptureStep } from './PhotoCaptureStep';
 import { CSVUploadStep, CSVItem, CSVFooterState } from './CSVUploadStep';
 import { MasterListStep } from './MasterListStep';
@@ -32,7 +31,7 @@ interface EmailItem {
 }
 
 // Onboarding step definitions
-export type OnboardingStep = 'welcome' | 'email' | 'integrations' | 'url' | 'barcode' | 'photo' | 'csv' | 'masterlist';
+export type OnboardingStep = 'welcome' | 'email' | 'integrations' | 'url' | 'photo' | 'csv' | 'masterlist';
 
 interface StepConfig {
   id: OnboardingStep;
@@ -99,21 +98,8 @@ const ONBOARDING_STEPS: StepConfig[] = [
     icon: 'Link',
   },
   {
-    id: 'barcode',
-    number: 5,
-    title: 'UPCs',
-    description: 'Scan UPC/EAN codes in your shop',
-    tipsTitle: 'What to do',
-    tips: [
-      'Scan with a USB/Bluetooth scanner or phone camera.',
-      'Edit any detected fields as needed.',
-      'Confirm items appear below.',
-    ],
-    icon: 'Barcode',
-  },
-  {
     id: 'photo',
-    number: 6,
+    number: 5,
     title: 'Images',
     description: 'Photograph items with labels',
     tipsTitle: 'What to do',
@@ -126,7 +112,7 @@ const ONBOARDING_STEPS: StepConfig[] = [
   },
   {
     id: 'csv',
-    number: 7,
+    number: 6,
     title: 'CSV',
     description: 'Import from spreadsheet',
     tipsTitle: 'What to do',
@@ -139,7 +125,7 @@ const ONBOARDING_STEPS: StepConfig[] = [
   },
   {
     id: 'masterlist',
-    number: 8,
+    number: 7,
     title: 'Review',
     description: 'Review and sync items',
     tipsTitle: 'What to do',
@@ -428,35 +414,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const handleEmailOrdersUpdate = useCallback((orders: ExtractedOrder[]) => {
     setEmailOrders(orders);
     // Don't auto-advance - user will click Continue when ready
-  }, []);
-
-  // Handle barcode scan
-  const handleBarcodeScanned = useCallback((barcode: ScannedBarcode) => {
-    setScannedBarcodes(prev => {
-      const byIdIndex = prev.findIndex(item => item.id === barcode.id);
-      if (byIdIndex >= 0) {
-        const existing = prev[byIdIndex];
-        const merged = { ...existing, ...barcode, id: existing.id };
-        const hasChanged = JSON.stringify(existing) !== JSON.stringify(merged);
-        if (!hasChanged) return prev;
-        const next = [...prev];
-        next[byIdIndex] = merged;
-        return next;
-      }
-
-      const byBarcodeIndex = prev.findIndex(item => item.barcode === barcode.barcode);
-      if (byBarcodeIndex >= 0) {
-        const existing = prev[byBarcodeIndex];
-        const merged = { ...existing, ...barcode, id: barcode.id };
-        const hasChanged = JSON.stringify(existing) !== JSON.stringify(merged);
-        if (!hasChanged) return prev;
-        const next = [...prev];
-        next[byBarcodeIndex] = merged;
-        return next;
-      }
-
-      return [...prev, barcode];
-    });
   }, []);
 
   // Handle photo capture
@@ -885,19 +842,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         </div>
       )}
       
-      {currentStep === 'barcode' && (
-        <BarcodeScanStep
-          sessionId={mobileSessionId}
-          scannedBarcodes={scannedBarcodes}
-          onBarcodeScanned={handleBarcodeScanned}
-          onComplete={() => handleStepComplete('barcode')}
-          onBack={() => {
-            setTipsOpenForStep(null);
-            setCurrentStep('url');
-          }}
-        />
-      )}
-      
       {currentStep === 'photo' && (
         <PhotoCaptureStep
           sessionId={mobileSessionId}
@@ -906,7 +850,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           onComplete={() => handleStepComplete('photo')}
           onBack={() => {
             setTipsOpenForStep(null);
-            setCurrentStep('barcode');
+            setCurrentStep('url');
           }}
         />
       )}
