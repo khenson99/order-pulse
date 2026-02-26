@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Onboarding API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Backend API for onboarding durable session storage and ingestion.
 
@@ -153,6 +153,72 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /gmail/oauth/start:
+    post:
+      operationId: startGmailOauth
+      summary: Start Gmail OAuth
+      description: |
+        Returns an OAuth authorization URL for the user to connect Gmail.
+
+        Notes:
+        - The caller must be authenticated (Cognito headers).
+        - The returned URL redirects to `/gmail/oauth/callback` on this service.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GmailOAuthStartRequest"
+      responses:
+        "200":
+          description: OAuth URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailOAuthStartResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /gmail/oauth/callback:
+    get:
+      operationId: gmailOauthCallback
+      summary: Gmail OAuth callback (public)
+      description: |
+        Google redirects the user-agent to this endpoint after authorization.
+
+        This endpoint is intentionally public (no Cognito headers) and validates
+        the OAuth `state` parameter server-side before storing encrypted tokens.
+      security: []
+      responses:
+        "302":
+          description: Redirect back to frontend with success or error details.
+          headers:
+            Location:
+              schema:
+                type: string
+
+  /gmail/status:
+    get:
+      operationId: getGmailStatus
+      summary: Gmail connection status
+      description: |
+        Returns whether Gmail is configured and connected for the current user.
+      responses:
+        "200":
+          description: Status response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
 components:
   securitySchemes:
     cognitoBearer:
@@ -258,6 +324,43 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    # ---------- Gmail OAuth ----------
+
+    GmailOAuthStartRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        returnTo:
+          type: string
+          description: Optional frontend path to redirect to after OAuth success.
+
+    GmailOAuthStartResponse:
+      type: object
+      required:
+        - authUrl
+      properties:
+        authUrl:
+          type: string
+          description: Google OAuth authorization URL.
+
+    GmailStatusResponse:
+      type: object
+      required:
+        - configured
+        - connected
+      properties:
+        configured:
+          type: boolean
+          description: Whether Gmail OAuth is configured on the server.
+        connected:
+          type: boolean
+          description: Whether Gmail is connected for this user.
+        tokenExpiresAtMs:
+          type: integer
+          format: int64
+          nullable: true
+          description: Unix epoch milliseconds when the current access token expires (if known).
         expiresAt:
           type: string
           format: date-time
