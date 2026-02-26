@@ -3,6 +3,7 @@ import { loadConfig } from "./config";
 import { createLogger } from "./lib/logger";
 import { createCognitoVerifiers } from "./middleware/auth";
 import { createApp } from "./app";
+import { OnboardingSessionStore } from "./lib/onboarding-session-store";
 
 async function main() {
   const config = loadConfig();
@@ -17,6 +18,11 @@ async function main() {
   await redis.connect();
   logger.info({ redisUrl: config.redisUrl }, "Redis connected");
 
+  const sessionStore = new OnboardingSessionStore(redis as any, {
+    ttlSeconds: config.onboardingSessionTtlSeconds,
+    frontendOrigin: config.onboardingFrontendOrigin,
+  });
+
   const { accessTokenVerifier, idTokenVerifier } = createCognitoVerifiers(
     config.cognitoUserPoolId,
     config.cognitoClientId,
@@ -27,6 +33,7 @@ async function main() {
     logger,
     config,
     kv: redis as any,
+    sessionStore,
   });
 
   app.listen(config.port, () => {

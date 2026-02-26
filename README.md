@@ -10,6 +10,7 @@ Backend service for onboarding durable session storage and ingestion/providers (
 - `REDIS_URL`: Redis connection string for durable session/token state.
 - `ONBOARDING_API_ORIGIN`: Public origin for this service (used for OAuth redirect URIs).
 - `ONBOARDING_FRONTEND_ORIGIN`: Frontend origin to redirect back to after OAuth and to build mobile URLs.
+- `ONBOARDING_SESSION_TTL_SECONDS`: TTL (seconds) for onboarding sessions (defaults to `86400`).
 
 ### Gmail OAuth (recommended for Gmail features)
 - `GOOGLE_CLIENT_ID`: Google OAuth client id for Gmail authorization.

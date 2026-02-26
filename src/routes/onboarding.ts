@@ -1,11 +1,16 @@
-import { Router } from "express";
-import type { Response } from "express";
-import type { AuthenticatedRequest } from "../types";
-import { ApiError } from "../types";
+import { Router, type Request, type Response } from "express";
+import type { Logger } from "../lib/logger";
 import type { Config } from "../config";
+import { ApiError, type AuthContext } from "../types";
+import type { CapturedPhoto, ScannedBarcode } from "../lib/onboarding-session-store";
+import { OnboardingSessionStore } from "../lib/onboarding-session-store";
 import { GmailOAuthStore } from "../lib/gmail-oauth-store";
-import { buildGmailAuthUrl } from "../lib/google-oauth";
-import { refreshAccessToken } from "../lib/google-oauth";
+import { buildGmailAuthUrl, refreshAccessToken } from "../lib/google-oauth";
+
+const TOKEN_EXPIRED_MESSAGE =
+  "Session expired. Please reopen the link from the desktop session.";
+const TOKEN_INVALID_MESSAGE =
+  "Invalid session token. Please reopen the link from the desktop session.";
 
 function requireGmailConfig(config: Config): { clientId: string; clientSecret: string } {
   if (!config.googleClientId || !config.googleClientSecret) {
@@ -20,34 +25,109 @@ function isAccessTokenFresh(expiresAtMs: number | null): boolean {
   return Date.now() + skewMs < expiresAtMs;
 }
 
-export function createOnboardingRoutes(params: {
+function tokenParam(req: { query: unknown }): string | null {
+  const query = req.query as Record<string, unknown> | undefined;
+  const value = query?.token;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function sendTokenError(res: Response, kind: "expired" | "invalid") {
+  if (kind === "expired") {
+    res.status(401).json({ code: "session_expired", message: TOKEN_EXPIRED_MESSAGE });
+    return;
+  }
+  res.status(403).json({ code: "invalid_session_token", message: TOKEN_INVALID_MESSAGE });
+}
+
+function mapApiErrorToAdHocResponse(res: Response, err: ApiError) {
+  if (err.statusCode === 404) {
+    res.status(404).json({ error: err.message });
+    return;
+  }
+  if (err.statusCode === 429) {
+    res.setHeader("Retry-After", "10");
+    res.status(429).json({ error: err.message });
+    return;
+  }
+  if (err.statusCode === 400 || err.statusCode === 422) {
+    res.status(400).json({ error: err.message });
+    return;
+  }
+  // Default: fall back to stable error handler.
+  throw err;
+}
+
+type MaybeAuthRequest = Request & { auth?: AuthContext; requestId?: string };
+
+async function requireSessionAccess(params: {
+  req: MaybeAuthRequest;
+  res: Response;
+  store: OnboardingSessionStore;
+  sessionId: string;
+}): Promise<{ createdAt: string } | null> {
+  const token = tokenParam(params.req);
+  if (token) {
+    const result = await params.store.validateToken(params.sessionId, token);
+    if (result === "expired") {
+      sendTokenError(params.res, "expired");
+      return null;
+    }
+    if (result === "invalid") {
+      sendTokenError(params.res, "invalid");
+      return null;
+    }
+    const meta = await params.store.getMeta(params.sessionId);
+    if (!meta) {
+      sendTokenError(params.res, "expired");
+      return null;
+    }
+    return { createdAt: meta.createdAt };
+  }
+
+  const auth = params.req.auth;
+  if (!auth) {
+    params.res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+  const meta = await params.store.getMeta(params.sessionId);
+  if (!meta) {
+    params.res.status(404).json({ error: "Session not found" });
+    return null;
+  }
+  if (meta.userId !== auth.sub || meta.tenantId !== auth.tenantId) {
+    params.res.status(404).json({ error: "Session not found" });
+    return null;
+  }
+  return { createdAt: meta.createdAt };
+}
+
+export function createOnboardingRoutes(deps: {
+  logger: Logger;
+  sessionStore: OnboardingSessionStore;
   config: Config;
   gmailStore: GmailOAuthStore;
 }) {
   const router = Router();
 
-  router.get("/session", (req, res: Response) => {
-    const { sub, tenantId } = (req as AuthenticatedRequest).auth;
-    res.json({
-      data: {
-        userId: sub,
-        tenantId,
-        message: "Session endpoint placeholder",
-      },
-    });
+  router.get("/health", (_req, res: Response) => {
+    res.json({ status: "ok" });
   });
 
   router.post("/gmail/oauth/start", async (req, res) => {
-    const { sub, tenantId } = (req as AuthenticatedRequest).auth;
-    const gmail = requireGmailConfig(params.config);
+    const auth = (req as MaybeAuthRequest).auth;
+    if (!auth) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
-    const { stateId } = await params.gmailStore.createOauthState({
-      tenantId,
-      userId: sub,
+    const gmail = requireGmailConfig(deps.config);
+    const { stateId } = await deps.gmailStore.createOauthState({
+      tenantId: auth.tenantId,
+      userId: auth.sub,
       returnTo: req.body?.returnTo,
     });
 
-    const redirectUri = `${params.config.onboardingApiOrigin}/api/onboarding/gmail/oauth/callback`;
+    const redirectUri = `${deps.config.onboardingApiOrigin}/api/onboarding/gmail/oauth/callback`;
     const authUrl = buildGmailAuthUrl({
       clientId: gmail.clientId,
       clientSecret: gmail.clientSecret,
@@ -59,14 +139,26 @@ export function createOnboardingRoutes(params: {
   });
 
   router.get("/gmail/status", async (req, res) => {
-    const { sub, tenantId } = (req as AuthenticatedRequest).auth;
-    const configured = Boolean(params.config.googleClientId && params.config.googleClientSecret && params.config.onboardingTokenEncryptionKey);
+    const auth = (req as MaybeAuthRequest).auth;
+    if (!auth) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const configured = Boolean(
+      deps.config.googleClientId
+      && deps.config.googleClientSecret
+      && deps.config.onboardingTokenEncryptionKey,
+    );
     if (!configured) {
       res.json({ configured: false, connected: false });
       return;
     }
 
-    const tokens = await params.gmailStore.getTokens({ tenantId, userId: sub });
+    const tokens = await deps.gmailStore.getTokens({
+      tenantId: auth.tenantId,
+      userId: auth.sub,
+    });
     if (!tokens) {
       res.json({ configured: true, connected: false });
       return;
@@ -81,18 +173,17 @@ export function createOnboardingRoutes(params: {
       return;
     }
 
-    // Validate refresh viability by performing a refresh when needed.
     try {
-      const gmail = requireGmailConfig(params.config);
+      const gmail = requireGmailConfig(deps.config);
       const refreshed = await refreshAccessToken({
         refreshToken: tokens.refreshToken,
         clientId: gmail.clientId,
         clientSecret: gmail.clientSecret,
       });
 
-      await params.gmailStore.setTokens({
-        tenantId,
-        userId: sub,
+      await deps.gmailStore.setTokens({
+        tenantId: auth.tenantId,
+        userId: auth.sub,
         refreshToken: tokens.refreshToken,
         accessToken: refreshed.accessToken,
         expiryDateMs: refreshed.expiryDateMs,
@@ -107,6 +198,199 @@ export function createOnboardingRoutes(params: {
       res.json({ configured: true, connected: false });
     }
   });
+
+  router.post("/sessions", async (req, res: Response) => {
+    try {
+      const auth = (req as MaybeAuthRequest).auth;
+      if (!auth) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { sub, tenantId } = auth;
+      const created = await deps.sessionStore.createSession({
+        tenantId,
+        userId: sub,
+      });
+      deps.logger.info(
+        { sessionId: created.sessionId, tenantId, userId: sub },
+        "Onboarding session created",
+      );
+      res.json({
+        sessionId: created.sessionId,
+        mobileBarcodeUrl: created.mobileBarcodeUrl,
+        mobilePhotoUrl: created.mobilePhotoUrl,
+      });
+    } catch (err) {
+      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+      throw err;
+    }
+  });
+
+  router.get("/scan-sessions/:sessionId/barcodes", async (req, res: Response) => {
+    const sessionId = req.params.sessionId;
+    try {
+      const access = await requireSessionAccess({
+        req: req as MaybeAuthRequest,
+        res,
+        store: deps.sessionStore,
+        sessionId,
+      });
+      if (!access) return;
+
+      const barcodes = await deps.sessionStore.listBarcodes(sessionId);
+      res.json({
+        barcodes,
+        sessionCreatedAt: access.createdAt,
+        totalCount: barcodes.length,
+      });
+    } catch (err) {
+      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+      throw err;
+    }
+  });
+
+  router.post("/scan-sessions/:sessionId/barcodes", async (req, res: Response) => {
+    const sessionId = req.params.sessionId;
+    try {
+      const access = await requireSessionAccess({
+        req: req as MaybeAuthRequest,
+        res,
+        store: deps.sessionStore,
+        sessionId,
+      });
+      if (!access) return;
+
+      const body = (req.body ?? null) as { barcode?: unknown } | null;
+      const barcode = body?.barcode as ScannedBarcode | undefined;
+      if (!barcode?.barcode || typeof barcode.barcode !== "string") {
+        res.status(400).json({ error: "barcode is required" });
+        return;
+      }
+
+      const result = await deps.sessionStore.addBarcode(sessionId, barcode);
+      res.json({ success: true, duplicate: result.duplicate || undefined, barcode: result.barcode });
+    } catch (err) {
+      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+      throw err;
+    }
+  });
+
+  router.put(
+    "/scan-sessions/:sessionId/barcodes/:barcodeId",
+    async (req, res: Response) => {
+      const { sessionId, barcodeId } = req.params;
+      try {
+        const access = await requireSessionAccess({
+          req: req as MaybeAuthRequest,
+          res,
+          store: deps.sessionStore,
+          sessionId,
+        });
+        if (!access) return;
+
+        const patch = (req.body ?? null) as Partial<ScannedBarcode> | null;
+        const next = await deps.sessionStore.updateBarcode(sessionId, barcodeId, patch ?? {});
+        res.json({ success: true, barcode: next });
+      } catch (err) {
+        if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+        throw err;
+      }
+    },
+  );
+
+  router.get("/photo-sessions/:sessionId/photos", async (req, res: Response) => {
+    const sessionId = req.params.sessionId;
+    try {
+      const access = await requireSessionAccess({
+        req: req as MaybeAuthRequest,
+        res,
+        store: deps.sessionStore,
+        sessionId,
+      });
+      if (!access) return;
+
+      const photos = await deps.sessionStore.listPhotos(sessionId);
+      res.json({
+        photos,
+        sessionCreatedAt: access.createdAt,
+        totalCount: photos.length,
+      });
+    } catch (err) {
+      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+      throw err;
+    }
+  });
+
+  router.post("/photo-sessions/:sessionId/photos", async (req, res: Response) => {
+    const sessionId = req.params.sessionId;
+    try {
+      const access = await requireSessionAccess({
+        req: req as MaybeAuthRequest,
+        res,
+        store: deps.sessionStore,
+        sessionId,
+      });
+      if (!access) return;
+
+      const body = (req.body ?? null) as { photo?: unknown } | null;
+      const photo = body?.photo as CapturedPhoto | undefined;
+      if (!photo?.imageData || typeof photo.imageData !== "string") {
+        res.status(400).json({ error: "photo.imageData is required" });
+        return;
+      }
+
+      const saved = await deps.sessionStore.addPhoto(sessionId, photo);
+      res.json({ success: true, photo: saved });
+    } catch (err) {
+      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+      throw err;
+    }
+  });
+
+  router.get(
+    "/photo-sessions/:sessionId/photos/:photoId",
+    async (req, res: Response) => {
+      const { sessionId, photoId } = req.params;
+      try {
+        const access = await requireSessionAccess({
+          req: req as MaybeAuthRequest,
+          res,
+          store: deps.sessionStore,
+          sessionId,
+        });
+        if (!access) return;
+
+        const photo = await deps.sessionStore.getPhoto(sessionId, photoId);
+        res.json({ photo });
+      } catch (err) {
+        if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+        throw err;
+      }
+    },
+  );
+
+  router.put(
+    "/photo-sessions/:sessionId/photos/:photoId/metadata",
+    async (req, res: Response) => {
+      const { sessionId, photoId } = req.params;
+      try {
+        const access = await requireSessionAccess({
+          req: req as MaybeAuthRequest,
+          res,
+          store: deps.sessionStore,
+          sessionId,
+        });
+        if (!access) return;
+
+        const patch = (req.body ?? null) as Partial<CapturedPhoto> | null;
+        const next = await deps.sessionStore.updatePhotoMetadata(sessionId, photoId, patch ?? {});
+        res.json({ success: true, photo: next });
+      } catch (err) {
+        if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+        throw err;
+      }
+    },
+  );
 
   return router;
 }

@@ -6,6 +6,7 @@ import { createOnboardingRoutes } from "./routes/onboarding";
 import { createGmailPublicRoutes } from "./routes/gmail-public";
 import type { Logger } from "./lib/logger";
 import type { Config } from "./config";
+import type { OnboardingSessionStore } from "./lib/onboarding-session-store";
 import { GmailOAuthStore, type KeyValueStore } from "./lib/gmail-oauth-store";
 
 export interface AppDependencies {
@@ -13,6 +14,7 @@ export interface AppDependencies {
   logger: Logger;
   config: Config;
   kv: KeyValueStore;
+  sessionStore: OnboardingSessionStore;
 }
 
 export function createApp(deps: AppDependencies) {
@@ -40,18 +42,37 @@ export function createApp(deps: AppDependencies) {
     }),
   );
 
-  // All /api/onboarding/* routes require auth
   const authMiddleware = createAuthMiddleware(deps.auth);
+  const onboardingRoutes = createOnboardingRoutes({
+    logger: deps.logger,
+    sessionStore: deps.sessionStore,
+    config: deps.config,
+    gmailStore,
+  });
+
+  // Most /api/onboarding/* routes require auth.
+  // Exception: mobile token flows for scan/photo sessions (no Cognito headers).
   app.use(
     "/api/onboarding",
-    authMiddleware as express.RequestHandler,
-    createOnboardingRoutes({
-      config: deps.config,
-      gmailStore,
-    }),
+    ((req, res, next) => {
+      const path = req.path ?? "";
+      if (path === "/health") return next();
+
+      const query = req.query as Record<string, unknown> | undefined;
+      const token = query?.token;
+      const isTokenFlow =
+        typeof token === "string" &&
+        token.length > 0 &&
+        (path.startsWith("/scan-sessions/") || path.startsWith("/photo-sessions/"));
+
+      if (isTokenFlow) return next();
+      return (authMiddleware as express.RequestHandler)(req, res, next);
+    }) as express.RequestHandler,
+    onboardingRoutes as express.RequestHandler,
   );
 
   app.use(createErrorHandler(deps.logger) as express.ErrorRequestHandler);
 
   return app;
 }
+

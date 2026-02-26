@@ -5,6 +5,7 @@ export interface Config {
   redisUrl: string;
   onboardingApiOrigin: string;
   onboardingFrontendOrigin: string;
+  onboardingSessionTtlSeconds: number;
   onboardingTokenEncryptionKey: Buffer | null;
   googleClientId: string | null;
   googleClientSecret: string | null;
@@ -47,6 +48,11 @@ function decodeEncryptionKeyBase64(value: string): Buffer {
 }
 
 export function loadConfig(): Config {
+  const ttlSeconds = parseInt(process.env.ONBOARDING_SESSION_TTL_SECONDS ?? "86400", 10);
+  if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
+    throw new Error("Invalid ONBOARDING_SESSION_TTL_SECONDS (must be a positive integer)");
+  }
+
   const encryptionKeyBase64 = optionalEnv("ONBOARDING_TOKEN_ENCRYPTION_KEY_BASE64");
 
   return {
@@ -56,6 +62,7 @@ export function loadConfig(): Config {
     redisUrl: requireEnv("REDIS_URL"),
     onboardingApiOrigin: normalizeOrigin(requireEnv("ONBOARDING_API_ORIGIN")),
     onboardingFrontendOrigin: normalizeOrigin(requireEnv("ONBOARDING_FRONTEND_ORIGIN")),
+    onboardingSessionTtlSeconds: ttlSeconds,
     onboardingTokenEncryptionKey: encryptionKeyBase64
       ? decodeEncryptionKeyBase64(encryptionKeyBase64)
       : null,
@@ -66,3 +73,4 @@ export function loadConfig(): Config {
     nodeEnv: process.env.NODE_ENV ?? "development",
   };
 }
+
