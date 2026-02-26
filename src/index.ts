@@ -4,6 +4,7 @@ import { createLogger } from "./lib/logger";
 import { createCognitoVerifiers } from "./middleware/auth";
 import { createApp } from "./app";
 import { OnboardingSessionStore } from "./lib/onboarding-session-store";
+import { S3Client } from "@aws-sdk/client-s3";
 
 async function main() {
   const config = loadConfig();
@@ -23,6 +24,8 @@ async function main() {
     frontendOrigin: config.onboardingFrontendOrigin,
   });
 
+  const s3 = new S3Client({ region: config.awsRegion });
+
   const { accessTokenVerifier, idTokenVerifier } = createCognitoVerifiers(
     config.cognitoUserPoolId,
     config.cognitoClientId,
@@ -34,6 +37,7 @@ async function main() {
     config,
     kv: redis as any,
     sessionStore,
+    s3,
   });
 
   app.listen(config.port, () => {
@@ -49,4 +53,3 @@ main().catch((err) => {
   console.error("Failed to start onboarding-api:", err);
   process.exit(1);
 });
-

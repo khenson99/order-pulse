@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import type { S3Client } from "@aws-sdk/client-s3";
 import type { Logger } from "../lib/logger";
 import type { Config } from "../config";
 import { ApiError, type AuthContext } from "../types";
@@ -6,6 +7,7 @@ import type { CapturedPhoto, ScannedBarcode } from "../lib/onboarding-session-st
 import { OnboardingSessionStore } from "../lib/onboarding-session-store";
 import { GmailOAuthStore } from "../lib/gmail-oauth-store";
 import { buildGmailAuthUrl, refreshAccessToken } from "../lib/google-oauth";
+import { createImageUploadUrl } from "../lib/image-upload";
 
 const TOKEN_EXPIRED_MESSAGE =
   "Session expired. Please reopen the link from the desktop session.";
@@ -106,6 +108,7 @@ export function createOnboardingRoutes(deps: {
   sessionStore: OnboardingSessionStore;
   config: Config;
   gmailStore: GmailOAuthStore;
+  s3: S3Client;
 }) {
   const router = Router();
 
@@ -220,6 +223,36 @@ export function createOnboardingRoutes(deps: {
         mobileBarcodeUrl: created.mobileBarcodeUrl,
         mobilePhotoUrl: created.mobilePhotoUrl,
       });
+    } catch (err) {
+      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
+      throw err;
+    }
+  });
+
+  router.post("/session/images/upload-url", async (req, res: Response) => {
+    try {
+      const auth = (req as MaybeAuthRequest).auth;
+      if (!auth) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const body = (req.body ?? null) as { fileName?: unknown; contentType?: unknown } | null;
+      const fileName = typeof body?.fileName === "string" ? body?.fileName : "";
+      const contentType = typeof body?.contentType === "string" ? body?.contentType : "";
+
+      const result = await createImageUploadUrl({
+        s3: deps.s3,
+        bucket: deps.config.onboardingImageUploadBucket,
+        prefix: deps.config.onboardingImageUploadPrefix,
+        expiresInSeconds: deps.config.onboardingImageUploadUrlExpiresInSeconds,
+        tenantId: auth.tenantId,
+        userId: auth.sub,
+        fileName,
+        contentType,
+      });
+
+      res.json(result);
     } catch (err) {
       if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
       throw err;

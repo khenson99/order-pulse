@@ -9,6 +9,9 @@ export interface Config {
   onboardingTokenEncryptionKey: Buffer | null;
   googleClientId: string | null;
   googleClientSecret: string | null;
+  onboardingImageUploadBucket: string;
+  onboardingImageUploadPrefix: string;
+  onboardingImageUploadUrlExpiresInSeconds: number;
   port: number;
   logLevel: string;
   nodeEnv: string;
@@ -53,6 +56,16 @@ export function loadConfig(): Config {
     throw new Error("Invalid ONBOARDING_SESSION_TTL_SECONDS (must be a positive integer)");
   }
 
+  const uploadExpiresSeconds = parseInt(
+    process.env.ONBOARDING_IMAGE_UPLOAD_URL_EXPIRES_IN_SECONDS ?? "900",
+    10,
+  );
+  if (!Number.isFinite(uploadExpiresSeconds) || uploadExpiresSeconds <= 0) {
+    throw new Error(
+      "Invalid ONBOARDING_IMAGE_UPLOAD_URL_EXPIRES_IN_SECONDS (must be a positive integer)",
+    );
+  }
+
   const encryptionKeyBase64 = optionalEnv("ONBOARDING_TOKEN_ENCRYPTION_KEY_BASE64");
 
   return {
@@ -68,6 +81,10 @@ export function loadConfig(): Config {
       : null,
     googleClientId: optionalEnv("GOOGLE_CLIENT_ID"),
     googleClientSecret: optionalEnv("GOOGLE_CLIENT_SECRET"),
+    onboardingImageUploadBucket: requireEnv("ONBOARDING_IMAGE_UPLOAD_BUCKET"),
+    onboardingImageUploadPrefix:
+      process.env.ONBOARDING_IMAGE_UPLOAD_PREFIX ?? "onboarding",
+    onboardingImageUploadUrlExpiresInSeconds: uploadExpiresSeconds,
     port: parseInt(process.env.PORT ?? "3001", 10),
     logLevel: process.env.LOG_LEVEL ?? "info",
     nodeEnv: process.env.NODE_ENV ?? "development",

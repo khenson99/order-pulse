@@ -8,6 +8,7 @@ import type { Logger } from "./lib/logger";
 import type { Config } from "./config";
 import type { OnboardingSessionStore } from "./lib/onboarding-session-store";
 import { GmailOAuthStore, type KeyValueStore } from "./lib/gmail-oauth-store";
+import type { S3Client } from "@aws-sdk/client-s3";
 
 export interface AppDependencies {
   auth: AuthDependencies;
@@ -15,10 +16,12 @@ export interface AppDependencies {
   config: Config;
   kv: KeyValueStore;
   sessionStore: OnboardingSessionStore;
+  s3: S3Client;
 }
 
 export function createApp(deps: AppDependencies) {
   const app = express();
+  app.locals.logger = deps.logger;
 
   app.use(express.json());
   app.use(requestIdMiddleware as express.RequestHandler);
@@ -48,6 +51,7 @@ export function createApp(deps: AppDependencies) {
     sessionStore: deps.sessionStore,
     config: deps.config,
     gmailStore,
+    s3: deps.s3,
   });
 
   // Most /api/onboarding/* routes require auth.
@@ -75,4 +79,3 @@ export function createApp(deps: AppDependencies) {
 
   return app;
 }
-
