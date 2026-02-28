@@ -148,6 +148,8 @@ function makeConfig(): Config {
     onboardingImageUploadBucket: "bucket",
     onboardingImageUploadPrefix: "onboarding",
     onboardingImageUploadUrlExpiresInSeconds: 900,
+    onboardingImageMaxBytes: 5242880,
+    onboardingImagePublicBaseUrl: null,
     port: 3002,
     logLevel: "silent",
     nodeEnv: "test",
@@ -300,5 +302,41 @@ describe("onboarding routes", () => {
       error: { code: "SESSION_EXPIRED", message: expect.any(String), requestId: expect.any(String) },
     });
   });
-});
 
+  it("uploads images server-side with stable success response", async () => {
+    const redis = new FakeRedis();
+    const config = makeConfig();
+    const store = new OnboardingSessionStore(redis as any, {
+      ttlSeconds: 60,
+      frontendOrigin: config.onboardingFrontendOrigin,
+    });
+
+    const accessTokenVerifier = { verify: vi.fn().mockResolvedValue({ sub: "u1", token_use: "access" }) };
+    const idTokenVerifier = {
+      verify: vi.fn().mockResolvedValue({ sub: "u1", email: "u1@example.com", "custom:tenant": "t1" }),
+    };
+
+    const s3 = { send: vi.fn().mockResolvedValue({}) };
+    const app = createApp({
+      auth: { accessTokenVerifier, idTokenVerifier, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any,
+      config,
+      kv: new FakeKv(),
+      sessionStore: store,
+      s3: s3 as any,
+    });
+
+    const imageData = `data:image/png;base64,${Buffer.from("hello").toString("base64")}`;
+    const res = await request(app)
+      .post("/api/onboarding/images/upload")
+      .set("Authorization", "Bearer test-access")
+      .set("X-ID-Token", "test-id")
+      .send({ imageData });
+
+    expect(res.status).toBe(200);
+    expect(res.body.imageUrl).toMatch(
+      /^https:\/\/bucket\.s3\.amazonaws\.com\/onboarding\/t1\/u1\/[0-9a-f-]{36}\.png$/,
+    );
+    expect(s3.send).toHaveBeenCalledTimes(1);
+  });
+});

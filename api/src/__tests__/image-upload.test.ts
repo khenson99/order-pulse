@@ -7,7 +7,7 @@ vi.mock("@aws-sdk/s3-request-presigner", () => {
 });
 
 import { S3Client } from "@aws-sdk/client-s3";
-import { createImageUploadUrl } from "../lib/image-upload";
+import { createImageUploadUrl, uploadImageDataUrl } from "../lib/image-upload";
 import { ApiError } from "../types";
 
 describe("createImageUploadUrl", () => {
@@ -54,3 +54,56 @@ describe("createImageUploadUrl", () => {
   });
 });
 
+describe("uploadImageDataUrl", () => {
+  it("uploads base64 data URL bytes and returns a public imageUrl", async () => {
+    const s3 = { send: vi.fn().mockResolvedValue({}) };
+    const imageData = `data:image/png;base64,${Buffer.from("hello").toString("base64")}`;
+
+    const result = await uploadImageDataUrl({
+      s3,
+      bucket: "bucket-1",
+      prefix: "onboarding",
+      maxBytes: 1024,
+      region: "us-east-1",
+      publicBaseUrl: null,
+      tenantId: "tenant-a",
+      userId: "user-b",
+      imageData,
+    });
+
+    expect(s3.send).toHaveBeenCalledTimes(1);
+    expect(result.contentType).toBe("image/png");
+    expect(result.bytes).toBeGreaterThan(0);
+    expect(result.s3Key).toMatch(
+      /^onboarding\/tenant-a\/user-b\/[0-9a-f-]{36}\.png$/,
+    );
+    expect(result.imageUrl).toMatch(
+      /^https:\/\/bucket-1\.s3\.amazonaws\.com\/onboarding\/tenant-a\/user-b\/[0-9a-f-]{36}\.png$/,
+    );
+  });
+
+  it("rejects oversized images with 413 VALIDATION_ERROR", async () => {
+    const s3 = { send: vi.fn().mockResolvedValue({}) };
+    const imageData = `data:image/png;base64,${Buffer.from("hello").toString("base64")}`;
+
+    await expect(
+      uploadImageDataUrl({
+        s3,
+        bucket: "bucket-1",
+        prefix: "onboarding",
+        maxBytes: 1,
+        region: "us-east-1",
+        publicBaseUrl: null,
+        tenantId: "tenant-a",
+        userId: "user-b",
+        imageData,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        name: "ApiError",
+        code: "VALIDATION_ERROR",
+        statusCode: 413,
+      } satisfies Partial<ApiError>),
+    );
+  });
+});
