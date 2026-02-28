@@ -1,5 +1,12 @@
 import { extractUrlsFromHtml, isJunkUrl } from '../utils/urlExtraction.js';
 import { validatePublicHttpUrl } from './urlScraper.js';
+import {
+  MAX_HTML_BYTES,
+  SCRAPER_USER_AGENT,
+  timeoutSignal,
+  looksBlocked,
+  buildJinaUrl,
+} from '../utils/fetchUtils.js';
 
 const FETCH_TIMEOUT_MS = 12_000;
 const DEFAULT_MAX_URLS = 50;
@@ -12,30 +19,6 @@ export interface ListingScrapeResponse {
   message?: string;
   productUrls: string[];
   usedJina?: boolean;
-}
-
-function timeoutSignal(ms: number): AbortSignal {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  controller.signal.addEventListener('abort', () => clearTimeout(timeout), { once: true });
-  return controller.signal;
-}
-
-function looksBlocked(status: number, body: string): boolean {
-  if ([403, 429, 503].includes(status)) return true;
-  const sample = (body || '').slice(0, 5000).toLowerCase();
-  return (
-    sample.includes('access denied')
-    || sample.includes('request blocked')
-    || sample.includes('captcha')
-    || sample.includes('bot detection')
-    || sample.includes('cloudflare')
-    || sample.includes('verify you are human')
-  );
-}
-
-function buildJinaUrl(url: string): string {
-  return `https://r.jina.ai/${url}`;
 }
 
 function normalizeHost(hostname: string): string {
@@ -131,13 +114,23 @@ async function fetchText(fetchFn: typeof fetch, url: string): Promise<{ status: 
     redirect: 'follow',
     signal: timeoutSignal(FETCH_TIMEOUT_MS),
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      'User-Agent': SCRAPER_USER_AGENT,
       'Accept-Language': 'en-US,en;q=0.9',
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     },
   });
 
-  return { status: response.status, body: await response.text() };
+  const contentLength = Number.parseInt(response.headers.get('content-length') || '0', 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES) {
+    throw new Error('Page exceeds maximum size');
+  }
+
+  const body = await response.text();
+  if (body.length > MAX_HTML_BYTES) {
+    throw new Error('Page exceeds maximum size');
+  }
+
+  return { status: response.status, body };
 }
 
 export async function scrapeListingUrl(

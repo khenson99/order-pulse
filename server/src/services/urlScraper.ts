@@ -10,8 +10,14 @@ import {
   resolveUrlCandidate,
   looksLikeImageUrl,
 } from '../utils/urlExtraction.js';
+import {
+  MAX_HTML_BYTES,
+  SCRAPER_USER_AGENT,
+  timeoutSignal,
+  looksBlocked,
+  buildJinaUrl,
+} from '../utils/fetchUtils.js';
 
-const MAX_HTML_BYTES = 2_000_000;
 const FETCH_TIMEOUT_MS = 10_000;
 const CONCURRENCY_LIMIT = 5;
 
@@ -96,13 +102,6 @@ Rules:
 - If unknown, return null for that field.
 - price must be numeric only (no symbols).
 - supplier should be the brand/manufacturer/vendor name if present.`;
-
-function timeoutSignal(ms: number): AbortSignal {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  controller.signal.addEventListener('abort', () => clearTimeout(timeout), { once: true });
-  return controller.signal;
-}
 
 function titleCaseWord(word: string): string {
   if (!word) return word;
@@ -409,7 +408,7 @@ async function fetchPage(fetchFn: typeof fetch, rawUrl: string): Promise<PageFet
     redirect: 'follow',
     signal: timeoutSignal(FETCH_TIMEOUT_MS),
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      'User-Agent': SCRAPER_USER_AGENT,
       'Accept-Language': 'en-US,en;q=0.9',
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     },
@@ -516,23 +515,6 @@ function toResultStatus(item: UrlScrapedItem): 'success' | 'partial' | 'failed' 
   if (hasCore && hasDetails && !item.needsReview) return 'success';
   if (hasCore || hasDetails) return 'partial';
   return 'failed';
-}
-
-function looksBlocked(status: number, html: string): boolean {
-  if ([403, 429, 503].includes(status)) return true;
-  const sample = (html || '').slice(0, 6000).toLowerCase();
-  return (
-    sample.includes('access denied')
-    || sample.includes('request blocked')
-    || sample.includes('captcha')
-    || sample.includes('bot detection')
-    || sample.includes('cloudflare')
-    || sample.includes('verify you are human')
-  );
-}
-
-function buildJinaUrl(url: string): string {
-  return `https://r.jina.ai/${url}`;
 }
 
 async function scrapeOneUrl(
