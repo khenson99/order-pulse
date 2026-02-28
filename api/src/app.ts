@@ -23,7 +23,8 @@ export function createApp(deps: AppDependencies) {
   const app = express();
   app.locals.logger = deps.logger;
 
-  app.use(express.json());
+  // Allow reasonably-sized base64 payloads from mobile/desktop photo capture.
+  app.use(express.json({ limit: "10mb" }));
   app.use(requestIdMiddleware as express.RequestHandler);
 
   // Health check (no auth required)
