@@ -200,4 +200,15 @@ describe('urlIngestion routes', () => {
     expect(response.status).toBe(400);
     expect(mockScrapeListingUrl).not.toHaveBeenCalled();
   });
+
+  it('rejects non-positive maxUrls for listing scrape', async () => {
+    const response = await fetch(`${baseUrl}/api/url-ingestion/scrape-listing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.com/list', maxUrls: 0 }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(mockScrapeListingUrl).not.toHaveBeenCalled();
+  });
 });

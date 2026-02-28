@@ -53,7 +53,7 @@ function looksLikeNonProductPath(pathname: string): boolean {
     '/store',
     '/stores',
   ];
-  return badPrefixes.some(prefix => p.startsWith(prefix));
+  return badPrefixes.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
 }
 
 function scoreProductUrl(url: string, rootHost: string): number {
@@ -237,4 +237,3 @@ export async function scrapeListingUrl(
     usedJina,
   };
 }
-

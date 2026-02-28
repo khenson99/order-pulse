@@ -18,6 +18,23 @@ function mockResponse(options: {
 }
 
 describe('listingScraper', () => {
+  it('does not treat "/store" as a prefix for "/storefront" paths', async () => {
+    const listingUrl = 'https://example.com/list';
+    const html = `
+      <html>
+        <body>
+          <a href="/storefront/product/123">Product</a>
+        </body>
+      </html>
+    `;
+
+    const fetchFn = vi.fn(async (url: string) => mockResponse({ body: html, url })) as unknown as typeof fetch;
+    const result = await scrapeListingUrl(fetchFn, listingUrl, { maxUrls: 10 });
+
+    expect(result.status).toBe('success');
+    expect(result.productUrls).toContain('https://example.com/storefront/product/123');
+  });
+
   it('extracts and ranks product URLs from a listing page', async () => {
     const listingUrl = 'https://www.uline.com/Search/?query=tape';
     const html = `
@@ -70,4 +87,3 @@ describe('listingScraper', () => {
     expect(result.productUrls[0]).toContain('uline.com/Product/Detail/H-999');
   });
 });
-

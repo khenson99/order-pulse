@@ -15,3 +15,11 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   message: 'Too many authentication attempts. Please try again later.',
 });
+
+export const scrapeLimiter = rateLimit({
+  windowMs: rateLimitConfig.windowMs,
+  max: Math.min(rateLimitConfig.max, 30),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many scrape requests. Please try again later.',
+});

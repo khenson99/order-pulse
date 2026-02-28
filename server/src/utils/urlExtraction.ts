@@ -97,7 +97,7 @@ export function extractImageUrlsFromHtml(html: string, baseUrl?: string): string
     html.matchAll(/<meta[^>]*(?:name|property)\s*=\s*["']twitter:image["'][^>]*content\s*=\s*["']([^"']+)["']/gi)
   ).map(m => m[1]);
 
-  const textUrls = extractUrlsFromText(html);
+  const textUrls = extractUrlsFromText(html).filter(looksLikeImageUrl);
   const candidates = [...imgSrcs, ...ogImages, ...twitterImages, ...textUrls];
   const cleaned = candidates
     .map(candidate => (
