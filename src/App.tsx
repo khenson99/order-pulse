@@ -146,7 +146,18 @@ export default function App() {
   }
   
   if (!userProfile) {
-    return <LoginScreen />;
+    return (
+      <LoginScreen
+        onLoginSuccess={(user) => {
+          setUserProfile({
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            picture: user.picture_url,
+          });
+        }}
+      />
+    );
   }
 
   // Show completion screen if onboarding is done
