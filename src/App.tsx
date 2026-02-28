@@ -21,6 +21,7 @@ export default function App() {
   
   // Track if user has completed onboarding
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [initialReturnTo, setInitialReturnTo] = useState<string | null>(null);
   const [importedItemCount, setImportedItemCount] = useState(0);
   const [syncedTenant, setSyncedTenant] = useState<ArdaSyncedTenantContext | null>(null);
 
@@ -69,6 +70,9 @@ export default function App() {
           // Exchange token for session
           console.log('🔑 Exchanging auth token...');
           data = await authApi.exchangeToken(authToken);
+          // Preserve returnTo before cleaning URL (used after Gmail-linking redirect)
+          const returnTo = urlParams.get('returnTo');
+          if (returnTo) setInitialReturnTo(returnTo);
           // Clean up URL
           window.history.replaceState({}, '', window.location.pathname);
           if (!data.user) return;
@@ -257,6 +261,7 @@ export default function App() {
       onComplete={handleOnboardingComplete}
       onSkip={() => setHasCompletedOnboarding(true)}
       userProfile={{ name: userProfile.name, email: userProfile.email }}
+      initialReturnTo={initialReturnTo}
     />
   );
 }
