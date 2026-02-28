@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const ARDA_BASE_URL = process.env.ARDA_BASE_URL || 'https://prod.alpha001.io.arda.cards';
 const ARDA_API_KEY = process.env.ARDA_API_KEY;
+const ARDA_TENANT_ID = process.env.ARDA_TENANT_ID;
 
 // Cache for tenant lookups (reserved for future use)
 // const tenantCache = new Map<string, string>();
@@ -355,7 +356,7 @@ export async function getTenantByEmail(email: string): Promise<string | null> {
 }
 
 // Resolve tenant using actor context:
-// 1) explicit actor tenant, 2) email->Cognito mapping.
+// 1) explicit actor tenant, 2) email->Cognito mapping, 3) legacy env fallback.
 async function resolveTenantId(actor: ArdaActor): Promise<string> {
   if (actor.tenantId) {
     return actor.tenantId;
@@ -373,14 +374,43 @@ async function resolveTenantId(actor: ArdaActor): Promise<string> {
     );
   }
 
+  if (ARDA_TENANT_ID && !isPlaceholderTenantId(ARDA_TENANT_ID)) {
+    return ARDA_TENANT_ID;
+  }
+
   throw new Error(
     'Unable to resolve tenant ID: authenticated email mapping or explicit actor tenantId is required.'
   );
 }
 
+function isPlaceholderTenantId(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+
+  if (
+    normalized === 'your_tenant_uuid_here' ||
+    normalized === 'your-tenant-uuid-here' ||
+    normalized === 'your-arda-tenant-id' ||
+    normalized === 'your_arda_tenant_id'
+  ) {
+    return true;
+  }
+
+  // Generic heuristic: common placeholder patterns seen in example env files.
+  if (normalized.includes('your') && normalized.includes('tenant')) {
+    return true;
+  }
+
+  return false;
+}
+
 // Check if mock mode is enabled
 export function isMockMode(): boolean {
-  return process.env.ARDA_MOCK_MODE === 'true' || !ARDA_API_KEY;
+  return (
+    process.env.ARDA_MOCK_MODE === 'true' ||
+    !ARDA_API_KEY ||
+    (Boolean(ARDA_TENANT_ID) && isPlaceholderTenantId(ARDA_TENANT_ID!))
+  );
 }
 
 // Map color string to Arda ItemColor enum
@@ -607,5 +637,5 @@ export const ardaService = {
   isMockMode,
   createItemFromVelocity,
   syncVelocityToArda,
-  isConfigured: () => Boolean(ARDA_API_KEY),
+  isConfigured: () => Boolean(ARDA_API_KEY) && Boolean(ARDA_TENANT_ID) && !isPlaceholderTenantId(ARDA_TENANT_ID!),
 };
