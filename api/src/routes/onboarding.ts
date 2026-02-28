@@ -7,7 +7,7 @@ import type { CapturedPhoto, ScannedBarcode } from "../lib/onboarding-session-st
 import { OnboardingSessionStore } from "../lib/onboarding-session-store";
 import { GmailOAuthStore, type KeyValueStore } from "../lib/gmail-oauth-store";
 import { buildGmailAuthUrl, refreshAccessToken } from "../lib/google-oauth";
-import { createImageUploadUrl } from "../lib/image-upload";
+import { createImageUploadUrl, uploadImageDataUrl } from "../lib/image-upload";
 import { lookupProductByBarcode, validateBarcodeLookupCode } from "../lib/barcode-lookup";
 import { scrapeUrls } from "../lib/url-scraper";
 import { analyzePhoto } from "../lib/photo-analysis";
@@ -211,6 +211,41 @@ export function createOnboardingRoutes(deps: {
     });
 
     res.json(result);
+  });
+
+  router.post("/images/upload", async (req, res: Response) => {
+    const auth = requireAuth(req as MaybeAuthRequest);
+
+    const body = (req.body ?? null) as { imageData?: unknown } | null;
+    const imageData = typeof body?.imageData === "string" ? body.imageData : "";
+    if (!imageData) {
+      throw new ApiError(422, "VALIDATION_ERROR", "imageData is required");
+    }
+
+    const result = await uploadImageDataUrl({
+      s3: deps.s3 as any,
+      bucket: deps.config.onboardingImageUploadBucket,
+      prefix: deps.config.onboardingImageUploadPrefix,
+      maxBytes: deps.config.onboardingImageMaxBytes,
+      region: deps.config.awsRegion,
+      publicBaseUrl: deps.config.onboardingImagePublicBaseUrl,
+      tenantId: auth.tenantId,
+      userId: auth.sub,
+      imageData,
+    });
+
+    deps.logger.info(
+      {
+        tenantId: auth.tenantId,
+        userId: auth.sub,
+        s3Key: result.s3Key,
+        bytes: result.bytes,
+        contentType: result.contentType,
+      },
+      "Image uploaded",
+    );
+
+    res.json({ imageUrl: result.imageUrl });
   });
 
   router.get("/barcode/lookup", async (req, res: Response) => {

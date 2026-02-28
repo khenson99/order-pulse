@@ -13,6 +13,8 @@ export interface Config {
   onboardingImageUploadBucket: string;
   onboardingImageUploadPrefix: string;
   onboardingImageUploadUrlExpiresInSeconds: number;
+  onboardingImageMaxBytes: number;
+  onboardingImagePublicBaseUrl: string | null;
   port: number;
   logLevel: string;
   nodeEnv: string;
@@ -67,6 +69,11 @@ export function loadConfig(): Config {
     );
   }
 
+  const maxBytes = parseInt(process.env.ONBOARDING_IMAGE_MAX_BYTES ?? "5242880", 10);
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+    throw new Error("Invalid ONBOARDING_IMAGE_MAX_BYTES (must be a positive integer)");
+  }
+
   const encryptionKeyBase64 = optionalEnv("ONBOARDING_TOKEN_ENCRYPTION_KEY_BASE64");
 
   return {
@@ -87,6 +94,8 @@ export function loadConfig(): Config {
     onboardingImageUploadPrefix:
       process.env.ONBOARDING_IMAGE_UPLOAD_PREFIX ?? "onboarding",
     onboardingImageUploadUrlExpiresInSeconds: uploadExpiresSeconds,
+    onboardingImageMaxBytes: maxBytes,
+    onboardingImagePublicBaseUrl: optionalEnv("ONBOARDING_IMAGE_PUBLIC_BASE_URL"),
     port: parseInt(process.env.PORT ?? "3001", 10),
     logLevel: process.env.LOG_LEVEL ?? "info",
     nodeEnv: process.env.NODE_ENV ?? "development",
