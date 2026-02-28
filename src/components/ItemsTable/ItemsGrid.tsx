@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, GridReadyEvent, CellValueChangedEvent, GetRowIdParams, RowClassRules } from 'ag-grid-community';
+import { themeQuartz } from 'ag-grid-community';
 import './gridSetup';
 import './ardaGridTheme.css';
 import type { MasterListItem, RowSyncState } from './types';
@@ -12,6 +13,33 @@ import { ColorCellEditor } from './cellRenderers/ColorCellEditor';
 import { SyncStatusRenderer } from './cellRenderers/SyncStatusRenderer';
 import { ActionsCellRenderer } from './cellRenderers/ActionsCellRenderer';
 import { UrlCellRenderer } from './cellRenderers/UrlCellRenderer';
+
+const ardaTheme = themeQuartz.withParams({
+  fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+  fontSize: 13,
+  backgroundColor: '#ffffff',
+  headerBackgroundColor: '#f9fafb',
+  oddRowBackgroundColor: '#ffffff',
+  rowHoverColor: '#f9fafb',
+  headerCellHoverBackgroundColor: '#f3f4f6',
+  selectedRowBackgroundColor: '#fff7ed',
+  modalOverlayBackgroundColor: 'rgba(0, 0, 0, 0.3)',
+  rangeSelectionBorderColor: '#FC5A29',
+  rangeSelectionBackgroundColor: 'rgba(252, 90, 41, 0.08)',
+  accentColor: '#FC5A29',
+  borderColor: '#e5e7eb',
+  headerTextColor: '#4b5563',
+  foregroundColor: '#1f2937',
+  subtleTextColor: '#6b7280',
+  spacing: 4,
+  cellHorizontalPadding: 8,
+  headerHeight: 36,
+  rowHeight: 38,
+  wrapperBorderRadius: 12,
+  borderRadius: 6,
+  cardShadow: '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)',
+  popupShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)',
+});
 
 export interface ItemsGridProps {
   items: MasterListItem[];
@@ -265,6 +293,7 @@ export const ItemsGrid: React.FC<ItemsGridProps> = ({
       <div className="ag-theme-arda flex-1" style={{ height: containerHeight, width: '100%' }}>
         <AgGridReact<MasterListItem>
           ref={gridRef}
+          theme={ardaTheme}
           rowData={items}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
