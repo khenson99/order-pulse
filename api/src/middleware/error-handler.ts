@@ -18,6 +18,10 @@ export function createErrorHandler(logger: Logger) {
         "API error",
       );
 
+      if (err.statusCode === 429) {
+        res.setHeader("Retry-After", "10");
+      }
+
       const body: ErrorBody = {
         error: {
           code: err.code,

@@ -32,6 +32,8 @@ describe("API contract", () => {
       "AUTH_MISSING_TOKEN",
       "AUTH_INVALID_TOKEN",
       "AUTH_EXPIRED_TOKEN",
+      "SESSION_EXPIRED",
+      "INVALID_SESSION_TOKEN",
       "VALIDATION_ERROR",
       "NOT_FOUND",
       "INTERNAL_ERROR",

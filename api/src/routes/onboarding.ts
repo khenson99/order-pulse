@@ -36,72 +36,48 @@ function tokenParam(req: { query: unknown }): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function sendTokenError(res: Response, kind: "expired" | "invalid") {
-  if (kind === "expired") {
-    res.status(401).json({ code: "session_expired", message: TOKEN_EXPIRED_MESSAGE });
-    return;
-  }
-  res.status(403).json({ code: "invalid_session_token", message: TOKEN_INVALID_MESSAGE });
-}
-
-function mapApiErrorToAdHocResponse(res: Response, err: ApiError) {
-  if (err.statusCode === 404) {
-    res.status(404).json({ error: err.message });
-    return;
-  }
-  if (err.statusCode === 429) {
-    res.setHeader("Retry-After", "10");
-    res.status(429).json({ error: err.message });
-    return;
-  }
-  if (err.statusCode === 400 || err.statusCode === 422) {
-    res.status(400).json({ error: err.message });
-    return;
-  }
-  // Default: fall back to stable error handler.
-  throw err;
-}
-
 type MaybeAuthRequest = Request & { auth?: AuthContext; requestId?: string };
+
+function requireAuth(req: MaybeAuthRequest): AuthContext {
+  const auth = req.auth;
+  if (!auth) {
+    throw new ApiError(
+      401,
+      "AUTH_MISSING_TOKEN",
+      "Authorization Bearer token and X-ID-Token headers are required",
+    );
+  }
+  return auth;
+}
 
 async function requireSessionAccess(params: {
   req: MaybeAuthRequest;
-  res: Response;
   store: OnboardingSessionStore;
   sessionId: string;
-}): Promise<{ createdAt: string } | null> {
+}): Promise<{ createdAt: string }> {
   const token = tokenParam(params.req);
   if (token) {
     const result = await params.store.validateToken(params.sessionId, token);
     if (result === "expired") {
-      sendTokenError(params.res, "expired");
-      return null;
+      throw new ApiError(401, "SESSION_EXPIRED", TOKEN_EXPIRED_MESSAGE);
     }
     if (result === "invalid") {
-      sendTokenError(params.res, "invalid");
-      return null;
+      throw new ApiError(403, "INVALID_SESSION_TOKEN", TOKEN_INVALID_MESSAGE);
     }
     const meta = await params.store.getMeta(params.sessionId);
     if (!meta) {
-      sendTokenError(params.res, "expired");
-      return null;
+      throw new ApiError(401, "SESSION_EXPIRED", TOKEN_EXPIRED_MESSAGE);
     }
     return { createdAt: meta.createdAt };
   }
 
-  const auth = params.req.auth;
-  if (!auth) {
-    params.res.status(401).json({ error: "Unauthorized" });
-    return null;
-  }
+  const auth = requireAuth(params.req);
   const meta = await params.store.getMeta(params.sessionId);
   if (!meta) {
-    params.res.status(404).json({ error: "Session not found" });
-    return null;
+    throw new ApiError(404, "NOT_FOUND", "Session not found");
   }
   if (meta.userId !== auth.sub || meta.tenantId !== auth.tenantId) {
-    params.res.status(404).json({ error: "Session not found" });
-    return null;
+    throw new ApiError(404, "NOT_FOUND", "Session not found");
   }
   return { createdAt: meta.createdAt };
 }
@@ -121,11 +97,7 @@ export function createOnboardingRoutes(deps: {
   });
 
   router.post("/gmail/oauth/start", async (req, res) => {
-    const auth = (req as MaybeAuthRequest).auth;
-    if (!auth) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    const auth = requireAuth(req as MaybeAuthRequest);
 
     const gmail = requireGmailConfig(deps.config);
     const { stateId } = await deps.gmailStore.createOauthState({
@@ -146,11 +118,7 @@ export function createOnboardingRoutes(deps: {
   });
 
   router.get("/gmail/status", async (req, res) => {
-    const auth = (req as MaybeAuthRequest).auth;
-    if (!auth) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    const auth = requireAuth(req as MaybeAuthRequest);
 
     const configured = Boolean(
       deps.config.googleClientId
@@ -207,67 +175,46 @@ export function createOnboardingRoutes(deps: {
   });
 
   router.post("/sessions", async (req, res: Response) => {
-    try {
-      const auth = (req as MaybeAuthRequest).auth;
-      if (!auth) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const { sub, tenantId } = auth;
-      const created = await deps.sessionStore.createSession({
-        tenantId,
-        userId: sub,
-      });
-      deps.logger.info(
-        { sessionId: created.sessionId, tenantId, userId: sub },
-        "Onboarding session created",
-      );
-      res.json({
-        sessionId: created.sessionId,
-        mobileBarcodeUrl: created.mobileBarcodeUrl,
-        mobilePhotoUrl: created.mobilePhotoUrl,
-      });
-    } catch (err) {
-      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-      throw err;
-    }
+    const auth = requireAuth(req as MaybeAuthRequest);
+    const { sub, tenantId } = auth;
+    const created = await deps.sessionStore.createSession({
+      tenantId,
+      userId: sub,
+    });
+    deps.logger.info(
+      { sessionId: created.sessionId, tenantId, userId: sub },
+      "Onboarding session created",
+    );
+    res.json({
+      sessionId: created.sessionId,
+      mobileBarcodeUrl: created.mobileBarcodeUrl,
+      mobilePhotoUrl: created.mobilePhotoUrl,
+    });
   });
 
   router.post("/session/images/upload-url", async (req, res: Response) => {
-    try {
-      const auth = (req as MaybeAuthRequest).auth;
-      if (!auth) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+    const auth = requireAuth(req as MaybeAuthRequest);
 
-      const body = (req.body ?? null) as { fileName?: unknown; contentType?: unknown } | null;
-      const fileName = typeof body?.fileName === "string" ? body?.fileName : "";
-      const contentType = typeof body?.contentType === "string" ? body?.contentType : "";
+    const body = (req.body ?? null) as { fileName?: unknown; contentType?: unknown } | null;
+    const fileName = typeof body?.fileName === "string" ? body?.fileName : "";
+    const contentType = typeof body?.contentType === "string" ? body?.contentType : "";
 
-      const result = await createImageUploadUrl({
-        s3: deps.s3,
-        bucket: deps.config.onboardingImageUploadBucket,
-        prefix: deps.config.onboardingImageUploadPrefix,
-        expiresInSeconds: deps.config.onboardingImageUploadUrlExpiresInSeconds,
-        tenantId: auth.tenantId,
-        userId: auth.sub,
-        fileName,
-        contentType,
-      });
+    const result = await createImageUploadUrl({
+      s3: deps.s3,
+      bucket: deps.config.onboardingImageUploadBucket,
+      prefix: deps.config.onboardingImageUploadPrefix,
+      expiresInSeconds: deps.config.onboardingImageUploadUrlExpiresInSeconds,
+      tenantId: auth.tenantId,
+      userId: auth.sub,
+      fileName,
+      contentType,
+    });
 
-      res.json(result);
-    } catch (err) {
-      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-      throw err;
-    }
+    res.json(result);
   });
 
   router.get("/barcode/lookup", async (req, res: Response) => {
-    if (!(req as MaybeAuthRequest).auth) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    requireAuth(req as MaybeAuthRequest);
 
     const code = validateBarcodeLookupCode(req.query?.code);
     const product = await lookupProductByBarcode(code, {
@@ -283,10 +230,7 @@ export function createOnboardingRoutes(deps: {
   });
 
   router.post("/url/scrape", async (req, res: Response) => {
-    if (!(req as MaybeAuthRequest).auth) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    requireAuth(req as MaybeAuthRequest);
 
     const body = (req.body ?? null) as { urls?: unknown } | null;
     const urls = body?.urls;
@@ -299,10 +243,7 @@ export function createOnboardingRoutes(deps: {
   });
 
   router.post("/photo/analyze", async (req, res: Response) => {
-    if (!(req as MaybeAuthRequest).auth) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    requireAuth(req as MaybeAuthRequest);
 
     const body = (req.body ?? null) as { imageData?: unknown; imageDataUrl?: unknown } | null;
     const imageData =
@@ -323,144 +264,104 @@ export function createOnboardingRoutes(deps: {
 
   router.get("/scan-sessions/:sessionId/barcodes", async (req, res: Response) => {
     const sessionId = req.params.sessionId;
-    try {
-      const access = await requireSessionAccess({
-        req: req as MaybeAuthRequest,
-        res,
-        store: deps.sessionStore,
-        sessionId,
-      });
-      if (!access) return;
+    const access = await requireSessionAccess({
+      req: req as MaybeAuthRequest,
+      store: deps.sessionStore,
+      sessionId,
+    });
 
-      const barcodes = await deps.sessionStore.listBarcodes(sessionId);
-      res.json({
-        barcodes,
-        sessionCreatedAt: access.createdAt,
-        totalCount: barcodes.length,
-      });
-    } catch (err) {
-      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-      throw err;
-    }
+    const barcodes = await deps.sessionStore.listBarcodes(sessionId);
+    res.json({
+      barcodes,
+      sessionCreatedAt: access.createdAt,
+      totalCount: barcodes.length,
+    });
   });
 
   router.post("/scan-sessions/:sessionId/barcodes", async (req, res: Response) => {
     const sessionId = req.params.sessionId;
-    try {
-      const access = await requireSessionAccess({
-        req: req as MaybeAuthRequest,
-        res,
-        store: deps.sessionStore,
-        sessionId,
-      });
-      if (!access) return;
+    await requireSessionAccess({
+      req: req as MaybeAuthRequest,
+      store: deps.sessionStore,
+      sessionId,
+    });
 
-      const body = (req.body ?? null) as { barcode?: unknown } | null;
-      const barcode = body?.barcode as ScannedBarcode | undefined;
-      if (!barcode?.barcode || typeof barcode.barcode !== "string") {
-        res.status(400).json({ error: "barcode is required" });
-        return;
-      }
-
-      const result = await deps.sessionStore.addBarcode(sessionId, barcode);
-      res.json({ success: true, duplicate: result.duplicate || undefined, barcode: result.barcode });
-    } catch (err) {
-      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-      throw err;
+    const body = (req.body ?? null) as { barcode?: unknown } | null;
+    const barcode = body?.barcode as ScannedBarcode | undefined;
+    if (!barcode?.barcode || typeof barcode.barcode !== "string") {
+      throw new ApiError(422, "VALIDATION_ERROR", "barcode is required");
     }
+
+    const result = await deps.sessionStore.addBarcode(sessionId, barcode);
+    res.json({
+      success: true,
+      duplicate: result.duplicate || undefined,
+      barcode: result.barcode,
+    });
   });
 
   router.put(
     "/scan-sessions/:sessionId/barcodes/:barcodeId",
     async (req, res: Response) => {
       const { sessionId, barcodeId } = req.params;
-      try {
-        const access = await requireSessionAccess({
-          req: req as MaybeAuthRequest,
-          res,
-          store: deps.sessionStore,
-          sessionId,
-        });
-        if (!access) return;
+      await requireSessionAccess({
+        req: req as MaybeAuthRequest,
+        store: deps.sessionStore,
+        sessionId,
+      });
 
-        const patch = (req.body ?? null) as Partial<ScannedBarcode> | null;
-        const next = await deps.sessionStore.updateBarcode(sessionId, barcodeId, patch ?? {});
-        res.json({ success: true, barcode: next });
-      } catch (err) {
-        if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-        throw err;
-      }
+      const patch = (req.body ?? null) as Partial<ScannedBarcode> | null;
+      const next = await deps.sessionStore.updateBarcode(sessionId, barcodeId, patch ?? {});
+      res.json({ success: true, barcode: next });
     },
   );
 
   router.get("/photo-sessions/:sessionId/photos", async (req, res: Response) => {
     const sessionId = req.params.sessionId;
-    try {
-      const access = await requireSessionAccess({
-        req: req as MaybeAuthRequest,
-        res,
-        store: deps.sessionStore,
-        sessionId,
-      });
-      if (!access) return;
+    const access = await requireSessionAccess({
+      req: req as MaybeAuthRequest,
+      store: deps.sessionStore,
+      sessionId,
+    });
 
-      const photos = await deps.sessionStore.listPhotos(sessionId);
-      res.json({
-        photos,
-        sessionCreatedAt: access.createdAt,
-        totalCount: photos.length,
-      });
-    } catch (err) {
-      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-      throw err;
-    }
+    const photos = await deps.sessionStore.listPhotos(sessionId);
+    res.json({
+      photos,
+      sessionCreatedAt: access.createdAt,
+      totalCount: photos.length,
+    });
   });
 
   router.post("/photo-sessions/:sessionId/photos", async (req, res: Response) => {
     const sessionId = req.params.sessionId;
-    try {
-      const access = await requireSessionAccess({
-        req: req as MaybeAuthRequest,
-        res,
-        store: deps.sessionStore,
-        sessionId,
-      });
-      if (!access) return;
+    await requireSessionAccess({
+      req: req as MaybeAuthRequest,
+      store: deps.sessionStore,
+      sessionId,
+    });
 
-      const body = (req.body ?? null) as { photo?: unknown } | null;
-      const photo = body?.photo as CapturedPhoto | undefined;
-      if (!photo?.imageData || typeof photo.imageData !== "string") {
-        res.status(400).json({ error: "photo.imageData is required" });
-        return;
-      }
-
-      const saved = await deps.sessionStore.addPhoto(sessionId, photo);
-      res.json({ success: true, photo: saved });
-    } catch (err) {
-      if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-      throw err;
+    const body = (req.body ?? null) as { photo?: unknown } | null;
+    const photo = body?.photo as CapturedPhoto | undefined;
+    if (!photo?.imageData || typeof photo.imageData !== "string") {
+      throw new ApiError(422, "VALIDATION_ERROR", "photo.imageData is required");
     }
+
+    const saved = await deps.sessionStore.addPhoto(sessionId, photo);
+    res.json({ success: true, photo: saved });
   });
 
   router.get(
     "/photo-sessions/:sessionId/photos/:photoId",
     async (req, res: Response) => {
       const { sessionId, photoId } = req.params;
-      try {
-        const access = await requireSessionAccess({
-          req: req as MaybeAuthRequest,
-          res,
-          store: deps.sessionStore,
-          sessionId,
-        });
-        if (!access) return;
+      await requireSessionAccess({
+        req: req as MaybeAuthRequest,
+        store: deps.sessionStore,
+        sessionId,
+      });
 
-        const photo = await deps.sessionStore.getPhoto(sessionId, photoId);
-        res.json({ photo });
-      } catch (err) {
-        if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-        throw err;
-      }
+      const photo = await deps.sessionStore.getPhoto(sessionId, photoId);
+      res.json({ photo });
     },
   );
 
@@ -468,24 +369,26 @@ export function createOnboardingRoutes(deps: {
     "/photo-sessions/:sessionId/photos/:photoId/metadata",
     async (req, res: Response) => {
       const { sessionId, photoId } = req.params;
-      try {
-        const access = await requireSessionAccess({
-          req: req as MaybeAuthRequest,
-          res,
-          store: deps.sessionStore,
-          sessionId,
-        });
-        if (!access) return;
+      await requireSessionAccess({
+        req: req as MaybeAuthRequest,
+        store: deps.sessionStore,
+        sessionId,
+      });
 
-        const patch = (req.body ?? null) as Partial<CapturedPhoto> | null;
-        const next = await deps.sessionStore.updatePhotoMetadata(sessionId, photoId, patch ?? {});
-        res.json({ success: true, photo: next });
-      } catch (err) {
-        if (err instanceof ApiError) return mapApiErrorToAdHocResponse(res, err);
-        throw err;
-      }
+      const patch = (req.body ?? null) as Partial<CapturedPhoto> | null;
+      const next = await deps.sessionStore.updatePhotoMetadata(sessionId, photoId, patch ?? {});
+      res.json({ success: true, photo: next });
     },
   );
+
+  router.post("/complete", (req, res: Response) => {
+    const auth = requireAuth(req as MaybeAuthRequest);
+    deps.logger.info(
+      { tenantId: auth.tenantId, userId: auth.sub },
+      "Onboarding marked complete",
+    );
+    res.json({ ok: true });
+  });
 
   return router;
 }
