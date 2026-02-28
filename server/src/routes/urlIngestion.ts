@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { urlScraper } from '../services/urlScraper.js';
+import { scrapeListingUrl } from '../services/listingScraper.js';
+import { scrapeLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -10,7 +12,7 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-router.post('/scrape', requireAuth, async (req: Request, res: Response) => {
+router.post('/scrape', requireAuth, scrapeLimiter, async (req: Request, res: Response) => {
   try {
     const { urls } = req.body as { urls?: unknown };
 
@@ -40,6 +42,33 @@ router.post('/scrape', requireAuth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('URL scraping error:', error);
     res.status(500).json({ error: 'Failed to scrape URLs' });
+  }
+});
+
+router.post('/scrape-listing', requireAuth, scrapeLimiter, async (req: Request, res: Response) => {
+  try {
+    const { url, maxUrls } = req.body as { url?: unknown; maxUrls?: unknown };
+    if (typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ error: 'url must be a non-empty string' });
+    }
+
+    let effectiveMax: number | undefined;
+    if (maxUrls !== undefined) {
+      const parsedMax = typeof maxUrls === 'number' ? maxUrls : Number(String(maxUrls));
+      if (!Number.isFinite(parsedMax) || !Number.isInteger(parsedMax) || parsedMax <= 0) {
+        return res.status(400).json({ error: 'maxUrls must be a positive integer' });
+      }
+      if (parsedMax > 200) {
+        return res.status(400).json({ error: 'maxUrls must be <= 200' });
+      }
+      effectiveMax = parsedMax;
+    }
+
+    const result = await scrapeListingUrl(fetch, url.trim(), { maxUrls: effectiveMax });
+    res.json(result);
+  } catch (error) {
+    console.error('Listing scraping error:', error);
+    res.status(500).json({ error: 'Failed to scrape listing URL' });
   }
 });
 

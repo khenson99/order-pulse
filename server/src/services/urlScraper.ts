@@ -7,10 +7,17 @@ import { createGeminiExtractionModel } from './emailExtraction.js';
 import {
   cleanUrlCandidate,
   extractImageUrlsFromHtml,
+  resolveUrlCandidate,
   looksLikeImageUrl,
 } from '../utils/urlExtraction.js';
+import {
+  MAX_HTML_BYTES,
+  SCRAPER_USER_AGENT,
+  timeoutSignal,
+  looksBlocked,
+  buildJinaUrl,
+} from '../utils/fetchUtils.js';
 
-const MAX_HTML_BYTES = 2_000_000;
 const FETCH_TIMEOUT_MS = 10_000;
 const CONCURRENCY_LIMIT = 5;
 
@@ -61,6 +68,8 @@ interface PageFetchResult {
   finalUrl: string;
   html: string;
   contentType: string;
+  status: number;
+  usedJina?: boolean;
 }
 
 interface DeterministicExtraction {
@@ -93,13 +102,6 @@ Rules:
 - If unknown, return null for that field.
 - price must be numeric only (no symbols).
 - supplier should be the brand/manufacturer/vendor name if present.`;
-
-function timeoutSignal(ms: number): AbortSignal {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  controller.signal.addEventListener('abort', () => clearTimeout(timeout), { once: true });
-  return controller.signal;
-}
 
 function titleCaseWord(word: string): string {
   if (!word) return word;
@@ -183,11 +185,11 @@ function readMetaContent(html: string, key: string): string | undefined {
   return undefined;
 }
 
-function readCanonicalUrl(html: string): string | undefined {
+function readCanonicalUrl(html: string, baseUrl: string): string | undefined {
   const match = html.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["'][^>]*>/i)
     || html.match(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["']canonical["'][^>]*>/i);
   if (!match?.[1]) return undefined;
-  return cleanUrlCandidate(match[1]) || undefined;
+  return resolveUrlCandidate(match[1], baseUrl) || cleanUrlCandidate(match[1]) || undefined;
 }
 
 function parseJson<T>(value: string): T | null {
@@ -259,7 +261,7 @@ function extractPriceFromText(text: string): number | undefined {
   return Number.isFinite(value) ? value : undefined;
 }
 
-function extractJsonLdProduct(html: string): Partial<DeterministicExtraction> {
+function extractJsonLdProduct(html: string, baseUrl: string): Partial<DeterministicExtraction> {
   const scripts = Array.from(
     html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)
   ).map(match => match[1]?.trim()).filter(Boolean) as string[];
@@ -293,13 +295,16 @@ function extractJsonLdProduct(html: string): Partial<DeterministicExtraction> {
       || firstString(productNode.seller)
       || firstString(productNode.vendor);
 
+    const productUrlRaw = firstString(productNode.url) || '';
+    const imageUrlRaw = firstString(productNode.image) || '';
+
     return {
       itemName: firstString(productNode.name),
       description: firstString(productNode.description),
       vendorSku: firstString(productNode.sku) || firstString(productNode.mpn) || firstString(productNode.productID),
       supplier,
-      productUrl: cleanUrlCandidate(firstString(productNode.url) || '') || undefined,
-      imageUrl: cleanUrlCandidate(firstString(productNode.image) || '') || undefined,
+      productUrl: resolveUrlCandidate(productUrlRaw, baseUrl) || cleanUrlCandidate(productUrlRaw) || undefined,
+      imageUrl: resolveUrlCandidate(imageUrlRaw, baseUrl) || cleanUrlCandidate(imageUrlRaw) || undefined,
       price: normalizeAsNumber(offers?.price),
       currency: normalizeCurrency(offers?.priceCurrency),
     };
@@ -308,8 +313,8 @@ function extractJsonLdProduct(html: string): Partial<DeterministicExtraction> {
   return {};
 }
 
-function mergeDeterministicData(html: string, finalUrl: string): DeterministicExtraction {
-  const jsonLd = extractJsonLdProduct(html);
+function mergeDeterministicData(html: string, baseUrl: string): DeterministicExtraction {
+  const jsonLd = extractJsonLdProduct(html, baseUrl);
 
   const ogTitle = readMetaContent(html, 'og:title');
   const ogDescription = readMetaContent(html, 'og:description') || readMetaContent(html, 'description');
@@ -319,17 +324,17 @@ function mergeDeterministicData(html: string, finalUrl: string): DeterministicEx
   const title = extractTitle(html);
   const h1 = extractH1(html);
 
-  const imageCandidates = extractImageUrlsFromHtml(html);
-  const imageFromMeta = cleanUrlCandidate(ogImage || '');
+  const imageCandidates = extractImageUrlsFromHtml(html, baseUrl);
+  const imageFromMeta = ogImage ? (resolveUrlCandidate(ogImage, baseUrl) || cleanUrlCandidate(ogImage)) : null;
   const imageUrl = jsonLd.imageUrl
     || imageFromMeta
     || imageCandidates.find(looksLikeImageUrl)
     || imageCandidates[0];
 
   const productUrl = jsonLd.productUrl
-    || readCanonicalUrl(html)
-    || cleanUrlCandidate(finalUrl)
-    || finalUrl;
+    || readCanonicalUrl(html, baseUrl)
+    || cleanUrlCandidate(baseUrl)
+    || baseUrl;
 
   const itemName = jsonLd.itemName || ogTitle || h1 || title;
   const description = jsonLd.description || ogDescription;
@@ -340,7 +345,7 @@ function mergeDeterministicData(html: string, finalUrl: string): DeterministicEx
     productUrl,
     imageUrl,
     itemName,
-    supplier: jsonLd.supplier || inferSupplierFromUrl(finalUrl),
+    supplier: jsonLd.supplier || inferSupplierFromUrl(baseUrl),
     price,
     currency,
     description,
@@ -403,14 +408,11 @@ async function fetchPage(fetchFn: typeof fetch, rawUrl: string): Promise<PageFet
     redirect: 'follow',
     signal: timeoutSignal(FETCH_TIMEOUT_MS),
     headers: {
-      'User-Agent': 'OrderPulseBot/1.0 (+https://orderpulse.local)',
+      'User-Agent': SCRAPER_USER_AGENT,
+      'Accept-Language': 'en-US,en;q=0.9',
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     },
   });
-
-  if (!response.ok) {
-    throw new Error(`Fetch failed with status ${response.status}`);
-  }
 
   const contentLength = Number.parseInt(response.headers.get('content-length') || '0', 10);
   if (Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES) {
@@ -426,6 +428,7 @@ async function fetchPage(fetchFn: typeof fetch, rawUrl: string): Promise<PageFet
     finalUrl: response.url || rawUrl,
     html,
     contentType: response.headers.get('content-type') || '',
+    status: response.status,
   };
 }
 
@@ -534,7 +537,40 @@ async function scrapeOneUrl(
   const normalizedUrl = validation.normalized;
 
   try {
-    const fetched = await fetchPage(fetchFn, normalizedUrl);
+    let fetched: PageFetchResult | null = null;
+    let usedJina = false;
+
+    try {
+      fetched = await fetchPage(fetchFn, normalizedUrl);
+    } catch {
+      fetched = null;
+    }
+
+    const primaryFinalUrl = fetched?.finalUrl ? (cleanUrlCandidate(fetched.finalUrl) || normalizedUrl) : normalizedUrl;
+    const primaryLooksBlocked = fetched ? looksBlocked(fetched.status, fetched.html) : true;
+
+    if (!fetched || !fetched.html || primaryLooksBlocked || !String(fetched.contentType || '').toLowerCase().includes('html')) {
+      try {
+        const jinaFetched = await fetchPage(fetchFn, buildJinaUrl(normalizedUrl));
+        fetched = {
+          ...jinaFetched,
+          finalUrl: primaryFinalUrl,
+          usedJina: true,
+        };
+        usedJina = true;
+      } catch {
+        // Keep primary fetch if it exists.
+      }
+    }
+
+    if (!fetched) {
+      throw new Error('Failed to fetch URL');
+    }
+
+    if (fetched.status < 200 || fetched.status >= 400) {
+      throw new Error(`Fetch failed with status ${fetched.status}`);
+    }
+
     const finalUrl = cleanUrlCandidate(fetched.finalUrl) || normalizedUrl;
 
     const finalHost = new URL(finalUrl).hostname;
@@ -623,9 +659,11 @@ async function scrapeOneUrl(
       status: toResultStatus(item),
       extractionSource: finalExtraction.extractionSource,
       item,
-      message: fetched.contentType && !fetched.contentType.toLowerCase().includes('html')
-        ? `Non-HTML content type: ${fetched.contentType}`
-        : undefined,
+      message: usedJina
+        ? 'Used Jina fallback due to bot protection.'
+        : (fetched.contentType && !fetched.contentType.toLowerCase().includes('html')
+          ? `Non-HTML content type: ${fetched.contentType}`
+          : undefined),
     };
   } catch (error) {
     const supplier = inferSupplierFromUrl(normalizedUrl);

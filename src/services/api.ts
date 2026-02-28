@@ -329,7 +329,21 @@ export const urlIngestionApi = {
       method: 'POST',
       body: JSON.stringify({ urls }),
     }),
+  scrapeListingUrl: (url: string, maxUrls?: number) =>
+    fetchApi<ListingScrapeResponse>('/api/url-ingestion/scrape-listing', {
+      method: 'POST',
+      body: JSON.stringify({ url, maxUrls }),
+    }),
 };
+
+export interface ListingScrapeResponse {
+  listingUrl: string;
+  normalizedUrl?: string;
+  status: 'success' | 'partial' | 'failed';
+  message?: string;
+  productUrls: string[];
+  usedJina?: boolean;
+}
 
 // Amazon API
 export interface AmazonItemData {

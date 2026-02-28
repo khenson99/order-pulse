@@ -134,6 +134,73 @@ describe('urlScraper', () => {
     expect(result.results[0].extractionSource).toBe('html-metadata');
   });
 
+  it('resolves relative image URLs against the final URL', async () => {
+    const html = `
+      <html>
+        <head>
+          <meta property="og:title" content="Widget" />
+          <meta property="og:image" content="/assets/widget.jpg" />
+          <meta property="product:price:amount" content="12.34" />
+        </head>
+        <body><h1>Widget</h1></body>
+      </html>
+    `;
+
+    const scraper = createUrlScraper({
+      fetchFn: vi.fn(async () => mockResponse({
+        body: html,
+        url: 'https://example.com/products/widget',
+      })) as unknown as typeof fetch,
+      createModel: () => null as any,
+    });
+
+    const result = await scraper.scrapeUrls(['https://example.com/products/widget']);
+    const item = result.results[0].item;
+
+    expect(item.imageUrl).toBe('https://example.com/assets/widget.jpg');
+  });
+
+  it('falls back to Jina when the primary fetch is blocked', async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.startsWith('https://r.jina.ai/')) {
+        return mockResponse({
+          body: `
+            <html>
+              <head>
+                <meta property="og:title" content="McMaster Bolt" />
+                <meta property="og:image" content="https://images.example.com/bolt.jpg" />
+                <meta property="product:price:amount" content="7.89" />
+              </head>
+              <body>ok</body>
+            </html>
+          `,
+          url,
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+
+      return mockResponse({
+        body: '<html><title>Access Denied</title>captcha</html>',
+        url,
+        status: 403,
+        headers: { 'content-type': 'text/html' },
+      });
+    }) as unknown as typeof fetch;
+
+    const scraper = createUrlScraper({
+      fetchFn,
+      createModel: () => null as any,
+    });
+
+    const result = await scraper.scrapeUrls(['https://mcmaster.com/91251A540']);
+
+    expect(result.results[0].status).toBe('success');
+    expect(result.results[0].message).toMatch(/Jina fallback/i);
+    expect(fetchFn).toHaveBeenCalledWith('https://mcmaster.com/91251A540', expect.anything());
+    expect(fetchFn).toHaveBeenCalledWith('https://r.jina.ai/https://mcmaster.com/91251A540', expect.anything());
+  });
+
   it('uses AI fallback when deterministic extraction is missing key fields', async () => {
     const model = {
       generateContent: vi.fn(async () => ({

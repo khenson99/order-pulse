@@ -26,6 +26,36 @@ export function cleanUrlCandidate(raw: string): string | null {
   }
 }
 
+export function resolveUrlCandidate(raw: string, baseUrl: string): string | null {
+  const value = (raw || '')
+    .trim()
+    .replace(/&amp;/g, '&')
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#47;/g, '/')
+    .replace(/&#x3D;/g, '=')
+    .replace(/&#61;/g, '=')
+    .replace(/[)\],.;]+$/g, '');
+
+  if (!value) return null;
+
+  if (/^https?:\/\//i.test(value)) {
+    return cleanUrlCandidate(value);
+  }
+
+  try {
+    const base = new URL(baseUrl);
+
+    if (value.startsWith('//')) {
+      return cleanUrlCandidate(`${base.protocol}${value}`);
+    }
+
+    const resolved = new URL(value, base);
+    return cleanUrlCandidate(resolved.toString());
+  } catch {
+    return null;
+  }
+}
+
 function stripTrackingParams(url: URL): void {
   const trackingKeys = new Set(['gclid', 'fbclid', 'mc_cid', 'mc_eid']);
   for (const key of Array.from(url.searchParams.keys())) {
@@ -44,15 +74,19 @@ export function extractUrlsFromText(text: string): string[] {
   return uniqueStrings(cleaned);
 }
 
-export function extractUrlsFromHtml(html: string): string[] {
+export function extractUrlsFromHtml(html: string, baseUrl?: string): string[] {
   if (!html) return [];
   const hrefs = Array.from(html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
   const candidates = [...hrefs, ...extractUrlsFromText(html)];
-  const cleaned = candidates.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
+  const cleaned = candidates
+    .map(candidate => (
+      baseUrl ? resolveUrlCandidate(candidate, baseUrl) : cleanUrlCandidate(candidate)
+    ))
+    .filter((u): u is string => Boolean(u));
   return uniqueStrings(cleaned);
 }
 
-export function extractImageUrlsFromHtml(html: string): string[] {
+export function extractImageUrlsFromHtml(html: string, baseUrl?: string): string[] {
   if (!html) return [];
 
   const imgSrcs = Array.from(html.matchAll(/<img[^>]*\ssrc\s*=\s*["']([^"']+)["']/gi)).map(m => m[1]);
@@ -63,8 +97,13 @@ export function extractImageUrlsFromHtml(html: string): string[] {
     html.matchAll(/<meta[^>]*(?:name|property)\s*=\s*["']twitter:image["'][^>]*content\s*=\s*["']([^"']+)["']/gi)
   ).map(m => m[1]);
 
-  const candidates = [...imgSrcs, ...ogImages, ...twitterImages];
-  const cleaned = candidates.map(cleanUrlCandidate).filter((u): u is string => Boolean(u));
+  const textUrls = extractUrlsFromText(html).filter(looksLikeImageUrl);
+  const candidates = [...imgSrcs, ...ogImages, ...twitterImages, ...textUrls];
+  const cleaned = candidates
+    .map(candidate => (
+      baseUrl ? resolveUrlCandidate(candidate, baseUrl) : cleanUrlCandidate(candidate)
+    ))
+    .filter((u): u is string => Boolean(u));
   return uniqueStrings(cleaned);
 }
 
