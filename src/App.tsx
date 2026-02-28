@@ -64,15 +64,17 @@ export default function App() {
         // Check for auth token in URL (from OAuth callback)
         const urlParams = new URLSearchParams(window.location.search);
         const authToken = urlParams.get('token');
-        
+        const returnToParam = urlParams.get('returnTo');
+
         let data;
         if (authToken) {
           // Exchange token for session
           console.log('🔑 Exchanging auth token...');
           data = await authApi.exchangeToken(authToken);
           // Preserve returnTo before cleaning URL (used after Gmail-linking redirect)
-          const returnTo = urlParams.get('returnTo');
-          if (returnTo) setInitialReturnTo(returnTo);
+          if (returnToParam) {
+            setInitialReturnTo(returnToParam);
+          }
           // Clean up URL
           window.history.replaceState({}, '', window.location.pathname);
           if (!data.user) return;
@@ -80,6 +82,13 @@ export default function App() {
           // Normal auth check
           data = await authApi.getCurrentUser();
           if (!data.user) return;
+          if (returnToParam) {
+            setInitialReturnTo(returnToParam);
+            urlParams.delete('returnTo');
+            const nextQuery = urlParams.toString();
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+            window.history.replaceState({}, document.title, nextUrl);
+          }
         }
 
         setUserProfile({

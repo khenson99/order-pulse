@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   getSyncStatus: vi.fn(),
 }));
 
+const onboardingFlowProps = vi.hoisted(() => ({
+  last: null as null | Record<string, unknown>,
+}));
+
 vi.mock('../services/api', () => ({
   authApi: {
     getCurrentUser: mocks.getCurrentUser,
@@ -41,7 +45,10 @@ vi.mock('../views/LoginScreen', () => ({
 }));
 
 vi.mock('../views/OnboardingFlow', () => ({
-  OnboardingFlow: () => <div>onboarding-flow</div>,
+  OnboardingFlow: (props: Record<string, unknown>) => {
+    onboardingFlowProps.last = props;
+    return <div>onboarding-flow</div>;
+  },
 }));
 
 vi.mock('../views/MobileScanner', () => ({
@@ -66,6 +73,7 @@ describe('App auth session handling', () => {
     mocks.exchangeToken.mockReset();
     mocks.logout.mockReset();
     mocks.getSyncStatus.mockReset();
+    onboardingFlowProps.last = null;
   });
 
   it('returns to login when the session-expired signal is dispatched', async () => {
@@ -86,6 +94,28 @@ describe('App auth session handling', () => {
     });
     await screen.findByText('login-screen');
     expect(screen.queryByText('onboarding-flow')).not.toBeInTheDocument();
+  });
+
+  it('preserves returnTo=email when loading an existing session and removes it from the URL', async () => {
+    window.history.pushState({}, '', '/?returnTo=email');
+    const replaceSpy = vi.spyOn(window.history, 'replaceState');
+
+    mocks.getCurrentUser.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        email: 'user@example.com',
+        name: 'User',
+        picture_url: '',
+      },
+    });
+
+    render(<App />);
+
+    await screen.findByText('onboarding-flow');
+
+    expect(mocks.exchangeToken).not.toHaveBeenCalled();
+    expect(onboardingFlowProps.last?.initialReturnTo).toBe('email');
+    expect(replaceSpy).toHaveBeenCalledWith({}, expect.any(String), '/');
   });
 
   it('opens Arda with the last successful sync tenant in completion view', async () => {
