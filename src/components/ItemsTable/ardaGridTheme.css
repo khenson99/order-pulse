@@ -1,49 +1,5 @@
-.ag-theme-arda {
-  --ag-font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  --ag-font-size: 13px;
-
-  /* Backgrounds */
-  --ag-background-color: #ffffff;
-  --ag-header-background-color: #f9fafb;
-  --ag-odd-row-background-color: #ffffff;
-  --ag-row-hover-color: #f9fafb;
-  --ag-header-cell-hover-background-color: #f3f4f6;
-  --ag-selected-row-background-color: #fff7ed;
-  --ag-modal-overlay-background-color: rgba(0, 0, 0, 0.3);
-
-  /* Accent (Arda orange) */
-  --ag-range-selection-border-color: #FC5A29;
-  --ag-range-selection-background-color: rgba(252, 90, 41, 0.08);
-  --ag-checkbox-checked-color: #FC5A29;
-  --ag-input-focus-border-color: #FC5A29;
-  --ag-accent-color: #FC5A29;
-
-  /* Borders */
-  --ag-border-color: #e5e7eb;
-  --ag-row-border-color: #f3f4f6;
-  --ag-secondary-border-color: #e5e7eb;
-
-  /* Text */
-  --ag-header-foreground-color: #4b5563;
-  --ag-foreground-color: #1f2937;
-  --ag-secondary-foreground-color: #6b7280;
-  --ag-disabled-foreground-color: #9ca3af;
-
-  /* Sizing */
-  --ag-grid-size: 4px;
-  --ag-cell-horizontal-padding: 8px;
-  --ag-header-height: 36px;
-  --ag-row-height: 38px;
-
-  /* Shape */
-  --ag-wrapper-border-radius: 12px;
-  --ag-border-radius: 6px;
-  --ag-card-radius: 8px;
-
-  /* Shadows */
-  --ag-card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
-  --ag-popup-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-}
+/* Theme variables are set via JS theme API (see ItemsGrid.tsx ardaTheme).
+   This file contains only custom CSS overrides not expressible via theme params. */
 
 /* Header styling */
 .ag-theme-arda .ag-header-cell-label {
