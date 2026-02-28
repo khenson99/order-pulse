@@ -4,7 +4,7 @@
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
   ],
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
+  "installCommand": "npm ci",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [

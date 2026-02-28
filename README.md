@@ -106,6 +106,7 @@ export default defineConfig([
 2. `npm run build` (server) – compiles the Node API via `tsc` (the `start` script runs the emitted `dist/index.js`).
 
 ### Hosting notes (Vercel / Railway)
+- In Vercel Project Settings → General, set **Node.js Version** to **20.x** (this repo enforces `>=20 <21`).
 - Set `FRONTEND_URL` to the deployed Vercel domain so OAuth redirects and CORS match.
 - Set `BACKEND_URL` for OAuth callbacks in `server/src/routes/auth.ts` and `server/src/routes/integrations.ts`.
 - Store the Redis URL and Postgres `DATABASE_URL` in the platform secrets; both are required before deploying.

@@ -746,6 +746,7 @@ export default defineConfig([
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "npm@10.8.2",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -37903,7 +37904,7 @@ export default {
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
   ],
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
+  "installCommand": "npm ci",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
@@ -37990,4 +37991,3 @@ export default defineConfig({
 8. **Binary assets**: `public/vite.svg` and `src/assets/react.svg` are standard Vite/React logos.
 9. **Railway deployment**: Uses project ID `f7c96f7b-ed85-4ae9-9428-de3888942936` and service name `order-pulse-api`.
 10. **Vercel rewrites**: API calls are proxied to `https://order-pulse-api-production.up.railway.app`.
-
