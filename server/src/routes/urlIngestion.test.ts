@@ -4,11 +4,16 @@ import type { Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockScrapeUrls = vi.fn();
+const mockScrapeListingUrl = vi.fn();
 
 vi.mock('../services/urlScraper.js', () => ({
   urlScraper: {
     scrapeUrls: mockScrapeUrls,
   },
+}));
+
+vi.mock('../services/listingScraper.js', () => ({
+  scrapeListingUrl: mockScrapeListingUrl,
 }));
 
 async function startServer(sessionUserId?: string): Promise<{ server: Server; baseUrl: string }> {
@@ -162,5 +167,37 @@ describe('urlIngestion routes', () => {
     expect(payload.requested).toBe(2);
     expect(payload.results).toHaveLength(2);
     expect(payload.items).toHaveLength(2);
+  });
+
+  it('scrapes product links from listing URLs', async () => {
+    mockScrapeListingUrl.mockResolvedValue({
+      listingUrl: 'https://example.com/list',
+      normalizedUrl: 'https://example.com/list',
+      status: 'success',
+      productUrls: ['https://example.com/p/1', 'https://example.com/p/2'],
+    });
+
+    const response = await fetch(`${baseUrl}/api/url-ingestion/scrape-listing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.com/list', maxUrls: 25 }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockScrapeListingUrl).toHaveBeenCalledWith(expect.any(Function), 'https://example.com/list', { maxUrls: 25 });
+
+    const payload = await response.json() as { productUrls: string[] };
+    expect(payload.productUrls).toHaveLength(2);
+  });
+
+  it('validates listing scrape request body', async () => {
+    const response = await fetch(`${baseUrl}/api/url-ingestion/scrape-listing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: '' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(mockScrapeListingUrl).not.toHaveBeenCalled();
   });
 });

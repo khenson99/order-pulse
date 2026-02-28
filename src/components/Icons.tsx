@@ -6,6 +6,7 @@ import {
   Settings, 
   CheckCircle2, 
   AlertCircle,
+  Image,
   Loader2,
   RefreshCw,
   Search,
@@ -65,6 +66,7 @@ export const Icons = {
   Settings,
   CheckCircle2,
   AlertCircle,
+  Image,
   Loader2,
   RefreshCw,
   Search,
@@ -115,4 +117,3 @@ export const Icons = {
   XCircle,
   AlertTriangle,
 };
-

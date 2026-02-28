@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { urlScraper } from '../services/urlScraper.js';
+import { scrapeListingUrl } from '../services/listingScraper.js';
 
 const router = Router();
 
@@ -40,6 +41,24 @@ router.post('/scrape', requireAuth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('URL scraping error:', error);
     res.status(500).json({ error: 'Failed to scrape URLs' });
+  }
+});
+
+router.post('/scrape-listing', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { url, maxUrls } = req.body as { url?: unknown; maxUrls?: unknown };
+    if (typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ error: 'url must be a non-empty string' });
+    }
+
+    const parsedMax = typeof maxUrls === 'number' ? maxUrls : Number.parseInt(String(maxUrls || ''), 10);
+    const effectiveMax = Number.isFinite(parsedMax) ? parsedMax : undefined;
+
+    const result = await scrapeListingUrl(fetch, url.trim(), { maxUrls: effectiveMax });
+    res.json(result);
+  } catch (error) {
+    console.error('Listing scraping error:', error);
+    res.status(500).json({ error: 'Failed to scrape listing URL' });
   }
 });
 
