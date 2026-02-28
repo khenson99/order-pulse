@@ -1,0 +1,759 @@
+openapi: 3.1.0
+info:
+  title: Onboarding API
+  version: 1.4.0
+  description: |
+    Backend API for onboarding durable session storage and ingestion.
+
+    ## Versioning
+
+    This contract follows semantic versioning. The `version` field tracks
+    breaking changes (major), new endpoints/fields (minor), and documentation
+    fixes (patch). See `docs/api-versioning.md` for the full change policy.
+
+    ## Authentication
+
+    All endpoints under `/api/onboarding` require two headers:
+    - `Authorization: Bearer <cognito-access-token>`
+    - `X-ID-Token: <cognito-id-token>`
+
+    The ID token carries the `custom:tenant` claim used for tenant isolation.
+
+    ## Error Convention
+
+    Every error response uses a stable shape:
+    ```json
+    { "error": { "code": "<ERROR_CODE>", "message": "...", "requestId": "..." } }
+    ```
+    Clients should match on `code` (not `message`) for programmatic handling.
+
+servers:
+  - url: /api/onboarding
+    description: Onboarding API base path
+
+security:
+  - cognitoBearer: []
+    cognitoIdToken: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check (no auth)
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /session:
+    get:
+      operationId: getSession
+      summary: Get current onboarding session
+      description: |
+        Returns the active onboarding session for the authenticated user and tenant.
+        If no session exists, returns 404.
+      responses:
+        "200":
+          description: Session data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      operationId: createSession
+      summary: Create a new onboarding session
+      description: |
+        Creates a new onboarding session for the authenticated user and tenant.
+        Returns 409 if an active session already exists.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    patch:
+      operationId: updateSession
+      summary: Update the current onboarding session
+      description: |
+        Merges the provided fields into the active session.
+        Only top-level fields in `data` are replaced; omitted fields are preserved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSessionRequest"
+      responses:
+        "200":
+          description: Session updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /session/images/upload-url:
+    post:
+      operationId: createImageUploadUrl
+      summary: Get a presigned URL for image upload
+      description: |
+        Returns a presigned S3 URL that the client uses to upload an image directly.
+        The server records the upload metadata (tenantId, sessionId, s3Key) for later retrieval.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageUploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageUploadUrlResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /gmail/oauth/start:
+    post:
+      operationId: startGmailOauth
+      summary: Start Gmail OAuth
+      description: |
+        Returns an OAuth authorization URL for the user to connect Gmail.
+
+        Notes:
+        - The caller must be authenticated (Cognito headers).
+        - The returned URL redirects to `/gmail/oauth/callback` on this service.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GmailOAuthStartRequest"
+      responses:
+        "200":
+          description: OAuth URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailOAuthStartResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /gmail/oauth/callback:
+    get:
+      operationId: gmailOauthCallback
+      summary: Gmail OAuth callback (public)
+      description: |
+        Google redirects the user-agent to this endpoint after authorization.
+
+        This endpoint is intentionally public (no Cognito headers) and validates
+        the OAuth `state` parameter server-side before storing encrypted tokens.
+      security: []
+      responses:
+        "302":
+          description: Redirect back to frontend with success or error details.
+          headers:
+            Location:
+              schema:
+                type: string
+
+  /gmail/status:
+    get:
+      operationId: getGmailStatus
+      summary: Gmail connection status
+      description: |
+        Returns whether Gmail is configured and connected for the current user.
+      responses:
+        "200":
+          description: Status response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /barcode/lookup:
+    get:
+      operationId: lookupBarcode
+      summary: Barcode lookup
+      description: |
+        Look up a barcode (UPC/EAN/GTIN) and return product metadata when available.
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: Barcode/GTIN code to look up.
+      responses:
+        "200":
+          description: Barcode lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarcodeLookupResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /url/scrape:
+    post:
+      operationId: scrapeUrls
+      summary: URL scrape
+      description: |
+        Scrape and normalize up to 50 URLs and return reviewable item metadata.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UrlScrapeRequest"
+      responses:
+        "200":
+          description: URL scrape response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UrlScrapeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /photo/analyze:
+    post:
+      operationId: analyzePhoto
+      summary: Photo analysis (Gemini)
+      description: |
+        Analyze a base64 image data URL and return suggested metadata.
+
+        This endpoint is feature-gated: when `GEMINI_API_KEY` is not configured,
+        it returns 503.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhotoAnalyzeRequest"
+      responses:
+        "200":
+          description: Photo analysis response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoAnalyzeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/InternalError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    cognitoBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Cognito access token
+    cognitoIdToken:
+      type: apiKey
+      in: header
+      name: X-ID-Token
+      description: Cognito ID token (carries custom:tenant claim)
+
+  schemas:
+    # ---------- Shared ----------
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - requestId
+          properties:
+            code:
+              type: string
+              enum:
+                - AUTH_MISSING_TOKEN
+                - AUTH_INVALID_TOKEN
+                - AUTH_EXPIRED_TOKEN
+                - VALIDATION_ERROR
+                - NOT_FOUND
+                - INTERNAL_ERROR
+              description: |
+                Stable error code for programmatic handling.
+                Clients MUST match on `code`, not `message`.
+            message:
+              type: string
+              description: Human-readable error description. May change between versions.
+            requestId:
+              type: string
+              format: uuid
+              description: Correlation ID for log tracing. Echoed from X-Request-ID if provided.
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+          example: ok
+
+    # ---------- Session ----------
+
+    SessionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/Session"
+
+    Session:
+      type: object
+      required:
+        - sessionId
+        - tenantId
+        - userId
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+        userId:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - completed
+            - expired
+        step:
+          type: string
+          description: Current onboarding step identifier
+        data:
+          type: object
+          additionalProperties: true
+          description: Arbitrary step-specific data stored by the client
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ---------- Gmail OAuth ----------
+
+    GmailOAuthStartRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        returnTo:
+          type: string
+          description: Optional frontend path to redirect to after OAuth success.
+
+    GmailOAuthStartResponse:
+      type: object
+      required:
+        - authUrl
+      properties:
+        authUrl:
+          type: string
+          description: Google OAuth authorization URL.
+
+    GmailStatusResponse:
+      type: object
+      required:
+        - configured
+        - connected
+      properties:
+        configured:
+          type: boolean
+          description: Whether Gmail OAuth is configured on the server.
+        connected:
+          type: boolean
+          description: Whether Gmail is connected for this user.
+        tokenExpiresAtMs:
+          type: integer
+          format: int64
+          nullable: true
+          description: Unix epoch milliseconds when the current access token expires (if known).
+
+    # ---------- Barcode Lookup ----------
+
+    BarcodeLookupResponse:
+      type: object
+      required:
+        - product
+      properties:
+        product:
+          type: object
+          required:
+            - name
+          properties:
+            name:
+              type: string
+            brand:
+              type: string
+              nullable: true
+            imageUrl:
+              type: string
+              nullable: true
+            category:
+              type: string
+              nullable: true
+            source:
+              type: string
+              nullable: true
+            normalizedBarcode:
+              type: string
+              nullable: true
+
+    # ---------- URL Scrape ----------
+
+    UrlScrapeRequest:
+      type: object
+      required:
+        - urls
+      additionalProperties: false
+      properties:
+        urls:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+
+    UrlScrapeItem:
+      type: object
+      required:
+        - sourceUrl
+        - needsReview
+        - extractionSource
+        - confidence
+      properties:
+        sourceUrl:
+          type: string
+        productUrl:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        itemName:
+          type: string
+          nullable: true
+        supplier:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        vendorSku:
+          type: string
+          nullable: true
+        needsReview:
+          type: boolean
+        extractionSource:
+          type: string
+        confidence:
+          type: number
+
+    UrlScrapeResult:
+      type: object
+      required:
+        - sourceUrl
+        - status
+        - extractionSource
+        - item
+      properties:
+        sourceUrl:
+          type: string
+        normalizedUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [success, partial, failed]
+        message:
+          type: string
+          nullable: true
+        extractionSource:
+          type: string
+        item:
+          $ref: "#/components/schemas/UrlScrapeItem"
+
+    UrlScrapeResponse:
+      type: object
+      required:
+        - requested
+        - processed
+        - results
+        - items
+      properties:
+        requested:
+          type: integer
+        processed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/UrlScrapeResult"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UrlScrapeItem"
+        expiresAt:
+          type: string
+          format: date-time
+
+    # ---------- Photo Analysis ----------
+
+    PhotoAnalyzeRequest:
+      type: object
+      required:
+        - imageData
+      additionalProperties: false
+      properties:
+        imageData:
+          type: string
+          description: Base64 data URL (data:image/...;base64,...) to analyze.
+
+    PhotoAnalysis:
+      type: object
+      required:
+        - suggestedName
+        - suggestedSupplier
+        - confidence
+        - notes
+      additionalProperties: false
+      properties:
+        suggestedName:
+          type: string
+          nullable: true
+        suggestedSupplier:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        notes:
+          type: string
+          nullable: true
+
+    PhotoAnalyzeResponse:
+      type: object
+      required:
+        - analysis
+      additionalProperties: false
+      properties:
+        analysis:
+          $ref: "#/components/schemas/PhotoAnalysis"
+
+    CreateSessionRequest:
+      type: object
+      properties:
+        step:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+
+    UpdateSessionRequest:
+      type: object
+      properties:
+        step:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum:
+            - active
+            - completed
+
+    # ---------- Image Upload ----------
+
+    ImageUploadUrlRequest:
+      type: object
+      required:
+        - fileName
+        - contentType
+      properties:
+        fileName:
+          type: string
+          description: Original file name (used for metadata, not the S3 key)
+        contentType:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+            - image/webp
+          description: MIME type of the image to upload
+
+    ImageUploadUrlResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - uploadUrl
+            - s3Key
+            - expiresInSeconds
+          properties:
+            uploadUrl:
+              type: string
+              format: uri
+              description: Presigned S3 PUT URL
+            s3Key:
+              type: string
+              description: The object key that will be written to S3
+            expiresInSeconds:
+              type: integer
+              description: Seconds until the presigned URL expires
+
+  responses:
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missingToken:
+              summary: Missing token
+              value:
+                error:
+                  code: AUTH_MISSING_TOKEN
+                  message: Authorization Bearer token and X-ID-Token headers are required
+                  requestId: 550e8400-e29b-41d4-a716-446655440000
+            invalidToken:
+              summary: Invalid token
+              value:
+                error:
+                  code: AUTH_INVALID_TOKEN
+                  message: Invalid or expired access token
+                  requestId: 550e8400-e29b-41d4-a716-446655440000
+            expiredToken:
+              summary: Expired token
+              value:
+                error:
+                  code: AUTH_EXPIRED_TOKEN
+                  message: Invalid or expired access token
+                  requestId: 550e8400-e29b-41d4-a716-446655440000
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: "contentType must be one of: image/jpeg, image/png, image/webp"
+              requestId: 550e8400-e29b-41d4-a716-446655440000
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: NOT_FOUND
+              message: Session not found
+              requestId: 550e8400-e29b-41d4-a716-446655440000
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: An unexpected error occurred
+              requestId: 550e8400-e29b-41d4-a716-446655440000

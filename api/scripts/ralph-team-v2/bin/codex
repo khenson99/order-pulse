@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Minimal Codex CLI compatibility wrapper used by the v2 scripts.
+# It supports legacy invocations like:
+#   codex exec --yolo -p "$PROMPT"
+#
+# Modern Codex CLI expects:
+#   codex exec --full-auto -   (prompt via stdin)
+
+REAL_CODEX_BIN="${CODEX_REAL_BIN:-}"
+if [[ -z "$REAL_CODEX_BIN" ]]; then
+  REAL_CODEX_BIN="$(command -v codex || true)"
+fi
+if [[ -z "$REAL_CODEX_BIN" ]]; then
+  echo "Error: codex not found in PATH" >&2
+  exit 1
+fi
+
+MODE="${RLP_CODEX_MODE:-full-auto}"
+AUTO_FLAG=()
+PROMPT_FROM_P_FLAG=""
+ARGS=()
+
+if [[ "${1:-}" == "exec" ]]; then
+  shift
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --yolo)
+        if [[ "$MODE" == "unsafe" ]]; then
+          AUTO_FLAG=(--dangerously-bypass-approvals-and-sandbox)
+        else
+          AUTO_FLAG=(--full-auto)
+        fi
+        shift
+        ;;
+      -p)
+        PROMPT_FROM_P_FLAG="${2:-}"
+        shift 2
+        ;;
+      *)
+        ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -n "$PROMPT_FROM_P_FLAG" ]]; then
+    CMD=("$REAL_CODEX_BIN" exec "${AUTO_FLAG[@]}" -)
+    if [[ "${#ARGS[@]}" -gt 0 ]]; then
+      CMD+=("${ARGS[@]}")
+    fi
+    printf '%s' "$PROMPT_FROM_P_FLAG" | "${CMD[@]}"
+    exit $?
+  fi
+
+  exec "$REAL_CODEX_BIN" exec "${AUTO_FLAG[@]}" "${ARGS[@]}"
+fi
+
+exec "$REAL_CODEX_BIN" "$@"
+
