@@ -13,7 +13,7 @@ import type { MasterListItem, MasterListFooterState } from '../components/ItemsT
 import { buildMasterListItems } from '../utils/masterListItems';
 import { useSyncToArda } from '../hooks/useSyncToArda';
 import { IntegrationsStep } from './IntegrationsStep';
-import { UrlScrapedItem } from '../services/api';
+import { UrlScrapedItem, gmailApi } from '../services/api';
 import { OnboardingWelcomeStep } from './OnboardingWelcomeStep';
 
 // Simple email item for onboarding (before full InventoryItem processing)
@@ -254,6 +254,7 @@ interface OnboardingFlowProps {
   onComplete: (items: MasterListItem[]) => void;
   onSkip: () => void;
   userProfile?: { name?: string; email?: string };
+  initialReturnTo?: string | null;
 }
 
 const noop = () => {};
@@ -262,19 +263,26 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onComplete,
   onSkip,
   userProfile,
+  initialReturnTo,
 }) => {
   const hasIntegrationCallback = (() => {
     const params = new URLSearchParams(window.location.search);
     return Boolean(params.get('integration_provider') && params.get('integration_status'));
   })();
 
+  const hasEmailReturnTo = initialReturnTo === 'email';
+
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(() => {
-    return hasIntegrationCallback ? 'integrations' : 'welcome';
+    if (hasEmailReturnTo) return 'email';
+    if (hasIntegrationCallback) return 'integrations';
+    return 'welcome';
   });
-  const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(() => (
-    hasIntegrationCallback ? new Set<OnboardingStep>(['welcome', 'email']) : new Set()
-  ));
-  const [hasStartedEmailSync, setHasStartedEmailSync] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(() => {
+    if (hasEmailReturnTo) return new Set<OnboardingStep>(['welcome']);
+    if (hasIntegrationCallback) return new Set<OnboardingStep>(['welcome', 'email']);
+    return new Set();
+  });
+  const [hasStartedEmailSync, setHasStartedEmailSync] = useState(hasEmailReturnTo);
   const [tipsOpenForStep, setTipsOpenForStep] = useState<OnboardingStep | null>(null);
   const tipsWrapperRef = useRef<HTMLDivElement | null>(null);
   
@@ -301,6 +309,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     onComplete: noop,
   });
   
+  // Gmail connection status (checked once for the Welcome step)
+  const [isGmailConnected, setIsGmailConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    gmailApi.getStatus()
+      .then(status => { if (mounted) setIsGmailConnected(status.connected); })
+      .catch(() => { if (mounted) setIsGmailConnected(false); });
+    return () => { mounted = false; };
+  }, []);
+
   // Track when user can proceed from email step (Amazon + priority done)
   const [canProceedFromEmail, setCanProceedFromEmail] = useState(false);
   const [canProceedFromUrl, setCanProceedFromUrl] = useState(true);
@@ -821,6 +840,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           userProfile={userProfile}
           onStartEmailSync={handleStartEmailSync}
           onSkipEmail={handleSkipEmailSync}
+          isGmailConnected={isGmailConnected ?? false}
         />
       )}
 

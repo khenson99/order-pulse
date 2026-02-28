@@ -1,4 +1,5 @@
 import { Icons } from '../components/Icons';
+import { API_BASE_URL } from '../services/api';
 
 interface WelcomeStepItem {
   id: string;
@@ -12,6 +13,7 @@ interface OnboardingWelcomeStepProps {
   userProfile?: { name?: string; email?: string };
   onStartEmailSync: () => void;
   onSkipEmail: () => void;
+  isGmailConnected: boolean;
 }
 
 export const OnboardingWelcomeStep: React.FC<OnboardingWelcomeStepProps> = ({
@@ -19,8 +21,18 @@ export const OnboardingWelcomeStep: React.FC<OnboardingWelcomeStepProps> = ({
   userProfile,
   onStartEmailSync,
   onSkipEmail,
+  isGmailConnected,
 }) => {
   const firstName = userProfile?.name?.split(' ')[0];
+
+  const handleStartEmailSync = () => {
+    if (isGmailConnected) {
+      onStartEmailSync();
+    } else {
+      // Link Gmail via Google OAuth, then return to start email sync
+      window.location.href = `${API_BASE_URL}/auth/google?returnTo=email`;
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -65,11 +77,11 @@ export const OnboardingWelcomeStep: React.FC<OnboardingWelcomeStepProps> = ({
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           type="button"
-          onClick={onStartEmailSync}
+          onClick={handleStartEmailSync}
           className="btn-arda-primary flex items-center justify-center gap-2 px-6 py-3"
         >
           <Icons.Mail className="w-4 h-4" />
-          Start email sync
+          {isGmailConnected ? 'Start email sync' : 'Connect Gmail & start sync'}
         </button>
         <button
           type="button"

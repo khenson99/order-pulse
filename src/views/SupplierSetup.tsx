@@ -9,7 +9,6 @@ import {
   isSessionExpiredError,
   gmailApi,
   ApiRequestError,
-  API_BASE_URL,
 } from '../services/api';
 import { mergeSuppliers } from '../utils/supplierUtils';
 import {
@@ -990,24 +989,14 @@ export const SupplierSetup: React.FC<SupplierSetupProps> = ({
       {!isGmailConnected && (
         <div className="border border-arda-border rounded-2xl p-6 bg-arda-bg-secondary">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-orange-500 text-white flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-gray-400 text-white flex items-center justify-center">
               <Icons.Mail className="w-6 h-6" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-arda-text-primary">Connect Gmail to continue</h3>
+              <h3 className="text-lg font-semibold text-arda-text-primary">Gmail not connected</h3>
               <p className="text-sm text-arda-text-secondary mt-1">
-                {gmailStatusError || 'Link Gmail to scan your inbox for purchase orders and receipts.'}
+                {gmailStatusError || 'Go back to the Welcome step and click "Connect Gmail & start sync" to link your Google account, or skip this step.'}
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/auth/google?returnTo=email`;
-                }}
-                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-arda-accent text-white font-semibold hover:bg-arda-accent/90 transition-colors"
-              >
-                <Icons.Link className="w-4 h-4" />
-                Connect Gmail
-              </button>
             </div>
           </div>
         </div>
