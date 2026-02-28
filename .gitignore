@@ -26,3 +26,4 @@ dist-ssr
 server/.env
 .vercel
 .claude/
+.claude-octopus/
