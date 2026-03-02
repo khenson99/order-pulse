@@ -10,6 +10,7 @@ env:
   RAILWAY_PROJECT_ID: f7c96f7b-ed85-4ae9-9428-de3888942936
   RAILWAY_ENVIRONMENT: production
   RAILWAY_SERVICE: order-pulse-api
+  RAILWAY_CLI_PACKAGE: "@railway/cli"
 
 jobs:
   build-and-test:
@@ -52,8 +53,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: curl -fsSL https://railway.app/install.sh | sh
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Validate Railway secret
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "::error title=Missing RAILWAY_TOKEN secret::Add a valid Railway token to repo secrets as RAILWAY_TOKEN."
+            exit 1
+          fi
+
+      - name: Install Railway CLI (npm, retry)
+        run: |
+          set -euo pipefail
+
+          # Avoid flakiness in the curl installer (which pulls from GitHub).
+          # Installing via npm is typically more reliable in CI.
+          for attempt in 1 2 3; do
+            echo "Installing Railway CLI (attempt $attempt/3)..."
+            if npm install -g "${RAILWAY_CLI_PACKAGE}@latest"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error title=Railway CLI install failed::npm install -g ${RAILWAY_CLI_PACKAGE}@latest failed after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+          railway --version
 
       - name: Deploy to Railway
         env:
