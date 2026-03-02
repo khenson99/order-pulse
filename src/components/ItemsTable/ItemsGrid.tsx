@@ -267,10 +267,10 @@ export const ItemsGrid: React.FC<ItemsGridProps> = ({
     [syncStateById],
   );
 
-  const containerHeight = mode === 'fullpage' ? 'calc(100vh - 160px)' : '100%';
+  const containerHeight = mode === 'fullpage' ? 'calc(100vh - 160px)' : 'clamp(320px, 45vh, 620px)';
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50/50">
         <div className="flex items-center gap-3">
@@ -290,7 +290,14 @@ export const ItemsGrid: React.FC<ItemsGridProps> = ({
       </div>
 
       {/* Grid */}
-      <div className="ag-theme-arda flex-1" style={{ height: containerHeight, width: '100%' }}>
+      <div
+        className="ag-theme-arda flex-1 min-h-0"
+        style={{
+          height: containerHeight,
+          width: '100%',
+          minHeight: mode === 'panel' ? 320 : undefined,
+        }}
+      >
         <AgGridReact<MasterListItem>
           ref={gridRef}
           theme={ardaTheme}

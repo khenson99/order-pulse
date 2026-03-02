@@ -769,25 +769,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
         <div className="flex items-center gap-2 flex-shrink-0">
           <div ref={tipsWrapperRef} className="relative">
-	            <button
-	              type="button"
-	              onClick={() => setTipsOpenForStep(open => (open === currentStep ? null : currentStep))}
-	              className="btn-arda-outline text-sm py-1.5 flex items-center gap-2"
-	              aria-expanded={tipsOpen}
-	              aria-controls={`onboarding-tips-${currentStep}`}
-	              aria-haspopup="dialog"
-	            >
-	              <Icons.Lightbulb className="w-4 h-4" />
-	              <span className="sr-only sm:not-sr-only">Tips</span>
-	            </button>
+            <button
+              type="button"
+              onClick={() => setTipsOpenForStep(open => (open === currentStep ? null : currentStep))}
+              className="btn-arda-outline text-sm py-1.5 flex items-center gap-2"
+              aria-controls={`onboarding-tips-${currentStep}`}
+              aria-haspopup="dialog"
+            >
+              <Icons.Lightbulb className="w-4 h-4" />
+              <span className="sr-only sm:not-sr-only">Tips</span>
+            </button>
 
             {tipsOpen && (
               <div
-	                id={`onboarding-tips-${currentStep}`}
-	                role="dialog"
-	                aria-label={currentStepConfig.tipsTitle}
-	                className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-arda-border bg-white/95 backdrop-blur shadow-lg p-3 z-50"
-	              >
+                id={`onboarding-tips-${currentStep}`}
+                role="dialog"
+                aria-label={currentStepConfig.tipsTitle}
+                className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-arda-border bg-white/95 backdrop-blur shadow-lg p-3 z-50"
+              >
                 <div className="text-[11px] font-semibold text-arda-text-muted uppercase tracking-wide">
                   {currentStepConfig.tipsTitle}
                 </div>
@@ -823,9 +822,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           style={{ width: `${((currentStepIndex + 1) / ONBOARDING_STEPS.length) * 100}%` }}
           role="progressbar"
           aria-label="Onboarding progress"
-          aria-valuenow={currentStepIndex + 1}
-          aria-valuemin={1}
-          aria-valuemax={ONBOARDING_STEPS.length}
         />
       </div>
     </div>
@@ -991,7 +987,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
           {/* AG Grid — right side panel (visible on non-masterlist steps) */}
           {isPanelVisible && currentStep !== 'masterlist' && (
-            <div className="flex-1 min-w-0 lg:sticky lg:top-14 lg:self-start lg:max-h-[calc(100vh-10rem)] overflow-hidden rounded-xl border border-arda-border bg-white shadow-sm">
+            <div className="flex-1 min-w-0 lg:sticky lg:top-14 lg:self-start lg:h-[calc(100vh-10rem)] lg:max-h-[calc(100vh-10rem)] overflow-hidden rounded-xl border border-arda-border bg-white shadow-sm">
               <ItemsGrid
                 items={masterItems}
                 onUpdateItem={updateItem}
